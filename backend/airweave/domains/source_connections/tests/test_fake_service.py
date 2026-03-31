@@ -8,7 +8,7 @@ import pytest
 from airweave.core.exceptions import NotFoundException
 from airweave.domains.source_connections.fakes.delete import FakeSourceConnectionDeletionService
 from airweave.domains.source_connections.fakes.service import FakeSourceConnectionService
-from airweave.domains.syncs.fakes.sync_service import FakeSyncService
+from airweave.domains.syncs.fakes.service import FakeSyncService
 
 
 def _make_source_connection():

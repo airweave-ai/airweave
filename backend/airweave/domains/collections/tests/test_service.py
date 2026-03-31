@@ -28,7 +28,7 @@ from airweave.domains.embedders.types import DenseEmbedderEntry
 from airweave.domains.source_connections.fakes.repository import (
     FakeSourceConnectionRepository,
 )
-from airweave.domains.syncs.fakes.sync_service import FakeSyncService
+from airweave.domains.syncs.fakes.service import FakeSyncService
 from airweave.models.collection import Collection
 from airweave.schemas.organization import Organization
 
@@ -410,13 +410,13 @@ async def test_delete_full_flow():
 
     assert result is not None
 
-    # Verify teardown was called with correct args
+    # Verify one delete per sync ID: ("delete", sync_id, collection_id, organization_id)
     delete_calls = [c for c in sync_service._calls if c[0] == "delete"]
-    assert len(delete_calls) == 1
-    call = delete_calls[0]
-    assert set(call[1]) == {sync_id_1, sync_id_2}  # sync_ids
-    assert call[2] == COLLECTION_ID  # collection_id
-    assert call[3] == ORG_ID  # organization_id
+    assert len(delete_calls) == 2
+    assert {c[1] for c in delete_calls} == {sync_id_1, sync_id_2}
+    for c in delete_calls:
+        assert c[2] == COLLECTION_ID  # collection_id
+        assert c[3] == ORG_ID  # organization_id
 
     # Verify cascade delete was called
     remove_calls = [c for c in repo._calls if c[0] == "remove"]
@@ -438,7 +438,7 @@ async def test_delete_not_found():
 
 @pytest.mark.asyncio
 async def test_delete_no_syncs():
-    """delete() works when collection has no syncs — teardown called with empty list."""
+    """delete() works when collection has no syncs — no sync delete calls (empty gather)."""
     repo = FakeCollectionRepository()
     sc_repo = FakeSourceConnectionRepository()
     sync_service = FakeSyncService()
@@ -461,5 +461,4 @@ async def test_delete_no_syncs():
     assert result is not None
 
     delete_calls = [c for c in sync_service._calls if c[0] == "delete"]
-    assert len(delete_calls) == 1
-    assert delete_calls[0][1] == []
+    assert len(delete_calls) == 0

@@ -354,8 +354,9 @@ async def test_get_raises_when_not_found():
     repo.get.return_value = None
 
     svc = _build_svc(sync_repo=repo)
-    with pytest.raises(ValueError, match="not found"):
+    with pytest.raises(HTTPException) as exc_info:
         await svc.get(AsyncMock(), sync_id=uuid4(), ctx=_mock_ctx())
+    assert exc_info.value.status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -678,20 +679,20 @@ def test_validate_cron_rejects_sub_hourly():
 @pytest.mark.asyncio
 async def test_create_skips_federated():
     svc = _build_svc()
-    result = await svc.create(
-        AsyncMock(),
-        name="test",
-        source_connection_id=uuid4(),
-        destination_connection_ids=[uuid4()],
-        collection_id=uuid4(),
-        collection_readable_id="col-x",
-        source_entry=_mock_source_entry(federated=True),
-        schedule_config=None,
-        run_immediately=False,
-        ctx=_mock_ctx(),
-        uow=MagicMock(),
-    )
-    assert result is None
+    with pytest.raises(ValueError, match="federated"):
+        await svc.create(
+            AsyncMock(),
+            name="test",
+            source_connection_id=uuid4(),
+            destination_connection_ids=[uuid4()],
+            collection_id=uuid4(),
+            collection_readable_id="col-x",
+            source_entry=_mock_source_entry(federated=True),
+            schedule_config=None,
+            run_immediately=False,
+            ctx=_mock_ctx(),
+            uow=MagicMock(),
+        )
 
 
 @pytest.mark.asyncio
@@ -699,20 +700,20 @@ async def test_create_no_cron_no_run_immediately():
     from airweave.schemas.source_connection import ScheduleConfig
 
     svc = _build_svc()
-    result = await svc.create(
-        AsyncMock(),
-        name="test",
-        source_connection_id=uuid4(),
-        destination_connection_ids=[uuid4()],
-        collection_id=uuid4(),
-        collection_readable_id="col-x",
-        source_entry=_mock_source_entry(),
-        schedule_config=ScheduleConfig(cron=None),
-        run_immediately=False,
-        ctx=_mock_ctx(),
-        uow=MagicMock(),
-    )
-    assert result is None
+    with pytest.raises(ValueError, match="no schedule"):
+        await svc.create(
+            AsyncMock(),
+            name="test",
+            source_connection_id=uuid4(),
+            destination_connection_ids=[uuid4()],
+            collection_id=uuid4(),
+            collection_readable_id="col-x",
+            source_entry=_mock_source_entry(),
+            schedule_config=ScheduleConfig(cron=None),
+            run_immediately=False,
+            ctx=_mock_ctx(),
+            uow=MagicMock(),
+        )
 
 
 @pytest.mark.asyncio
@@ -763,29 +764,29 @@ async def test_create_with_cron_calls_temporal_schedule():
 @pytest.mark.asyncio
 async def test_delete_delegates():
     svc = _build_svc()
-    svc._cancel_active_syncs = AsyncMock(return_value=[])
+    svc._cancel_active_sync = AsyncMock(return_value=True)
     svc._wait_for_terminal = AsyncMock()
     svc._schedule_cleanup = AsyncMock()
 
     await svc.delete(
         AsyncMock(),
-        sync_ids=[uuid4()],
+        sync_id=uuid4(),
         collection_id=uuid4(),
         organization_id=uuid4(),
         ctx=_mock_ctx(),
     )
-    svc._cancel_active_syncs.assert_awaited_once()
+    svc._cancel_active_sync.assert_awaited_once()
     svc._wait_for_terminal.assert_awaited_once()
     svc._schedule_cleanup.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
-# _cancel_active_syncs()
+# _cancel_active_sync()
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_cancel_active_syncs_cancels_running_job():
+async def test_cancel_active_sync_cancels_running_job():
     sync_id = uuid4()
     job = MagicMock()
     job.id = uuid4()
@@ -797,13 +798,13 @@ async def test_cancel_active_syncs_cancels_running_job():
     temporal = AsyncMock()
     svc = _build_svc(sync_job_repo=job_repo, temporal_workflow_service=temporal)
 
-    result = await svc._cancel_active_syncs(AsyncMock(), [sync_id], _mock_ctx())
-    assert sync_id in result
+    result = await svc._cancel_active_sync(AsyncMock(), sync_id, _mock_ctx())
+    assert result is True
     temporal.cancel_sync_job_workflow.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_cancel_active_syncs_skips_terminal():
+async def test_cancel_active_sync_skips_terminal():
     job = MagicMock()
     job.status = SyncJobStatus.COMPLETED
 
@@ -811,8 +812,8 @@ async def test_cancel_active_syncs_skips_terminal():
     job_repo.get_latest_by_sync_id.return_value = job
 
     svc = _build_svc(sync_job_repo=job_repo)
-    result = await svc._cancel_active_syncs(AsyncMock(), [uuid4()], _mock_ctx())
-    assert result == []
+    result = await svc._cancel_active_sync(AsyncMock(), uuid4(), _mock_ctx())
+    assert result is False
 
 
 # ---------------------------------------------------------------------------
@@ -821,9 +822,14 @@ async def test_cancel_active_syncs_skips_terminal():
 
 
 @pytest.mark.asyncio
-async def test_wait_for_terminal_empty_list():
-    svc = _build_svc()
-    await svc._wait_for_terminal(AsyncMock(), [], 5, _mock_ctx())
+async def test_wait_for_terminal_returns_when_no_job():
+    job_repo = AsyncMock()
+    job_repo.get_latest_by_sync_id.return_value = None
+    svc = _build_svc(sync_job_repo=job_repo)
+    db = MagicMock()
+    with patch("airweave.domains.syncs.service.asyncio.sleep", new_callable=AsyncMock):
+        await svc._wait_for_terminal(db, uuid4(), 5, _mock_ctx())
+    job_repo.get_latest_by_sync_id.assert_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -832,16 +838,10 @@ async def test_wait_for_terminal_empty_list():
 
 
 @pytest.mark.asyncio
-async def test_schedule_cleanup_empty_ids():
-    svc = _build_svc()
-    await svc._schedule_cleanup([], uuid4(), uuid4(), _mock_ctx())
-
-
-@pytest.mark.asyncio
 async def test_schedule_cleanup_calls_temporal():
     temporal = AsyncMock()
     svc = _build_svc(temporal_workflow_service=temporal)
-    await svc._schedule_cleanup([uuid4()], uuid4(), uuid4(), _mock_ctx())
+    await svc._schedule_cleanup(uuid4(), uuid4(), uuid4(), _mock_ctx())
     temporal.start_cleanup_sync_data_workflow.assert_awaited_once()
 
 
@@ -852,5 +852,5 @@ async def test_schedule_cleanup_handles_error():
 
     svc = _build_svc(temporal_workflow_service=temporal)
     ctx = _mock_ctx()
-    await svc._schedule_cleanup([uuid4()], uuid4(), uuid4(), ctx)
+    await svc._schedule_cleanup(uuid4(), uuid4(), uuid4(), ctx)
     ctx.logger.error.assert_called_once()

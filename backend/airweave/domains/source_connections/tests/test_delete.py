@@ -22,7 +22,7 @@ from airweave.domains.source_connections.fakes.repository import (
     FakeSourceConnectionRepository,
 )
 from airweave.domains.source_connections.fakes.response import FakeResponseBuilder
-from airweave.domains.syncs.fakes.sync_service import FakeSyncService
+from airweave.domains.syncs.fakes.service import FakeSyncService
 from airweave.models.collection import Collection
 from airweave.models.source_connection import SourceConnection
 from airweave.schemas.organization import Organization

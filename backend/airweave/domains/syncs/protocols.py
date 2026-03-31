@@ -122,7 +122,7 @@ class SyncServiceProtocol(Protocol):
         run_immediately: bool,
         ctx: ApiContext,
         uow: UnitOfWork,
-    ) -> Optional[SyncProvisionResult]:
+    ) -> SyncProvisionResult:
         """Create sync + optional job + Temporal schedule atomically."""
         ...
 
@@ -154,7 +154,7 @@ class SyncServiceProtocol(Protocol):
         self,
         db: AsyncSession,
         *,
-        sync_ids: List[UUID],
+        sync_id: UUID,
         collection_id: UUID,
         organization_id: UUID,
         ctx: ApiContext,
@@ -166,7 +166,7 @@ class SyncServiceProtocol(Protocol):
     # -- Jobs --
 
     async def resolve_destination_ids(self, db: AsyncSession, ctx: ApiContext) -> List[UUID]:
-        """Resolve destination connection IDs."""
+        """Resolve destination connection IDs (interim — will move to a registry)."""
         ...
 
     async def trigger_run(
@@ -174,9 +174,12 @@ class SyncServiceProtocol(Protocol):
         db: AsyncSession,
         *,
         sync_id: UUID,
+        collection: schemas.CollectionRecord,
+        connection: schemas.Connection,
         ctx: ApiContext,
+        force_full_sync: bool = False,
     ) -> Tuple[schemas.Sync, schemas.SyncJob]:
-        """Create a PENDING job for a sync."""
+        """Create a PENDING job and start the Temporal workflow."""
         ...
 
     async def get_jobs(

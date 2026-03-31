@@ -1,6 +1,5 @@
 """Source connection deletion service."""
 
-from typing import cast
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,9 +60,9 @@ class SourceConnectionDeletionService(SourceConnectionDeletionServiceProtocol):
         if sync_id:
             await self._sync_service.delete(
                 db,
-                sync_ids=[sync_id],
-                collection_id=cast(UUID, collection.id),
-                organization_id=cast(UUID, collection.organization_id),
+                sync_id=sync_id,
+                collection_id=collection.id,
+                organization_id=collection.organization_id,
                 ctx=ctx,
                 cancel_timeout_seconds=15,
             )

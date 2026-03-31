@@ -26,7 +26,6 @@ from airweave.domains.source_connections.protocols import (
 )
 from airweave.domains.sources.protocols import SourceRegistryProtocol
 from airweave.domains.syncs.protocols import SyncServiceProtocol
-from airweave.domains.temporal.protocols import TemporalWorkflowServiceProtocol
 from airweave.models.source_connection import SourceConnection
 from airweave.schemas.source_connection import (
     SourceConnection as SourceConnectionSchema,
@@ -39,12 +38,10 @@ from airweave.schemas.source_connection import (
 )
 
 
-def _duration_seconds(
-    started_at: Optional[datetime], completed_at: Optional[datetime]
-) -> Optional[float]:
+def _duration_seconds(started_at: Optional[datetime], completed_at: Optional[datetime]) -> float:
     if started_at and completed_at:
         return (completed_at - started_at).total_seconds()
-    return None
+    return 0.0
 
 
 class SourceConnectionService(SourceConnectionServiceProtocol):
@@ -63,7 +60,6 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         # Helpers
         response_builder: ResponseBuilderProtocol,
         sync_service: SyncServiceProtocol,
-        temporal_workflow_service: TemporalWorkflowServiceProtocol,
         event_bus: EventBus,
         # Sub-services
         create_service: SourceConnectionCreateServiceProtocol,
@@ -78,7 +74,6 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         self.auth_provider_registry = auth_provider_registry
         self.response_builder = response_builder
         self._sync_service = sync_service
-        self._temporal_workflow_service = temporal_workflow_service
         self._event_bus = event_bus
         self._create_service = create_service
         self._update_service = update_service
@@ -182,31 +177,26 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         collection = await self._resolve_collection(db, source_conn, ctx)
         connection = await self._resolve_connection(db, source_conn, ctx)
 
-        sync, sync_job = await self._sync_service.trigger_run(db, sync_id=sync_id, ctx=ctx)
-
-        try:
-            await self._event_bus.publish(
-                SyncLifecycleEvent.pending(
-                    organization_id=ctx.organization.id,
-                    source_connection_id=id,
-                    sync_job_id=sync_job.id,
-                    sync_id=sync_id,
-                    collection_id=collection.id,
-                    source_type=connection.short_name,
-                    collection_name=collection.name,
-                    collection_readable_id=collection.readable_id,
-                )
-            )
-        except Exception as e:
-            ctx.logger.warning(f"Failed to publish sync.pending event: {e}")
-
-        await self._temporal_workflow_service.run_source_connection_workflow(
-            sync=sync,
-            sync_job=sync_job,
+        sync, sync_job = await self._sync_service.trigger_run(
+            db,
+            sync_id=sync_id,
             collection=collection,
             connection=connection,
             ctx=ctx,
             force_full_sync=force_full_sync,
+        )
+
+        await self._event_bus.publish(
+            SyncLifecycleEvent.pending(
+                organization_id=ctx.organization.id,
+                source_connection_id=id,
+                sync_job_id=sync_job.id,
+                sync_id=sync_id,
+                collection_id=collection.id,
+                source_type=connection.short_name,
+                collection_name=collection.name,
+                collection_readable_id=collection.readable_id,
+            )
         )
 
         return SourceConnectionJob(
@@ -333,7 +323,9 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         """Resolve the CollectionRecord schema for a source connection."""
         readable_id = source_conn.readable_collection_id
         if not readable_id:
-            raise ValueError(f"Source connection {source_conn.id} has no readable_collection_id")
+            raise NotFoundException(
+                f"Source connection {source_conn.id} has no readable_collection_id"
+            )
         collection = await self.collection_repo.get_by_readable_id(db, str(readable_id), ctx)
         if not collection:
             raise NotFoundException("Collection not found")
@@ -344,8 +336,8 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
     ) -> schemas.Connection:
         """Resolve the Connection schema (not SourceConnection) for a source connection."""
         if not source_conn.connection_id:
-            raise ValueError(f"Source connection {source_conn.id} has no connection_id")
+            raise NotFoundException(f"Source connection {source_conn.id} has no connection_id")
         conn = await self.connection_repo.get(db, source_conn.connection_id, ctx)
         if not conn:
-            raise ValueError(f"Connection {source_conn.connection_id} not found")
+            raise NotFoundException(f"Connection {source_conn.connection_id} not found")
         return schemas.Connection.model_validate(conn, from_attributes=True)

@@ -101,21 +101,20 @@ class SyncService(SyncServiceProtocol):
         run_immediately: bool,
         ctx: ApiContext,
         uow: UnitOfWork,
-    ) -> Optional[SyncProvisionResult]:
+    ) -> SyncProvisionResult:
         """Create sync + optional job + Temporal schedule atomically.
 
-        Returns None for federated search sources or when there is neither
-        a schedule nor an immediate run request.
+        Raises ValueError if called for federated sources or when there is
+        neither a schedule nor an immediate run request — callers must guard
+        these cases before calling create.
         """
         if source_entry.federated_search:
-            ctx.logger.info(f"Skipping sync for federated source '{source_entry.short_name}'")
-            return None
+            raise ValueError(f"Cannot create sync for federated source '{source_entry.short_name}'")
 
         cron = self._resolve_cron(schedule_config, source_entry, ctx)
 
         if not cron and not run_immediately:
-            ctx.logger.info("No cron schedule and run_immediately=False, skipping sync creation")
-            return None
+            raise ValueError("Cannot create sync: no schedule and run_immediately=False")
 
         if cron:
             self._validate_cron_for_source(cron, source_entry)
@@ -153,7 +152,7 @@ class SyncService(SyncServiceProtocol):
         """Get a sync by ID."""
         sync = await self._sync_repo.get(db, sync_id, ctx)
         if not sync:
-            raise ValueError(f"Sync {sync_id} not found")
+            raise HTTPException(status_code=404, detail=f"Sync {sync_id} not found")
         return sync
 
     async def pause(
@@ -184,13 +183,13 @@ class SyncService(SyncServiceProtocol):
         self,
         db: AsyncSession,
         *,
-        sync_ids: List[UUID],
+        sync_id: UUID,
         collection_id: UUID,
         organization_id: UUID,
         ctx: ApiContext,
         cancel_timeout_seconds: int = 15,
     ) -> None:
-        """Cancel active workflows and schedule async cleanup.
+        """Cancel active workflows and schedule async cleanup for a single sync.
 
         1. Cancels PENDING/RUNNING workflows via Temporal.
         2. Polls until terminal state (up to cancel_timeout_seconds).
@@ -198,9 +197,10 @@ class SyncService(SyncServiceProtocol):
 
         The caller is responsible for the CASCADE delete of DB records.
         """
-        syncs_to_wait = await self._cancel_active_syncs(db, sync_ids, ctx)
-        await self._wait_for_terminal(db, syncs_to_wait, cancel_timeout_seconds, ctx)
-        await self._schedule_cleanup(sync_ids, collection_id, organization_id, ctx)
+        needs_wait = await self._cancel_active_sync(db, sync_id, ctx)
+        if needs_wait:
+            await self._wait_for_terminal(db, sync_id, cancel_timeout_seconds, ctx)
+        await self._schedule_cleanup(sync_id, collection_id, organization_id, ctx)
 
     # ------------------------------------------------------------------
     # Jobs
@@ -215,16 +215,19 @@ class SyncService(SyncServiceProtocol):
         db: AsyncSession,
         *,
         sync_id: UUID,
+        collection: schemas.CollectionRecord,
+        connection: schemas.Connection,
         ctx: ApiContext,
+        force_full_sync: bool = False,
     ) -> Tuple[schemas.Sync, schemas.SyncJob]:
-        """Create a PENDING job for a sync.
+        """Create a PENDING job and start the Temporal workflow.
 
-        Validates the sync is ACTIVE and no active jobs exist.
-        Returns (sync_schema, sync_job_schema).
+        Validates the sync is ACTIVE and no active jobs exist, creates the
+        job record, then starts the Temporal workflow.
         """
         sync = await self._sync_repo.get(db, sync_id, ctx)
         if not sync:
-            raise ValueError(f"Sync {sync_id} not found")
+            raise HTTPException(status_code=404, detail=f"Sync {sync_id} not found")
 
         if SyncStatus(sync.status) != SyncStatus.ACTIVE:
             raise HTTPException(
@@ -242,16 +245,23 @@ class SyncService(SyncServiceProtocol):
 
         sync_schema = schemas.Sync.model_validate(sync, from_attributes=True)
 
-        async with UnitOfWork(db) as uow:
-            sync_job = await self._sync_job_repo.create(
-                uow.session,
-                SyncJobCreate(sync_id=sync_id, status=SyncJobStatus.PENDING),
-                ctx,
-                uow=uow,
-            )
-            await uow.commit()
-            await uow.session.refresh(sync_job)
-            sync_job_schema = schemas.SyncJob.model_validate(sync_job, from_attributes=True)
+        sync_job = await self._sync_job_repo.create(
+            db,
+            SyncJobCreate(sync_id=sync_id, status=SyncJobStatus.PENDING),
+            ctx,
+        )
+        await db.flush()
+        await db.refresh(sync_job)
+        sync_job_schema = schemas.SyncJob.model_validate(sync_job, from_attributes=True)
+
+        await self._temporal_workflow_service.run_source_connection_workflow(
+            sync=sync_schema,
+            sync_job=sync_job_schema,
+            collection=collection,
+            connection=connection,
+            ctx=ctx,
+            force_full_sync=force_full_sync,
+        )
 
         return sync_schema, sync_job_schema
 
@@ -264,8 +274,8 @@ class SyncService(SyncServiceProtocol):
         limit: int = 100,
     ) -> List[schemas.SyncJob]:
         """List jobs for a sync, most recent first."""
-        jobs = await self._sync_job_repo.get_all_by_sync_id(db, sync_id, ctx)
-        return [schemas.SyncJob.model_validate(j, from_attributes=True) for j in jobs[:limit]]
+        jobs = await self._sync_job_repo.get_all_by_sync_id(db, sync_id, ctx, limit=limit)
+        return [schemas.SyncJob.model_validate(j, from_attributes=True) for j in jobs]
 
     async def cancel_job(
         self,
@@ -277,7 +287,7 @@ class SyncService(SyncServiceProtocol):
         """Cancel a running sync job.
 
         Transitions to CANCELLING, sends cancel to Temporal, and handles
-        edge cases (workflow not found, Temporal failure).
+        edge cases (workflow not found, Temporal failure with one retry).
         """
         sync_job = await self._sync_job_repo.get(db, job_id, ctx)
         if not sync_job:
@@ -293,9 +303,7 @@ class SyncService(SyncServiceProtocol):
             sync_job_id=job_id, target=SyncJobStatus.CANCELLING, ctx=ctx
         )
 
-        cancel_result = await self._temporal_workflow_service.cancel_sync_job_workflow(
-            str(job_id), ctx
-        )
+        cancel_result = await self._cancel_temporal_workflow_with_retry(job_id, ctx)
 
         if not cancel_result["success"]:
             raise HTTPException(
@@ -303,16 +311,33 @@ class SyncService(SyncServiceProtocol):
             )
 
         if not cancel_result["workflow_found"]:
-            ctx.logger.info(f"Workflow not found for job {job_id} - marking CANCELLED directly")
-            await self._job_state_machine.transition(
-                sync_job_id=job_id,
-                target=SyncJobStatus.CANCELLED,
-                ctx=ctx,
-                error="Workflow not found in Temporal - may have already completed",
-            )
+            # NOT_FOUND means the workflow already completed, never started,
+            # or was cleaned up. Check current DB state before marking cancelled.
+            await db.refresh(sync_job)
+            terminal = {SyncJobStatus.COMPLETED, SyncJobStatus.FAILED, SyncJobStatus.CANCELLED}
+            if sync_job.status not in terminal:
+                ctx.logger.info(f"Workflow not found for job {job_id}, marking CANCELLED")
+                await self._job_state_machine.transition(
+                    sync_job_id=job_id, target=SyncJobStatus.CANCELLED, ctx=ctx
+                )
 
         await db.refresh(sync_job)
         return schemas.SyncJob.model_validate(sync_job, from_attributes=True)
+
+    async def _cancel_temporal_workflow_with_retry(
+        self, job_id: UUID, ctx: ApiContext, max_retries: int = 1
+    ) -> dict[str, bool]:
+        """Send cancellation to Temporal with a single retry on RPC failure."""
+        for attempt in range(1 + max_retries):
+            result = await self._temporal_workflow_service.cancel_sync_job_workflow(
+                str(job_id), ctx
+            )
+            if result["success"] or result["workflow_found"]:
+                return result
+            if attempt < max_retries:
+                await asyncio.sleep(0.5)
+                ctx.logger.info(f"Retrying cancel for job {job_id} (attempt {attempt + 2})")
+        return result
 
     async def validate_force_full_sync(
         self, db: AsyncSession, sync_id: UUID, ctx: ApiContext
@@ -490,78 +515,66 @@ class SyncService(SyncServiceProtocol):
     # Private: delete helpers
     # ------------------------------------------------------------------
 
-    async def _cancel_active_syncs(
+    async def _cancel_active_sync(
         self,
         db: AsyncSession,
-        sync_ids: List[UUID],
+        sync_id: UUID,
         ctx: ApiContext,
-    ) -> List[UUID]:
-        """Cancel PENDING/RUNNING jobs and return sync IDs that need waiting."""
+    ) -> bool:
+        """Cancel PENDING/RUNNING job for a sync. Returns True if it needs waiting."""
         non_terminal = {SyncJobStatus.PENDING, SyncJobStatus.RUNNING, SyncJobStatus.CANCELLING}
-        syncs_to_wait: List[UUID] = []
-        for sync_id in sync_ids:
-            latest_job = await self._sync_job_repo.get_latest_by_sync_id(db, sync_id=sync_id)
-            if not latest_job or latest_job.status not in non_terminal:
-                continue
-            if latest_job.status in (SyncJobStatus.PENDING, SyncJobStatus.RUNNING):
-                try:
-                    await self._temporal_workflow_service.cancel_sync_job_workflow(
-                        str(latest_job.id), ctx
-                    )
-                    ctx.logger.info(f"Cancelled job {latest_job.id} before deletion")
-                except Exception as e:
-                    ctx.logger.warning(f"Failed to cancel job {latest_job.id}: {e}")
-            syncs_to_wait.append(sync_id)
-        return syncs_to_wait
+        latest_job = await self._sync_job_repo.get_latest_by_sync_id(db, sync_id=sync_id)
+        if not latest_job or latest_job.status not in non_terminal:
+            return False
+        if latest_job.status in (SyncJobStatus.PENDING, SyncJobStatus.RUNNING):
+            try:
+                await self._temporal_workflow_service.cancel_sync_job_workflow(
+                    str(latest_job.id), ctx
+                )
+                ctx.logger.info(f"Cancelled job {latest_job.id} before deletion")
+            except Exception as e:
+                ctx.logger.warning(f"Failed to cancel job {latest_job.id}: {e}")
+        return True
 
     async def _wait_for_terminal(
         self,
         db: AsyncSession,
-        syncs_to_wait: List[UUID],
+        sync_id: UUID,
         timeout_seconds: int,
         ctx: ApiContext,
     ) -> None:
-        """Poll until all syncs reach a terminal state or timeout."""
-        if not syncs_to_wait:
-            return
+        """Poll until the sync's latest job reaches a terminal state or timeout."""
         terminal = {SyncJobStatus.COMPLETED, SyncJobStatus.FAILED, SyncJobStatus.CANCELLED}
         elapsed = 0.0
-        remaining = list(syncs_to_wait)
-        while elapsed < timeout_seconds and remaining:
+        while elapsed < timeout_seconds:
             await asyncio.sleep(1.0)
             elapsed += 1.0
             db.expire_all()
-            still_waiting = []
-            for sid in remaining:
-                job = await self._sync_job_repo.get_latest_by_sync_id(db, sync_id=sid)
-                if job and job.status not in terminal:
-                    still_waiting.append(sid)
-            remaining = still_waiting
-        if remaining:
-            ctx.logger.warning(
-                f"{len(remaining)} sync(s) did not reach terminal state "
-                f"within {timeout_seconds}s -- proceeding with deletion anyway"
-            )
+            job = await self._sync_job_repo.get_latest_by_sync_id(db, sync_id=sync_id)
+            if not job or job.status in terminal:
+                return
+        ctx.logger.warning(
+            f"Sync {sync_id} did not reach terminal state "
+            f"within {timeout_seconds}s -- proceeding with deletion anyway"
+        )
 
     async def _schedule_cleanup(
         self,
-        sync_ids: List[UUID],
+        sync_id: UUID,
         collection_id: UUID,
         organization_id: UUID,
         ctx: ApiContext,
     ) -> None:
         """Schedule a Temporal workflow for async Vespa/ARF cleanup."""
-        if not sync_ids:
-            return
         try:
             await self._temporal_workflow_service.start_cleanup_sync_data_workflow(
-                sync_ids=[str(sid) for sid in sync_ids],
+                sync_ids=[str(sync_id)],
                 collection_id=str(collection_id),
                 organization_id=str(organization_id),
                 ctx=ctx,
             )
         except Exception as e:
             ctx.logger.error(
-                f"Failed to schedule async cleanup for collection {collection_id}: {e}. "
+                f"Failed to schedule async cleanup for sync {sync_id}: {e}. "
                 f"Data may be orphaned in Vespa/ARF."
             )

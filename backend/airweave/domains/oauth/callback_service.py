@@ -567,7 +567,7 @@ class OAuthCallbackService:
                     await self._sync_service.resume(
                         source_conn.sync_id,
                         ctx,
-                        reason="OAuth re-auth completed",
+                        reason="OAuth completed",
                     )
                 except (InvalidSyncTransitionError, OptimisticLockError, ValueError):
                     logger.warning("Failed to activate sync after OAuth re-auth", exc_info=True)

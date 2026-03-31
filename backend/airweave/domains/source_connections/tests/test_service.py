@@ -33,7 +33,7 @@ from airweave.domains.source_connections.fakes.update import FakeSourceConnectio
 from airweave.domains.source_connections.service import SourceConnectionService
 from airweave.domains.source_connections.types import LastJobInfo, SourceConnectionStats
 from airweave.domains.sources.fakes.registry import FakeSourceRegistry
-from airweave.domains.syncs.fakes.sync_service import FakeSyncService
+from airweave.domains.syncs.fakes.service import FakeSyncService
 from airweave.schemas.organization import Organization
 from airweave.schemas.source_connection import AuthenticationMethod, SourceConnectionListItem
 
@@ -99,7 +99,6 @@ def _build_service(
         auth_provider_registry=FakeAuthProviderRegistry(),
         response_builder=FakeResponseBuilder(),
         sync_service=FakeSyncService(),
-        temporal_workflow_service=AsyncMock(),
         event_bus=AsyncMock(),
         create_service=FakeSourceConnectionCreateService(),
         update_service=FakeSourceConnectionUpdateService(),
@@ -470,7 +469,6 @@ def _build_run_service(
     sync_service=None,
     collection_repo=None,
     connection_repo=None,
-    temporal_workflow_service=None,
     event_bus=None,
 ):
     return SourceConnectionService(
@@ -482,7 +480,6 @@ def _build_run_service(
         auth_provider_registry=FakeAuthProviderRegistry(),
         response_builder=FakeResponseBuilder(),
         sync_service=sync_service or FakeSyncService(),
-        temporal_workflow_service=temporal_workflow_service or AsyncMock(),
         event_bus=event_bus or AsyncMock(),
         create_service=FakeSourceConnectionCreateService(),
         update_service=FakeSourceConnectionUpdateService(),
@@ -490,26 +487,58 @@ def _build_run_service(
     )
 
 
+class _RecordingFakeSyncService(FakeSyncService):
+    """Records keyword arguments passed to trigger_run for assertions."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.last_trigger_run: Optional[dict] = None
+
+    async def trigger_run(
+        self,
+        db,
+        *,
+        sync_id,
+        collection,
+        connection,
+        ctx,
+        force_full_sync: bool = False,
+    ):
+        self.last_trigger_run = {
+            "sync_id": sync_id,
+            "collection": collection,
+            "connection": connection,
+            "force_full_sync": force_full_sync,
+        }
+        return await super().trigger_run(
+            db,
+            sync_id=sync_id,
+            collection=collection,
+            connection=connection,
+            ctx=ctx,
+            force_full_sync=force_full_sync,
+        )
+
+
 async def test_run_triggers_workflow_and_returns_job():
     sc = _make_source_conn()
     sc_repo = FakeSourceConnectionRepository()
     sc_repo.seed(SC_ID, sc)
 
-    sync_svc = FakeSyncService()
+    sync_svc = _RecordingFakeSyncService()
     sync_svc.set_trigger_run_result(_make_sync_schema(), _make_sync_job_schema())
 
-    temporal = AsyncMock()
     event_bus = AsyncMock()
 
     svc = _build_run_service(
         sc_repo=sc_repo,
         sync_service=sync_svc,
-        temporal_workflow_service=temporal,
         event_bus=event_bus,
     )
 
     col_id = uuid4()
-    col_schema = MagicMock(id=col_id, name="Col", readable_id="col-x")
+    col_schema = MagicMock(id=col_id, readable_id="col-x")
+    col_schema.name = "Col"
     conn_schema = MagicMock(short_name="github")
     svc._resolve_collection = AsyncMock(return_value=col_schema)
     svc._resolve_connection = AsyncMock(return_value=conn_schema)
@@ -519,14 +548,14 @@ async def test_run_triggers_workflow_and_returns_job():
     assert result.id == JOB_ID
     assert result.source_connection_id == SC_ID
     assert result.status == SyncJobStatus.PENDING
-    temporal.run_source_connection_workflow.assert_awaited_once()
-    call_kwargs = temporal.run_source_connection_workflow.call_args.kwargs
-    assert call_kwargs["collection"] is col_schema
-    assert call_kwargs["connection"] is conn_schema
-    assert call_kwargs["force_full_sync"] is False
+    assert sync_svc.last_trigger_run is not None
+    assert sync_svc.last_trigger_run["sync_id"] == SYNC_ID
+    assert sync_svc.last_trigger_run["collection"] is col_schema
+    assert sync_svc.last_trigger_run["connection"] is conn_schema
+    assert sync_svc.last_trigger_run["force_full_sync"] is False
 
 
-async def test_run_event_failure_does_not_block():
+async def test_run_event_failure_propagates():
     sc = _make_source_conn()
     sc_repo = FakeSourceConnectionRepository()
     sc_repo.seed(SC_ID, sc)
@@ -538,14 +567,13 @@ async def test_run_event_failure_does_not_block():
     event_bus.publish.side_effect = RuntimeError("event bus down")
 
     svc = _build_run_service(sc_repo=sc_repo, sync_service=sync_svc, event_bus=event_bus)
-    svc._resolve_collection = AsyncMock(
-        return_value=MagicMock(id=uuid4(), name="Col", readable_id="col-x")
-    )
+    col_schema = MagicMock(id=uuid4(), readable_id="col-x")
+    col_schema.name = "Col"
+    svc._resolve_collection = AsyncMock(return_value=col_schema)
     svc._resolve_connection = AsyncMock(return_value=MagicMock(short_name="github"))
 
-    result = await svc.run(AsyncMock(), id=SC_ID, ctx=_make_ctx())
-
-    assert result.id == JOB_ID
+    with pytest.raises(RuntimeError, match="event bus down"):
+        await svc.run(AsyncMock(), id=SC_ID, ctx=_make_ctx())
 
 
 async def test_run_not_found_raises():
@@ -620,18 +648,20 @@ async def test_run_with_force_full_sync():
     sc_repo = FakeSourceConnectionRepository()
     sc_repo.seed(SC_ID, sc)
 
-    sync_svc = FakeSyncService()
+    sync_svc = _RecordingFakeSyncService()
     sync_svc.set_trigger_run_result(_make_sync_schema(), _make_sync_job_schema())
 
     svc = _build_run_service(sc_repo=sc_repo, sync_service=sync_svc)
-    svc._resolve_collection = AsyncMock(
-        return_value=MagicMock(id=uuid4(), name="Col", readable_id="col-x")
-    )
+    col_schema = MagicMock(id=uuid4(), readable_id="col-x")
+    col_schema.name = "Col"
+    svc._resolve_collection = AsyncMock(return_value=col_schema)
     svc._resolve_connection = AsyncMock(return_value=MagicMock(short_name="github"))
 
     result = await svc.run(AsyncMock(), id=SC_ID, ctx=_make_ctx(), force_full_sync=True)
     assert result.id == JOB_ID
     assert ("validate_force_full_sync", SYNC_ID) in sync_svc._calls
+    assert sync_svc.last_trigger_run is not None
+    assert sync_svc.last_trigger_run["force_full_sync"] is True
 
 
 async def test_resolve_collection_not_found():
@@ -650,7 +680,7 @@ async def test_resolve_collection_no_readable_id():
     sc = _make_source_conn(readable_collection_id=None)
     svc = _build_run_service()
 
-    with pytest.raises(ValueError, match="has no readable_collection_id"):
+    with pytest.raises(NotFoundException, match="has no readable_collection_id"):
         await svc._resolve_collection(AsyncMock(), sc, _make_ctx())
 
 
@@ -662,7 +692,7 @@ async def test_resolve_connection_not_found():
     conn_repo = FakeConnectionRepository()
     svc = _build_run_service(sc_repo=sc_repo, connection_repo=conn_repo)
 
-    with pytest.raises(ValueError, match="not found"):
+    with pytest.raises(NotFoundException, match="not found"):
         await svc._resolve_connection(AsyncMock(), sc, _make_ctx())
 
 
@@ -670,7 +700,7 @@ async def test_resolve_connection_no_connection_id():
     sc = _make_source_conn(connection_id=None)
     svc = _build_run_service()
 
-    with pytest.raises(ValueError, match="has no connection_id"):
+    with pytest.raises(NotFoundException, match="has no connection_id"):
         await svc._resolve_connection(AsyncMock(), sc, _make_ctx())
 
 

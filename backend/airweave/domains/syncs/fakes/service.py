@@ -12,11 +12,12 @@ from airweave.core.shared_models import SyncStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.sources.types import SourceRegistryEntry
 from airweave.domains.sync_pipeline.config import SyncConfig
+from airweave.domains.syncs.protocols import SyncServiceProtocol
 from airweave.domains.syncs.types import SyncProvisionResult, SyncTransitionResult
 from airweave.schemas.source_connection import ScheduleConfig
 
 
-class FakeSyncService:
+class FakeSyncService(SyncServiceProtocol):
     """In-memory fake for the unified SyncServiceProtocol."""
 
     def __init__(self) -> None:
@@ -32,7 +33,7 @@ class FakeSyncService:
 
     # -- Configuration helpers --
 
-    def set_create_result(self, result: Optional[SyncProvisionResult]) -> None:
+    def set_create_result(self, result: SyncProvisionResult) -> None:
         self._create_result = result
 
     def set_get_result(self, result: schemas.Sync) -> None:
@@ -72,10 +73,12 @@ class FakeSyncService:
         run_immediately: bool,
         ctx: ApiContext,
         uow: UnitOfWork,
-    ) -> Optional[SyncProvisionResult]:
+    ) -> SyncProvisionResult:
         self._calls.append(("create", name, source_connection_id, collection_id))
         if self._should_raise:
             raise self._should_raise
+        if self._create_result is None:
+            raise RuntimeError("FakeSyncService.create_result not configured")
         return self._create_result
 
     async def get(self, db: AsyncSession, *, sync_id: UUID, ctx: BaseContext) -> schemas.Sync:
@@ -110,13 +113,13 @@ class FakeSyncService:
         self,
         db: AsyncSession,
         *,
-        sync_ids: List[UUID],
+        sync_id: UUID,
         collection_id: UUID,
         organization_id: UUID,
         ctx: ApiContext,
         cancel_timeout_seconds: int = 15,
     ) -> None:
-        self._calls.append(("delete", sync_ids, collection_id, organization_id))
+        self._calls.append(("delete", sync_id, collection_id, organization_id))
         if self._should_raise:
             raise self._should_raise
 
@@ -133,7 +136,14 @@ class FakeSyncService:
         return [NATIVE_VESPA_UUID]
 
     async def trigger_run(
-        self, db: AsyncSession, *, sync_id: UUID, ctx: ApiContext
+        self,
+        db: AsyncSession,
+        *,
+        sync_id: UUID,
+        collection: schemas.CollectionRecord,
+        connection: schemas.Connection,
+        ctx: ApiContext,
+        force_full_sync: bool = False,
     ) -> Tuple[schemas.Sync, schemas.SyncJob]:
         self._calls.append(("trigger_run", sync_id))
         if self._should_raise:

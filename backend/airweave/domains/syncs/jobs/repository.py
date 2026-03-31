@@ -41,10 +41,14 @@ class SyncJobRepository(SyncJobRepositoryProtocol):
         )
 
     async def get_all_by_sync_id(
-        self, db: AsyncSession, sync_id: UUID, ctx: ApiContext
+        self,
+        db: AsyncSession,
+        sync_id: UUID,
+        ctx: ApiContext,
+        limit: Optional[int] = None,
     ) -> List[SyncJob]:
         """Get all jobs for a specific sync."""
-        return await crud.sync_job.get_all_by_sync_id(db, sync_id=sync_id)
+        return await crud.sync_job.get_all_by_sync_id(db, sync_id=sync_id, limit=limit)
 
     async def create(
         self,

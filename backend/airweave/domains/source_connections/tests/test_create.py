@@ -26,7 +26,7 @@ from airweave.domains.sources.fakes.lifecycle import FakeSourceLifecycleService
 from airweave.domains.sources.fakes.registry import FakeSourceRegistry
 from airweave.domains.sources.fakes.validation import FakeSourceValidationService
 from airweave.domains.syncs.jobs.fakes.repository import FakeSyncJobRepository
-from airweave.domains.syncs.fakes.sync_service import FakeSyncService
+from airweave.domains.syncs.fakes.service import FakeSyncService
 from airweave.domains.temporal.fakes.service import FakeTemporalWorkflowService
 from airweave.schemas.organization import Organization
 from airweave.schemas.source_connection import (
