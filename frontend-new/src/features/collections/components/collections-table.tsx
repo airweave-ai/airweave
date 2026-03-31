@@ -5,6 +5,7 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 import { IconCheck, IconCopy } from '@tabler/icons-react';
+import { CollectionBulkActionsMenu } from './collection-bulk-actions-menu';
 import { CollectionActionsMenu } from './collection-actions-menu';
 import { CollectionSourceConnections } from './collection-source-connections';
 import { CollectionTooltipContent } from './collection-tooltip-content';
@@ -115,19 +116,22 @@ export function CollectionsTable({
     },
   });
 
-  const selectedCollectionsCount = table.getSelectedRowModel().rows.length;
+  const selectedRows = table.getSelectedRowModel().rows;
+  const selectedCollectionIds = selectedRows.map((row) => row.id);
+  const selectedCollectionsCount = selectedRows.length;
   const hasSelectedCollections = selectedCollectionsCount > 0;
 
   return (
     <div className={cn('relative', className)}>
       {hasSelectedCollections ? (
         <div className="absolute inset-x-0 top-1 z-10 flex h-10 items-center justify-between gap-4 text-xs font-medium tracking-wide">
-          <span className="text-left">
-            {selectedCollectionsCount}{' '}
-            {selectedCollectionsCount === 1
-              ? 'Collection selected'
-              : 'Collections selected'}
-          </span>
+          <div className="flex items-center gap-3">
+            <CollectionBulkActionsMenu collectionIds={selectedCollectionIds} />
+            <span className="text-left">
+              {selectedCollectionsCount} Collection
+              {selectedCollectionsCount > 1 && 's'} selected
+            </span>
+          </div>
           <Button
             onClick={() => table.resetRowSelection()}
             size="xs"
