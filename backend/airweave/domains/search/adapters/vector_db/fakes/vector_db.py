@@ -61,6 +61,7 @@ class FakeVectorDB:
         plan: SearchPlan,
         embeddings: QueryEmbeddings,
         collection_id: str,
+        acl_principals: list[str] | None = None,
     ) -> CompiledQuery:
         """Return a fake compiled query, or raise seeded error."""
         self._calls.append(("compile_query", plan, embeddings, collection_id))

@@ -49,13 +49,16 @@ class InstantSearchService(InstantSearchServiceProtocol):
         ctx: ApiContext,
         readable_id: str,
         request: InstantSearchRequest,
+        user_principal_override: str | None = None,
     ) -> SearchResults:
         """Build plan from request and execute."""
         start_time = time.monotonic()
         ctx.logger.info(f"Instant search started collection={readable_id} query={request.query!r}")
 
         try:
-            result = await self._execute(db, ctx, readable_id, request, start_time)
+            result = await self._execute(
+                db, ctx, readable_id, request, start_time, user_principal_override
+            )
             duration_ms = int((time.monotonic() - start_time) * 1000)
             ctx.logger.info(
                 f"Instant search completed collection={readable_id} "
@@ -87,6 +90,7 @@ class InstantSearchService(InstantSearchServiceProtocol):
         readable_id: str,
         request: InstantSearchRequest,
         start_time: float,
+        user_principal_override: str | None = None,
     ) -> SearchResults:
         """Internal execution — resolve collection, build plan, execute."""
         collection = await self._collection_repo.get_by_readable_id(db, readable_id, ctx)
@@ -107,6 +111,7 @@ class InstantSearchService(InstantSearchServiceProtocol):
             db=db,
             ctx=ctx,
             collection_readable_id=readable_id,
+            user_principal=user_principal_override,
         )
 
         duration_ms = int((time.monotonic() - start_time) * 1000)

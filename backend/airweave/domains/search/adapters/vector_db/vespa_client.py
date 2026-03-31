@@ -87,9 +87,10 @@ class VespaVectorDB:
         plan: SearchPlan,
         embeddings: QueryEmbeddings,
         collection_id: str,
+        acl_principals: Optional[list[str]] = None,
     ) -> CompiledQuery:
         """Compile plan and embeddings into Vespa query."""
-        yql = self._build_yql(plan, collection_id)
+        yql = self._build_yql(plan, collection_id, acl_principals=acl_principals)
         params = self._build_params(plan, embeddings)
 
         raw_query = {"yql": yql, "params": params}
@@ -236,7 +237,12 @@ class VespaVectorDB:
     # YQL Building
     # =========================================================================
 
-    def _build_yql(self, plan: SearchPlan, collection_id: str) -> str:
+    def _build_yql(
+        self,
+        plan: SearchPlan,
+        collection_id: str,
+        acl_principals: Optional[list[str]] = None,
+    ) -> str:
         """Build the complete YQL query string."""
         num_embeddings = self._count_dense_embeddings(plan)
         retrieval_clause = self._build_retrieval_clause(plan.retrieval_strategy, num_embeddings)
@@ -250,10 +256,30 @@ class VespaVectorDB:
         if filter_yql:
             where_parts.append(f"({filter_yql})")
 
+        acl_yql = self._build_acl_clause(acl_principals)
+        if acl_yql:
+            where_parts.append(f"({acl_yql})")
+
         all_schemas = ", ".join(ALL_VESPA_SCHEMAS)
         yql = f"select * from sources {all_schemas} where {' AND '.join(where_parts)}"
 
         return yql
+
+    def _build_acl_clause(self, acl_principals: Optional[list[str]]) -> Optional[str]:
+        """Build access control YQL clause from resolved principals.
+
+        Returns None if acl_principals is None (no AC sources → skip filtering).
+        Returns a clause that matches public entities or entities with matching viewers.
+        """
+        if acl_principals is None:
+            return None
+
+        clauses = ["access_is_public = true"]
+        for principal in acl_principals:
+            escaped = principal.replace("\\", "\\\\").replace("'", "\\'")
+            clauses.append(f"access_viewers contains '{escaped}'")
+
+        return " OR ".join(clauses)
 
     def _build_retrieval_clause(
         self,

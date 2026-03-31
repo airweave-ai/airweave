@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Optional, Protocol, runtime_checkable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,6 +39,7 @@ class SearchPlanExecutorProtocol(Protocol):
         db: AsyncSession,
         ctx: ApiContext,
         collection_readable_id: str,
+        user_principal: Optional[str] = None,
     ) -> SearchResults:
         """Execute a search plan and return results."""
         ...
@@ -68,6 +69,7 @@ class InstantSearchServiceProtocol(Protocol):
         ctx: ApiContext,
         readable_id: str,
         request: InstantSearchRequest,
+        user_principal_override: Optional[str] = None,
     ) -> SearchResults:
         """Execute instant search and return results."""
         ...
@@ -83,6 +85,7 @@ class ClassicSearchServiceProtocol(Protocol):
         ctx: ApiContext,
         readable_id: str,
         request: ClassicSearchRequest,
+        user_principal_override: Optional[str] = None,
     ) -> SearchResults:
         """Execute classic search and return results."""
         ...
@@ -98,6 +101,7 @@ class AgenticSearchServiceProtocol(Protocol):
         ctx: ApiContext,
         readable_id: str,
         request: AgenticSearchRequest,
+        user_principal_override: Optional[str] = None,
     ) -> SearchResults:
         """Execute agentic search and return results."""
         ...

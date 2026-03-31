@@ -24,6 +24,7 @@ class DestinationsContextBuilder:
         collection: schemas.CollectionRecord,
         logger: ContextualLogger,
         execution_config: Optional[SyncConfig] = None,
+        source_supports_acl: bool = False,
     ) -> List[BaseDestination]:
         """Build destinations."""
         return await cls._create_destinations(
@@ -31,6 +32,7 @@ class DestinationsContextBuilder:
             collection=collection,
             logger=logger,
             execution_config=execution_config,
+            source_supports_acl=source_supports_acl,
         )
 
     # -------------------------------------------------------------------------
@@ -44,6 +46,7 @@ class DestinationsContextBuilder:
         collection: schemas.CollectionRecord,
         logger: ContextualLogger,
         execution_config: Optional[SyncConfig] = None,
+        source_supports_acl: bool = False,
     ) -> List[BaseDestination]:
         """Create destination instances."""
         destinations = []
@@ -59,6 +62,7 @@ class DestinationsContextBuilder:
                     destination_connection_id=destination_connection_id,
                     collection=collection,
                     logger=logger,
+                    source_supports_acl=source_supports_acl,
                 )
                 if destination:
                     destinations.append(destination)
@@ -87,18 +91,20 @@ class DestinationsContextBuilder:
         destination_connection_id: UUID,
         collection: schemas.CollectionRecord,
         logger: ContextualLogger,
+        source_supports_acl: bool = False,
     ) -> Optional[BaseDestination]:
         """Create a single destination instance."""
         if destination_connection_id != NATIVE_VESPA_UUID:
             logger.warning(f"Unknown destination connection {destination_connection_id}, skipping")
             return None
-        return await cls._create_vespa(collection, logger)
+        return await cls._create_vespa(collection, logger, source_supports_acl=source_supports_acl)
 
     @classmethod
     async def _create_vespa(
         cls,
         collection: schemas.CollectionRecord,
         logger: ContextualLogger,
+        source_supports_acl: bool = False,
     ) -> BaseDestination:
         """Create native Vespa destination directly."""
         logger.info("Using native Vespa destination (settings-based)")
@@ -109,6 +115,7 @@ class DestinationsContextBuilder:
             organization_id=collection.organization_id,
             vector_size=None,
             logger=logger,
+            source_supports_acl=source_supports_acl,
         )
         logger.info("Created native Vespa destination")
         return destination

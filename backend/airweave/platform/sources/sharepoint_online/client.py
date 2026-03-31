@@ -282,6 +282,20 @@ class GraphClient:
                 return []
             raise
 
+    async def get_drive_root_permissions(
+        self,
+        drive_id: str,
+    ) -> List[Dict[str, Any]]:
+        """Get permissions for the root of a drive (site-level permissions)."""
+        url = f"{GRAPH_BASE_URL}/drives/{drive_id}/root/permissions"
+        try:
+            data = await self.get(url)
+            return data.get("value", [])
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code in (404, 403):
+                return []
+            raise
+
     # -- Lists --
 
     async def get_lists(self, site_id: str) -> AsyncGenerator[Dict[str, Any], None]:

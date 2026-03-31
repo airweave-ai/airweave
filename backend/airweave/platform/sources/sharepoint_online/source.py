@@ -53,6 +53,7 @@ from airweave.platform.sources.retry_helpers import (
     retry_if_rate_limit_or_timeout,
     wait_rate_limit_with_backoff,
 )
+from airweave.platform.sources.sharepoint_online.acl import extract_access_control
 from airweave.platform.sources.sharepoint_online.builders import (
     build_drive_entity,
     build_file_entity,
@@ -578,8 +579,24 @@ class SharePointOnlineSource(BaseSource):
         for site_data in sites:
             site_id = site_data.get("id", "")
 
+            # Collect all drives for this site (single API call)
+            all_drives = []
+            async for drive_data in graph_client.get_drives(site_id):
+                all_drives.append(drive_data)
+
+            # Fetch site-level permissions from the first drive's root.
+            site_access = None
+            if all_drives:
+                try:
+                    site_permissions = await graph_client.get_drive_root_permissions(
+                        all_drives[0]["id"]
+                    )
+                    site_access = await extract_access_control(site_permissions)
+                except Exception as e:
+                    self.logger.warning(f"Could not fetch site-level permissions: {e}")
+
             try:
-                site_entity = await build_site_entity(site_data, [])
+                site_entity = await build_site_entity(site_data, [], access=site_access)
                 yield site_entity
                 entity_count += 1
 
@@ -595,10 +612,23 @@ class SharePointOnlineSource(BaseSource):
 
             sp_group_viewers = await self._fetch_sp_group_viewers()
 
-            async for drive_data in graph_client.get_drives(site_id):
+            for drive_data in all_drives:
                 drive_id = drive_data.get("id", "")
                 try:
-                    drive_entity = await build_drive_entity(drive_data, site_id, site_breadcrumbs)
+                    # Each drive gets its own root permissions
+                    drive_access = site_access
+                    if drive_id != all_drives[0]["id"]:
+                        try:
+                            drive_permissions = await graph_client.get_drive_root_permissions(
+                                drive_id
+                            )
+                            drive_access = await extract_access_control(drive_permissions)
+                        except Exception:
+                            pass  # Fall back to site_access
+
+                    drive_entity = await build_drive_entity(
+                        drive_data, site_id, site_breadcrumbs, access=drive_access
+                    )
                     yield drive_entity
                     entity_count += 1
 
@@ -696,7 +726,7 @@ class SharePointOnlineSource(BaseSource):
                     async for page_data in graph_client.get_pages(site_id):
                         try:
                             page_entity = await build_page_entity(
-                                page_data, site_id, site_breadcrumbs
+                                page_data, site_id, site_breadcrumbs, access=site_access
                             )
                             yield page_entity
                             entity_count += 1
@@ -848,7 +878,18 @@ class SharePointOnlineSource(BaseSource):
 
             try:
                 site_data = await graph_client.get_site(site_id)
-                site_entity = await build_site_entity(site_data, [])
+
+                # Fetch site-level permissions from first drive root
+                targeted_site_access = None
+                async for peek_drive in graph_client.get_drives(site_id):
+                    try:
+                        perms = await graph_client.get_drive_root_permissions(peek_drive["id"])
+                        targeted_site_access = await extract_access_control(perms)
+                    except Exception:
+                        pass
+                    break
+
+                site_entity = await build_site_entity(site_data, [], access=targeted_site_access)
                 yield site_entity
                 entity_count += 1
             except SourceAuthError:
@@ -935,7 +976,18 @@ class SharePointOnlineSource(BaseSource):
         """Sync all files in a single drive (used by both full and targeted sync)."""
         try:
             drive_data = await graph_client.get_drive(drive_id)
-            drive_entity = await build_drive_entity(drive_data, site_id, site_breadcrumbs)
+
+            # Fetch drive root permissions for the drive entity
+            drive_access = None
+            try:
+                drive_permissions = await graph_client.get_drive_root_permissions(drive_id)
+                drive_access = await extract_access_control(drive_permissions)
+            except Exception:
+                pass
+
+            drive_entity = await build_drive_entity(
+                drive_data, site_id, site_breadcrumbs, access=drive_access
+            )
             yield drive_entity
 
             drive_breadcrumbs = site_breadcrumbs + [

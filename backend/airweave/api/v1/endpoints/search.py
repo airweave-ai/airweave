@@ -10,7 +10,7 @@ import asyncio
 import json
 from collections.abc import AsyncGenerator
 
-from fastapi import Depends, Path
+from fastapi import Depends, Path, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import StreamingResponse
 
@@ -349,3 +349,97 @@ async def admin_stream_agentic_search(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@admin_router.post(
+    "/{readable_id}/search/instant/as-user",
+    response_model=SearchV2Response,
+    summary="Instant Search as User (Admin)",
+    description=(
+        "Admin-only: Instant search with access control applied for a specific user principal."
+    ),
+)
+async def admin_instant_search_as_user(
+    readable_id: str = Path(...),
+    request: InstantSearchRequest = ...,  # type: ignore[assignment]
+    user_principal: str = Query(
+        ...,
+        description="User principal (email) to search as. "
+        "Access control filtering will use this user's resolved group memberships.",
+    ),
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+    usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
+    service: InstantSearchServiceProtocol = Inject(InstantSearchServiceProtocol),
+) -> SearchV2Response:
+    """Admin-only: instant search with ACL filtering for a specific user."""
+    _require_admin(ctx)
+    await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
+
+    results = await service.search(
+        db, ctx, readable_id, request, user_principal_override=user_principal
+    )
+    return SearchV2Response(results=results.results)
+
+
+@admin_router.post(
+    "/{readable_id}/search/classic/as-user",
+    response_model=SearchV2Response,
+    summary="Classic Search as User (Admin)",
+    description=(
+        "Admin-only: Classic search with access control applied for a specific user principal."
+    ),
+)
+async def admin_classic_search_as_user(
+    readable_id: str = Path(...),
+    request: ClassicSearchRequest = ...,  # type: ignore[assignment]
+    user_principal: str = Query(
+        ...,
+        description="User principal (email) to search as. "
+        "Access control filtering will use this user's resolved group memberships.",
+    ),
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+    usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
+    service: ClassicSearchServiceProtocol = Inject(ClassicSearchServiceProtocol),
+) -> SearchV2Response:
+    """Admin-only: classic search with ACL filtering for a specific user."""
+    _require_admin(ctx)
+    await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
+
+    results = await service.search(
+        db, ctx, readable_id, request, user_principal_override=user_principal
+    )
+    return SearchV2Response(results=results.results)
+
+
+@admin_router.post(
+    "/{readable_id}/search/agentic/as-user",
+    response_model=SearchV2Response,
+    summary="Agentic Search as User (Admin)",
+    description=(
+        "Admin-only: Agentic search with access control applied for a specific user principal."
+    ),
+)
+async def admin_agentic_search_as_user(
+    readable_id: str = Path(...),
+    request: AgenticSearchRequest = ...,  # type: ignore[assignment]
+    user_principal: str = Query(
+        ...,
+        description="User principal (email) to search as. "
+        "Access control filtering will use this user's resolved group memberships.",
+    ),
+    db: AsyncSession = Depends(deps.get_db),
+    ctx: ApiContext = Depends(deps.get_context),
+    usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
+    service: AgenticSearchServiceProtocol = Inject(AgenticSearchServiceProtocol),
+) -> SearchV2Response:
+    """Admin-only: agentic search with ACL filtering for a specific user."""
+    _require_admin(ctx)
+    await usage_checker.is_allowed(db, ctx.organization.id, ActionType.TOKENS)
+
+    results = await service.search(
+        db, ctx, readable_id, request, user_principal_override=user_principal
+    )
+    truncated = results.results[: request.limit] if request.limit else results.results
+    return SearchV2Response(results=truncated)

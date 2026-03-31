@@ -43,6 +43,7 @@ class SearchTool(Tool):
         db: AsyncSession,
         ctx: ApiContext,
         collection_readable_id: str,
+        user_principal: str | None = None,
     ) -> None:
         """Initialize with executor, user filter, collection ID, and request context."""
         self._executor = executor
@@ -51,6 +52,7 @@ class SearchTool(Tool):
         self._db = db
         self._ctx = ctx
         self._collection_readable_id = collection_readable_id
+        self._user_principal = user_principal
 
     async def execute(
         self,
@@ -67,6 +69,7 @@ class SearchTool(Tool):
             db=self._db,
             ctx=self._ctx,
             collection_readable_id=self._collection_readable_id,
+            user_principal=self._user_principal,
         )
 
         # Track new results in state

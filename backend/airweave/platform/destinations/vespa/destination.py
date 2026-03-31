@@ -112,10 +112,12 @@ class VespaDestination(VectorDBDestination):
         instance.organization_id = organization_id
 
         # Initialize components
+        source_supports_acl = kwargs.get("source_supports_acl", False)
         instance._client = await VespaClient.connect(logger=instance.logger)
         instance._transformer = EntityTransformer(
             collection_id=collection_id,
             logger=instance.logger,
+            source_supports_acl=source_supports_acl,
         )
         instance._query_builder = QueryBuilder()
 

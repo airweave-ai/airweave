@@ -72,6 +72,7 @@ class AgenticSearchService(AgenticSearchServiceProtocol):
         ctx: ApiContext,
         readable_id: str,
         request: AgenticSearchRequest,
+        user_principal_override: str | None = None,
     ) -> SearchResults:
         """Run agentic search and return results."""
         agent = Agent(
@@ -85,4 +86,6 @@ class AgenticSearchService(AgenticSearchServiceProtocol):
             event_bus=self._event_bus,
             config=SearchConfig(),
         )
-        return await agent.run(db, ctx, readable_id, request)
+        return await agent.run(
+            db, ctx, readable_id, request, user_principal_override=user_principal_override
+        )

@@ -470,6 +470,7 @@ def create_container(settings: Settings) -> Container:
         entity_definition_registry=source_deps["entity_definition_registry"],
         event_bus=event_bus,
         source_lifecycle=source_deps["source_lifecycle_service"],
+        access_broker=access_broker,
     )
 
     # -----------------------------------------------------------------
@@ -1270,6 +1271,7 @@ def _create_search_services(
     entity_definition_registry: "EntityDefinitionRegistry",
     event_bus: "EventBus",
     source_lifecycle: "SourceLifecycleService",
+    access_broker: "AccessBroker",
 ) -> dict:
     """Create search domain services (LLM, tokenizer, reranker, metadata builder, per-tier).
 
@@ -1337,6 +1339,7 @@ def _create_search_services(
         sc_repo=sc_repo,
         source_registry=source_registry,
         source_lifecycle=source_lifecycle,
+        access_broker=access_broker,
     )
 
     # 6. Per-tier services

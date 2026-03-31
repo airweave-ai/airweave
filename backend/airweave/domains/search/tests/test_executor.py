@@ -17,6 +17,7 @@ from uuid import uuid4
 
 import pytest
 
+from airweave.domains.access_control.fakes.broker import FakeAccessBroker
 from airweave.domains.embedders.fakes.embedder import FakeDenseEmbedder, FakeSparseEmbedder
 from airweave.domains.search.adapters.vector_db.fakes.vector_db import FakeVectorDB
 from airweave.domains.search.executor import (
@@ -255,6 +256,7 @@ def _build_executor(
         sc_repo=sc_repo or FakeSourceConnectionRepository(),
         source_registry=source_registry or FakeSourceRegistry(),
         source_lifecycle=source_lifecycle or FakeSourceLifecycleService(),
+        access_broker=FakeAccessBroker(),
     )
 
 
@@ -913,6 +915,7 @@ class TestExecutorErrorPaths:
             sc_repo=FakeSourceConnectionRepository(),
             source_registry=FakeSourceRegistry(),
             source_lifecycle=FakeSourceLifecycleService(),
+            access_broker=FakeAccessBroker(),
         )
 
         with pytest.raises(RuntimeError, match="provider down"):
@@ -938,6 +941,7 @@ class TestExecutorErrorPaths:
             sc_repo=FakeSourceConnectionRepository(),
             source_registry=FakeSourceRegistry(),
             source_lifecycle=FakeSourceLifecycleService(),
+            access_broker=FakeAccessBroker(),
         )
 
         with pytest.raises(RuntimeError, match="timeout"):

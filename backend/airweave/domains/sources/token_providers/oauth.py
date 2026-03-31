@@ -146,6 +146,31 @@ class OAuthTokenProvider(TokenProviderProtocol):
             self._apply_refresh(result)
             return self._token
 
+    async def get_token_for_resource(self, resource_scope: str) -> Optional[str]:
+        """Exchange refresh token for an access token scoped to a different resource.
+
+        Used by SharePoint Online to get a SP REST API token from a Graph-scoped
+        refresh token. The exchange does not persist the rotated refresh token.
+
+        Returns None if refresh is not supported.
+        """
+        if not self._can_refresh:
+            return None
+
+        try:
+            async with get_db_context() as db:
+                result = await self._oauth2_service.exchange_token_for_scope(
+                    db=db,
+                    integration_short_name=self._source_short_name,
+                    connection_id=self._connection_id,
+                    ctx=self._ctx,
+                    scope=resource_scope,
+                )
+                return str(result)
+        except Exception as e:
+            self._logger.warning(f"Failed to exchange token for scope {resource_scope}: {e}")
+            return None
+
     # ------------------------------------------------------------------
     # Private
     # ------------------------------------------------------------------

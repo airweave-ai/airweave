@@ -128,11 +128,13 @@ class Agent:
         ctx: ApiContext,
         readable_id: str,
         request: AgenticSearchRequest,
+        user_principal_override: str | None = None,
     ) -> SearchResults:
         """Run the agent loop. Emits events throughout. Returns collected results."""
         start_time = time.monotonic()
         state = AgentState()
         diag = _DiagnosticsAccumulator()
+        self._user_principal_override = user_principal_override
         ctx.logger.info(
             f"Agentic search started collection={readable_id} query={request.query!r} "
             f"thinking={request.thinking}"
@@ -208,7 +210,14 @@ class Agent:
         thinking_enabled = request.thinking
 
         # Construct per-request tools
-        dispatcher = self._build_dispatcher(collection_id, user_filter, db, ctx, readable_id)
+        dispatcher = self._build_dispatcher(
+            collection_id,
+            user_filter,
+            db,
+            ctx,
+            readable_id,
+            user_principal=self._user_principal_override,
+        )
 
         context_mgr = ContextManager(
             tokenizer=self._tokenizer,
@@ -587,6 +596,7 @@ class Agent:
         db: AsyncSession,
         ctx: ApiContext,
         collection_readable_id: str,
+        user_principal: str | None = None,
     ) -> ToolDispatcher:
         """Construct tools and dispatcher for this request."""
         return ToolDispatcher(
@@ -598,6 +608,7 @@ class Agent:
                     db=db,
                     ctx=ctx,
                     collection_readable_id=collection_readable_id,
+                    user_principal=user_principal,
                 ),
                 ToolName.READ: ReadTool(
                     vector_db=self._vector_db,

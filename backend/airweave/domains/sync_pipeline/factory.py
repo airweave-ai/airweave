@@ -184,12 +184,14 @@ class SyncFactory(SyncFactoryProtocol):
             execution_config=resolved_config,
             access_token=access_token,
         )
+        source_entry = self._source_registry.get(sc.short_name)
         destinations = await self._build_destinations(
             db=db,
             sync=sync,
             collection=collection,
             ctx=ctx,
             execution_config=resolved_config,
+            source_supports_acl=source_entry.supports_access_control,
         )
         entity_tracker = await self._build_entity_tracker(
             db=db,
@@ -498,6 +500,7 @@ class SyncFactory(SyncFactoryProtocol):
         collection: schemas.CollectionRecord,
         ctx: BaseContext,
         execution_config: SyncConfig,
+        source_supports_acl: bool = False,
     ) -> list:
         """Build destination instances for the sync."""
         dest_logger = LoggerConfigurator.configure_logger(
@@ -513,6 +516,7 @@ class SyncFactory(SyncFactoryProtocol):
             collection=collection,
             logger=dest_logger,
             execution_config=execution_config,
+            source_supports_acl=source_supports_acl,
         )
 
     # -------------------------------------------------------------------------

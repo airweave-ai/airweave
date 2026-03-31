@@ -143,6 +143,24 @@ class OAuth2ServiceProtocol(Protocol):
         """
         ...
 
+    async def exchange_token_for_scope(
+        self,
+        db: AsyncSession,
+        integration_short_name: str,
+        connection_id: UUID,
+        ctx: ApiContext,
+        scope: str,
+    ) -> str:
+        """Exchange refresh token for an access token with a different scope.
+
+        Uses the existing refresh token but requests a different resource scope.
+        Does NOT persist the rotated refresh token (the response token is
+        scoped to the new resource and should not replace the original).
+
+        Returns the access token string for the requested scope.
+        """
+        ...
+
 
 # ---------------------------------------------------------------------------
 # Init session + redirect session repositories

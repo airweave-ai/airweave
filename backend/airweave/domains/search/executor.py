@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
+from airweave.domains.access_control.protocols import AccessBrokerProtocol
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.search.adapters.vector_db.protocol import VectorDBProtocol
 from airweave.domains.search.builders.search_plan import SearchPlanBuilder
@@ -67,6 +68,7 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
         sc_repo: SourceConnectionRepositoryProtocol,
         source_registry: SourceRegistryProtocol,
         source_lifecycle: SourceLifecycleServiceProtocol,
+        access_broker: AccessBrokerProtocol,
     ) -> None:
         """Initialize with embedders, vector database, and federated source dependencies."""
         self._dense_embedder = dense_embedder
@@ -75,6 +77,7 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
         self._sc_repo = sc_repo
         self._source_registry = source_registry
         self._source_lifecycle = source_lifecycle
+        self._access_broker = access_broker
 
     async def execute(
         self,
@@ -84,8 +87,14 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
         db: AsyncSession,
         ctx: ApiContext,
         collection_readable_id: str,
+        user_principal: Optional[str] = None,
     ) -> SearchResults:
         """Execute the full search pipeline including federated sources."""
+        # 0. Resolve access control principals
+        acl_principals = await self._resolve_acl_principals(
+            db, ctx, user_principal, collection_readable_id
+        )
+
         # 1. Merge plan filters with user filters
         complete_plan = SearchPlanBuilder.build(plan, user_filter)
 
@@ -106,7 +115,9 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
         # 4. Run vector DB search and federated search in parallel
         fetch_limit = original_offset + original_limit
 
-        vector_task = asyncio.create_task(self._execute_vector_search(complete_plan, collection_id))
+        vector_task = asyncio.create_task(
+            self._execute_vector_search(complete_plan, collection_id, acl_principals)
+        )
 
         fed_task = None
         if federated_sources:
@@ -130,6 +141,10 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
         #    Filter federated results in-memory and merge, or slice vector-only.
         fed_filtered = self._apply_filters_in_memory(fed_results, complete_plan.filter_groups)
 
+        # Also apply ACL filtering to federated results in-memory
+        if acl_principals is not None:
+            fed_filtered = self._apply_acl_in_memory(fed_filtered, acl_principals)
+
         if fed_filtered:
             merged = self._merge_with_rrf(vector_results, fed_filtered)
             return SearchResults(results=merged[original_offset : original_offset + original_limit])
@@ -143,6 +158,7 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
         self,
         plan: SearchPlan,
         collection_id: str,
+        acl_principals: Optional[list[str]] = None,
     ) -> list[SearchResult]:
         """Embed, compile, and execute vector DB search.
 
@@ -174,8 +190,67 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
             plan=plan,
             embeddings=embeddings,
             collection_id=collection_id,
+            acl_principals=acl_principals,
         )
         return (await self._vector_db.execute_query(compiled_query)).results
+
+    # ------------------------------------------------------------------
+    # Access control resolution
+    # ------------------------------------------------------------------
+
+    async def _resolve_acl_principals(
+        self,
+        db: AsyncSession,
+        ctx: ApiContext,
+        user_principal: Optional[str],
+        collection_readable_id: str,
+    ) -> Optional[list[str]]:
+        """Resolve user's ACL principals for a collection.
+
+        Returns None if user_principal is not set or collection has no AC sources.
+        Returns a list of principals (possibly empty) otherwise.
+        """
+        if not user_principal:
+            return None
+
+        access_context = await self._access_broker.resolve_access_context_for_collection(
+            db=db,
+            user_principal=user_principal,
+            readable_collection_id=collection_readable_id,
+            organization_id=ctx.organization.id,
+        )
+
+        if access_context is None:
+            return None
+
+        principals = list(access_context.all_principals)
+        ctx.logger.info(f"[ACL] Resolved {len(principals)} principals for user '{user_principal}'")
+        return principals
+
+    @staticmethod
+    def _apply_acl_in_memory(
+        results: list[SearchResult],
+        principals: list[str],
+    ) -> list[SearchResult]:
+        """Apply ACL filtering to results in-memory (for federated sources).
+
+        Keeps results that are:
+        - From non-AC sources (is_public is None — no ACL data means pass through)
+        - Explicitly public (is_public is True)
+        - Matching a viewer principal
+        """
+        principal_set = set(principals)
+
+        def _passes(r: SearchResult) -> bool:
+            if r.access.is_public is None:
+                return True  # Non-AC source — no access data, pass through
+            if r.access.is_public:
+                return True
+            if r.access.viewers:
+                return bool(principal_set & set(r.access.viewers))
+            return False
+
+        return [r for r in results if _passes(r)]
 
     # ------------------------------------------------------------------
     # Federated source discovery

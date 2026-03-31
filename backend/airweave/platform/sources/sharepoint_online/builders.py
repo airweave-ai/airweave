@@ -9,11 +9,10 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from airweave.domains.sync_pipeline.exceptions import EntityProcessingError
-from airweave.platform.entities._base import Breadcrumb
+from airweave.platform.entities._base import AccessControl, Breadcrumb
 from airweave.platform.entities.sharepoint_online import (
     SharePointOnlineDriveEntity,
     SharePointOnlineFileEntity,
-    SharePointOnlineItemEntity,
     SharePointOnlinePageEntity,
     SharePointOnlineSiteEntity,
 )
@@ -32,6 +31,7 @@ def _parse_datetime(dt_str: Optional[str]) -> Optional[datetime]:
 async def build_site_entity(
     site_data: Dict[str, Any],
     breadcrumbs: List[Breadcrumb],
+    access: Optional[AccessControl] = None,
 ) -> SharePointOnlineSiteEntity:
     """Build a site entity from Graph API site data."""
     site_id = site_data.get("id")
@@ -53,6 +53,7 @@ async def build_site_entity(
         created_at=_parse_datetime(site_data.get("createdDateTime")),
         last_modified_at=_parse_datetime(site_data.get("lastModifiedDateTime")),
         breadcrumbs=breadcrumbs,
+        access=access,
     )
 
 
@@ -60,6 +61,7 @@ async def build_drive_entity(
     drive_data: Dict[str, Any],
     site_id: str,
     breadcrumbs: List[Breadcrumb],
+    access: Optional[AccessControl] = None,
 ) -> SharePointOnlineDriveEntity:
     """Build a drive entity from Graph API drive data."""
     drive_id = drive_data.get("id")
@@ -84,6 +86,7 @@ async def build_drive_entity(
         created_at=_parse_datetime(drive_data.get("createdDateTime")),
         last_modified_at=_parse_datetime(drive_data.get("lastModifiedDateTime")),
         breadcrumbs=breadcrumbs,
+        access=access,
     )
 
 
@@ -154,46 +157,11 @@ async def build_file_entity(
     )
 
 
-async def build_item_entity(
-    item_data: Dict[str, Any],
-    site_id: str,
-    list_id: str,
-    breadcrumbs: List[Breadcrumb],
-) -> SharePointOnlineItemEntity:
-    """Build a list item entity from Graph API list item data."""
-    item_id = item_data.get("id")
-    if not item_id:
-        raise EntityProcessingError("Missing id for list item")
-
-    fields = item_data.get("fields", {}) or {}
-    title = fields.get("Title") or fields.get("title") or item_data.get("id", "Untitled")
-
-    content_type = None
-    ct_obj = item_data.get("contentType")
-    if ct_obj:
-        content_type = ct_obj.get("name")
-
-    spo_entity_id = f"spo:item:{site_id}:{list_id}:{item_id}"
-
-    return SharePointOnlineItemEntity(
-        spo_entity_id=spo_entity_id,
-        item_id=item_id,
-        list_id=list_id,
-        site_id=site_id,
-        title=title,
-        web_url=item_data.get("webUrl", ""),
-        content_type=content_type,
-        fields=fields,
-        created_at=_parse_datetime(item_data.get("createdDateTime")),
-        updated_at=_parse_datetime(item_data.get("lastModifiedDateTime")),
-        breadcrumbs=breadcrumbs,
-    )
-
-
 async def build_page_entity(
     page_data: Dict[str, Any],
     site_id: str,
     breadcrumbs: List[Breadcrumb],
+    access: Optional[AccessControl] = None,
 ) -> SharePointOnlinePageEntity:
     """Build a page entity from Graph API site page data."""
     page_id = page_data.get("id")
@@ -214,4 +182,5 @@ async def build_page_entity(
         created_at=_parse_datetime(page_data.get("createdDateTime")),
         updated_at=_parse_datetime(page_data.get("lastModifiedDateTime")),
         breadcrumbs=breadcrumbs,
+        access=access,
     )

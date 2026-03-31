@@ -1,6 +1,6 @@
 """Vector database protocol for the search module."""
 
-from typing import Protocol
+from typing import Optional, Protocol
 
 from airweave.domains.search.types.embeddings import QueryEmbeddings
 from airweave.domains.search.types.filters import FilterGroup
@@ -23,6 +23,7 @@ class VectorDBProtocol(Protocol):
         plan: SearchPlan,
         embeddings: QueryEmbeddings,
         collection_id: str,
+        acl_principals: Optional[list[str]] = None,
     ) -> CompiledQuery:
         """Compile plan and embeddings into a DB-specific query.
 
@@ -30,6 +31,10 @@ class VectorDBProtocol(Protocol):
             plan: Search plan with queries, filters, strategy, pagination.
             embeddings: Dense and sparse embeddings for the queries.
             collection_id: Collection readable ID for tenant filtering.
+            acl_principals: Resolved user principals for access control filtering.
+                None = no AC sources in collection (skip filtering).
+                [] = user has no principals (only public entities visible).
+                ["user:x", "group:y"] = match these principals.
 
         Returns:
             CompiledQuery with raw (full) and display (no embeddings) versions.

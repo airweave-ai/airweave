@@ -453,6 +453,82 @@ class OAuth2Service(OAuth2ServiceProtocol):
             expires_in=response.expires_in,
         )
 
+    async def exchange_token_for_scope(
+        self,
+        db: AsyncSession,
+        integration_short_name: str,
+        connection_id: UUID,
+        ctx: ApiContext,
+        scope: str,
+    ) -> str:
+        """Exchange refresh token for an access token with a different scope.
+
+        Uses the existing refresh token but requests a different resource scope
+        (e.g., SharePoint REST API scope instead of Graph scope).
+        Does NOT persist the rotated refresh token.
+
+        Returns the access token string for the requested scope.
+        """
+        connection = await self.conn_repo.get(db=db, id=connection_id, ctx=ctx)
+        if not connection or not connection.integration_credential_id:
+            raise OAuthRefreshCredentialMissingError(
+                f"Connection {connection_id} not found or has no credential",
+                integration_short_name=integration_short_name,
+            )
+
+        credential = await self.cred_repo.get(
+            db=db, id=connection.integration_credential_id, ctx=ctx
+        )
+        if not credential:
+            raise OAuthRefreshCredentialMissingError(
+                "Integration credential not found",
+                integration_short_name=integration_short_name,
+            )
+
+        decrypted = self.encryptor.decrypt(credential.encrypted_credentials)
+        refresh_token = await self._get_refresh_token(ctx.logger, decrypted)
+
+        integration_config = await self._get_integration_config(ctx.logger, integration_short_name)
+
+        client_id, client_secret = await self._get_client_credentials(
+            integration_config, None, decrypted
+        )
+
+        # Build request with explicit scope (unlike normal refresh which skips scope)
+        headers = {"Content-Type": integration_config.content_type}
+        payload = {
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "scope": scope,
+        }
+
+        if integration_config.client_credential_location == "header":
+            encoded = self._encode_client_credentials(client_id, client_secret)
+            headers["Authorization"] = f"Basic {encoded}"
+        else:
+            payload["client_id"] = client_id
+            payload["client_secret"] = client_secret
+
+        ctx.logger.info(
+            f"Exchanging token for scope {scope} (integration={integration_short_name})"
+        )
+
+        response = await self._make_token_request(
+            ctx.logger,
+            integration_config.backend_url,
+            headers,
+            payload,
+            integration_short_name=integration_short_name,
+        )
+
+        # Parse response but do NOT persist the refresh token
+        token_response = OAuth2TokenResponse(**response.json())
+        ctx.logger.info(
+            f"Successfully exchanged token for scope {scope} "
+            f"(expires_in={token_response.expires_in})"
+        )
+        return str(token_response.access_token)
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------

@@ -68,13 +68,16 @@ class ClassicSearchService(ClassicSearchServiceProtocol):
         ctx: ApiContext,
         readable_id: str,
         request: ClassicSearchRequest,
+        user_principal_override: str | None = None,
     ) -> SearchResults:
         """Generate strategy via LLM, execute, optionally rerank, return results."""
         start_time = time.monotonic()
         ctx.logger.info(f"Classic search started collection={readable_id} query={request.query!r}")
 
         try:
-            result = await self._execute(db, ctx, readable_id, request, start_time)
+            result = await self._execute(
+                db, ctx, readable_id, request, start_time, user_principal_override
+            )
             duration_ms = int((time.monotonic() - start_time) * 1000)
             ctx.logger.info(
                 f"Classic search completed collection={readable_id} "
@@ -106,6 +109,7 @@ class ClassicSearchService(ClassicSearchServiceProtocol):
         readable_id: str,
         request: ClassicSearchRequest,
         start_time: float,
+        user_principal_override: str | None = None,
     ) -> SearchResults:
         """Internal execution — resolve collection, LLM strategy, search, rerank."""
         # 1. Resolve collection
@@ -157,6 +161,7 @@ class ClassicSearchService(ClassicSearchServiceProtocol):
             db=db,
             ctx=ctx,
             collection_readable_id=readable_id,
+            user_principal=user_principal_override,
         )
 
         # 6. Optional rerank

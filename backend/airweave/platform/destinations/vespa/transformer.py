@@ -25,7 +25,7 @@ from airweave.platform.entities._base import (
 
 
 def _sanitize_for_vespa(text: str) -> str:
-    """Sanitize text for Vespa by removing illegal characters.
+    r"""Sanitize text for Vespa by removing illegal characters.
 
     Vespa strictly rejects:
     1. Control characters (code points < 32) except \n (0x0A), \r (0x0D), \t (0x09)
@@ -167,15 +167,20 @@ class EntityTransformer:
         self,
         collection_id: Optional[UUID] = None,
         logger: Optional[ContextualLogger] = None,
+        source_supports_acl: bool = False,
     ):
         """Initialize the entity transformer.
 
         Args:
             collection_id: SQL collection UUID for multi-tenant filtering
             logger: Optional logger for debug/warning messages
+            source_supports_acl: Whether the source supports access control.
+                When True, entities with no access data default to invisible (fail-closed).
+                When False, entities default to public (visible to all).
         """
         self.collection_id = collection_id
         self._logger = logger or default_logger
+        self._source_supports_acl = source_supports_acl
 
     def transform(self, entity: BaseEntity) -> VespaDocument:
         """Transform a single entity to Vespa document format.
@@ -343,13 +348,17 @@ class EntityTransformer:
         """Add access control fields.
 
         Always sets access control fields with appropriate defaults:
-        - AC-enabled sources: Use the actual ACL values from entity.access
-        - Non-AC sources: Set is_public=True so entities are visible to everyone
+        - If entity has access data: use the actual ACL values
+        - AC-enabled source but no access data: fail-closed (invisible)
+        - Non-AC source: default to public (visible to everyone)
         """
         access = getattr(entity, "access", None)
         if access is not None:
             fields["access_is_public"] = access.is_public
             fields["access_viewers"] = access.viewers if access.viewers else []
+        elif self._source_supports_acl:
+            fields["access_is_public"] = False
+            fields["access_viewers"] = []
         else:
             fields["access_is_public"] = True
             fields["access_viewers"] = []

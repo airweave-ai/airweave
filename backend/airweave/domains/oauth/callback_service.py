@@ -205,6 +205,7 @@ class OAuthCallbackService:
         await self._validate_oauth2_token_or_raise(
             source_entry=source_entry,
             access_token=token_response.access_token,
+            config=source_conn_shell.config_fields,
             ctx=ctx,
         )
 
@@ -590,6 +591,7 @@ class OAuthCallbackService:
         *,
         source_entry: SourceRegistryEntry | None,
         access_token: str,
+        config: dict | None = None,
         ctx: ApiContext,
     ) -> None:
         """Validate OAuth2 token using source lifecycle service; fail callback if invalid."""
@@ -600,6 +602,7 @@ class OAuthCallbackService:
             await self._source_lifecycle.validate(
                 short_name=source_entry.short_name,
                 credentials=access_token,
+                config=config,
             )
         except (SourceNotFoundError, SourceError) as e:
             raise http_exception_for_credential_validation(
