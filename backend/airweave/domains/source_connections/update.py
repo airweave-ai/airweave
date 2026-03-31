@@ -213,6 +213,13 @@ class SourceConnectionUpdateService(SourceConnectionUpdateServiceProtocol):
                 raise NotFoundException("Collection not found")
 
             source_entry = self._source_registry.get(source_conn.short_name)
+            if source_entry.federated_search:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Source '{source_conn.short_name}' is a federated search source "
+                    "and does not support scheduled syncs.",
+                )
+
             dest_ids = await self._sync_service.resolve_destination_ids(uow.session, ctx)
 
             sync_result = await self._sync_service.create(

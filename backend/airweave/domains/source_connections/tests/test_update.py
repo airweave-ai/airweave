@@ -243,6 +243,7 @@ async def test_schedule_update(case: ScheduleCase):
     source_registry = FakeSourceRegistry()
     source_entry = MagicMock(spec=SourceRegistryEntry)
     source_entry.short_name = "github"
+    source_entry.federated_search = False
     source_registry.seed(source_entry)
 
     if case.expect_sync_record_create:
@@ -304,6 +305,38 @@ async def test_schedule_add_collection_not_found():
 
     with pytest.raises(NotFoundException, match="Collection not found"):
         await svc.update(AsyncMock(), id=sc.id, obj_in=obj_in, ctx=_make_ctx())
+
+
+async def test_schedule_add_rejects_federated_source():
+    """Adding a schedule to a federated search source is rejected with 400."""
+    sc = _make_sc(sync_id=None)
+    sc_repo = FakeSourceConnectionRepository()
+    sc_repo.seed(sc.id, sc)
+
+    col = MagicMock(spec=Collection)
+    col.id = uuid4()
+    col.readable_id = "test-col"
+    col.organization_id = ORG_ID
+    col_repo = FakeCollectionRepository()
+    col_repo.seed_readable("test-col", col)
+
+    federated_entry = MagicMock(spec=SourceRegistryEntry)
+    federated_entry.short_name = "github"
+    federated_entry.federated_search = True
+    source_registry = FakeSourceRegistry()
+    source_registry.seed(federated_entry)
+
+    svc = _build_service(
+        sc_repo=sc_repo,
+        collection_repo=col_repo,
+        source_registry=source_registry,
+    )
+    obj_in = SourceConnectionUpdate(schedule={"cron": "0 * * * *"})
+
+    with pytest.raises(HTTPException) as exc_info:
+        await svc.update(AsyncMock(), id=sc.id, obj_in=obj_in, ctx=_make_ctx())
+    assert exc_info.value.status_code == 400
+    assert "federated search" in str(exc_info.value.detail)
 
 
 # ---------------------------------------------------------------------------
