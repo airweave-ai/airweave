@@ -2,7 +2,7 @@ import { getCurrentRequestContext } from './request-context';
 import type { RequestContext } from './request-context';
 
 interface OptionsWithHeaders {
-  headers?: HeadersInit;
+  headers?: RequestInit['headers'] | Record<string, unknown>;
 }
 
 function getRequestContextHeaders(requestContext: RequestContext) {
@@ -15,8 +15,34 @@ function getRequestContextHeaders(requestContext: RequestContext) {
   return headers;
 }
 
-function normalizeHeaders(headers?: HeadersInit) {
-  return Object.fromEntries(new Headers(headers).entries());
+function normalizeHeaders(headers?: OptionsWithHeaders['headers']) {
+  if (!headers) {
+    return {};
+  }
+
+  if (headers instanceof Headers) {
+    return Object.fromEntries(headers.entries());
+  }
+
+  if (Array.isArray(headers)) {
+    return Object.fromEntries(
+      headers.map(([key, value]) => [key, String(value)]),
+    );
+  }
+
+  return Object.fromEntries(
+    Object.entries(headers).flatMap(([key, value]) => {
+      if (value == null) {
+        return [];
+      }
+
+      if (Array.isArray(value)) {
+        return [[key, value.map((item) => String(item)).join(', ')]];
+      }
+
+      return [[key, String(value)]];
+    }),
+  );
 }
 
 export function withRequestContext<T extends OptionsWithHeaders>(

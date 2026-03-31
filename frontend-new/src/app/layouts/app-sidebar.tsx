@@ -1,4 +1,11 @@
-import { ChevronDown, EllipsisVertical, Home, Plus, Settings } from 'lucide-react';
+import {
+  AppWindow,
+  ChevronDown,
+  EllipsisVertical,
+  Home,
+  Plus,
+  Settings,
+} from 'lucide-react';
 import { Link, useMatchRoute } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
@@ -33,6 +40,7 @@ type NavigationItem = {
 
 const navigationItems: Array<NavigationItem> = [
   { label: 'Dashboard', icon: Home, to: '/' },
+  { label: 'Collections', icon: AppWindow, to: '/collections' },
 ];
 
 function SidebarIconFrame({ children }: { children: ReactNode }) {

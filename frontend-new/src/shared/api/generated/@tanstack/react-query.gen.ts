@@ -2,6 +2,8 @@
 
 import {
   type DefaultError,
+  type InfiniteData,
+  infiniteQueryOptions,
   queryOptions,
   type UseMutationOptions,
 } from '@tanstack/react-query';
@@ -696,6 +698,103 @@ export const readApiKeysApiKeysGetOptions = (
     },
     queryKey: readApiKeysApiKeysGetQueryKey(options),
   });
+
+const createInfiniteParams = <
+  K extends Pick<QueryKey<Options>[0], 'body' | 'headers' | 'path' | 'query'>,
+>(
+  queryKey: QueryKey<Options>,
+  page: K,
+) => {
+  const params = { ...queryKey[0] };
+  if (page.body) {
+    params.body = {
+      ...(queryKey[0].body as any),
+      ...(page.body as any),
+    };
+  }
+  if (page.headers) {
+    params.headers = {
+      ...queryKey[0].headers,
+      ...page.headers,
+    };
+  }
+  if (page.path) {
+    params.path = {
+      ...(queryKey[0].path as any),
+      ...(page.path as any),
+    };
+  }
+  if (page.query) {
+    params.query = {
+      ...(queryKey[0].query as any),
+      ...(page.query as any),
+    };
+  }
+  return params as unknown as typeof page;
+};
+
+export const readApiKeysApiKeysGetInfiniteQueryKey = (
+  options?: Options<ReadApiKeysApiKeysGetData>,
+): QueryKey<Options<ReadApiKeysApiKeysGetData>> =>
+  createQueryKey('readApiKeysApiKeysGet', options, true);
+
+/**
+ * Read Api Keys
+ *
+ * Retrieve all API keys for the current user.
+ *
+ * Args:
+ * ----
+ * db (AsyncSession): The database session.
+ * skip (int): Number of records to skip for pagination.
+ * limit (int): Maximum number of records to return.
+ * ctx (ApiContext): The current authentication context.
+ *
+ * Returns:
+ * -------
+ * List[schemas.APIKey]: A list of API keys with decrypted keys.
+ */
+export const readApiKeysApiKeysGetInfiniteOptions = (
+  options?: Options<ReadApiKeysApiKeysGetData>,
+) =>
+  infiniteQueryOptions<
+    ReadApiKeysApiKeysGetResponse,
+    ReadApiKeysApiKeysGetError,
+    InfiniteData<ReadApiKeysApiKeysGetResponse>,
+    QueryKey<Options<ReadApiKeysApiKeysGetData>>,
+    | number
+    | Pick<
+        QueryKey<Options<ReadApiKeysApiKeysGetData>>[0],
+        'body' | 'headers' | 'path' | 'query'
+      >
+  >(
+    // @ts-ignore
+    {
+      queryFn: async ({ pageParam, queryKey, signal }) => {
+        // @ts-ignore
+        const page: Pick<
+          QueryKey<Options<ReadApiKeysApiKeysGetData>>[0],
+          'body' | 'headers' | 'path' | 'query'
+        > =
+          typeof pageParam === 'object'
+            ? pageParam
+            : {
+                query: {
+                  skip: pageParam,
+                },
+              };
+        const params = createInfiniteParams(queryKey, page);
+        const { data } = await readApiKeysApiKeysGet({
+          ...options,
+          ...params,
+          signal,
+          throwOnError: true,
+        });
+        return data;
+      },
+      queryKey: readApiKeysApiKeysGetInfiniteQueryKey(options),
+    },
+  );
 
 /**
  * Create Api Key
@@ -1931,6 +2030,76 @@ export const listAuthProviderConnectionsAuthProvidersConnectionsGetOptions = (
       listAuthProviderConnectionsAuthProvidersConnectionsGetQueryKey(options),
   });
 
+export const listAuthProviderConnectionsAuthProvidersConnectionsGetInfiniteQueryKey =
+  (
+    options?: Options<ListAuthProviderConnectionsAuthProvidersConnectionsGetData>,
+  ): QueryKey<
+    Options<ListAuthProviderConnectionsAuthProvidersConnectionsGetData>
+  > =>
+    createQueryKey(
+      'listAuthProviderConnectionsAuthProvidersConnectionsGet',
+      options,
+      true,
+    );
+
+/**
+ * List Auth Provider Connections
+ *
+ * Get all auth provider connections for the current organization.
+ */
+export const listAuthProviderConnectionsAuthProvidersConnectionsGetInfiniteOptions =
+  (
+    options?: Options<ListAuthProviderConnectionsAuthProvidersConnectionsGetData>,
+  ) =>
+    infiniteQueryOptions<
+      ListAuthProviderConnectionsAuthProvidersConnectionsGetResponse,
+      ListAuthProviderConnectionsAuthProvidersConnectionsGetError,
+      InfiniteData<ListAuthProviderConnectionsAuthProvidersConnectionsGetResponse>,
+      QueryKey<
+        Options<ListAuthProviderConnectionsAuthProvidersConnectionsGetData>
+      >,
+      | number
+      | Pick<
+          QueryKey<
+            Options<ListAuthProviderConnectionsAuthProvidersConnectionsGetData>
+          >[0],
+          'body' | 'headers' | 'path' | 'query'
+        >
+    >(
+      // @ts-ignore
+      {
+        queryFn: async ({ pageParam, queryKey, signal }) => {
+          // @ts-ignore
+          const page: Pick<
+            QueryKey<
+              Options<ListAuthProviderConnectionsAuthProvidersConnectionsGetData>
+            >[0],
+            'body' | 'headers' | 'path' | 'query'
+          > =
+            typeof pageParam === 'object'
+              ? pageParam
+              : {
+                  query: {
+                    skip: pageParam,
+                  },
+                };
+          const params = createInfiniteParams(queryKey, page);
+          const { data } =
+            await listAuthProviderConnectionsAuthProvidersConnectionsGet({
+              ...options,
+              ...params,
+              signal,
+              throwOnError: true,
+            });
+          return data;
+        },
+        queryKey:
+          listAuthProviderConnectionsAuthProvidersConnectionsGetInfiniteQueryKey(
+            options,
+          ),
+      },
+    );
+
 export const getAuthProviderConnectionAuthProvidersConnectionsReadableIdGetQueryKey =
   (
     options: Options<GetAuthProviderConnectionAuthProvidersConnectionsReadableIdGetData>,
@@ -2132,6 +2301,64 @@ export const listCollectionsGetOptions = (
     },
     queryKey: listCollectionsGetQueryKey(options),
   });
+
+export const listCollectionsGetInfiniteQueryKey = (
+  options?: Options<ListCollectionsGetData>,
+): QueryKey<Options<ListCollectionsGetData>> =>
+  createQueryKey('listCollectionsGet', options, true);
+
+/**
+ * List Collections
+ *
+ * Retrieve all collections belonging to your organization.
+ *
+ * Collections are containers that group related data from one or more source
+ * connections, enabling unified search across multiple data sources.
+ *
+ * Results are sorted by creation date (newest first) and support pagination
+ * and text search filtering.
+ */
+export const listCollectionsGetInfiniteOptions = (
+  options?: Options<ListCollectionsGetData>,
+) =>
+  infiniteQueryOptions<
+    ListCollectionsGetResponse,
+    ListCollectionsGetError,
+    InfiniteData<ListCollectionsGetResponse>,
+    QueryKey<Options<ListCollectionsGetData>>,
+    | number
+    | Pick<
+        QueryKey<Options<ListCollectionsGetData>>[0],
+        'body' | 'headers' | 'path' | 'query'
+      >
+  >(
+    // @ts-ignore
+    {
+      queryFn: async ({ pageParam, queryKey, signal }) => {
+        // @ts-ignore
+        const page: Pick<
+          QueryKey<Options<ListCollectionsGetData>>[0],
+          'body' | 'headers' | 'path' | 'query'
+        > =
+          typeof pageParam === 'object'
+            ? pageParam
+            : {
+                query: {
+                  skip: pageParam,
+                },
+              };
+        const params = createInfiniteParams(queryKey, page);
+        const { data } = await listCollectionsGet({
+          ...options,
+          ...params,
+          signal,
+          throwOnError: true,
+        });
+        return data;
+      },
+      queryKey: listCollectionsGetInfiniteQueryKey(options),
+    },
+  );
 
 /**
  * Create Collection
@@ -2589,6 +2816,64 @@ export const listSourceConnectionsGetOptions = (
     queryKey: listSourceConnectionsGetQueryKey(options),
   });
 
+export const listSourceConnectionsGetInfiniteQueryKey = (
+  options?: Options<ListSourceConnectionsGetData>,
+): QueryKey<Options<ListSourceConnectionsGetData>> =>
+  createQueryKey('listSourceConnectionsGet', options, true);
+
+/**
+ * List Source Connections
+ *
+ * Retrieve all source connections for your organization.
+ *
+ * Returns a lightweight list of source connections with essential fields for
+ * display and navigation. Use the collection filter to see connections within
+ * a specific collection.
+ *
+ * For full connection details including sync history, use the GET /{id} endpoint.
+ */
+export const listSourceConnectionsGetInfiniteOptions = (
+  options?: Options<ListSourceConnectionsGetData>,
+) =>
+  infiniteQueryOptions<
+    ListSourceConnectionsGetResponse,
+    ListSourceConnectionsGetError,
+    InfiniteData<ListSourceConnectionsGetResponse>,
+    QueryKey<Options<ListSourceConnectionsGetData>>,
+    | number
+    | Pick<
+        QueryKey<Options<ListSourceConnectionsGetData>>[0],
+        'body' | 'headers' | 'path' | 'query'
+      >
+  >(
+    // @ts-ignore
+    {
+      queryFn: async ({ pageParam, queryKey, signal }) => {
+        // @ts-ignore
+        const page: Pick<
+          QueryKey<Options<ListSourceConnectionsGetData>>[0],
+          'body' | 'headers' | 'path' | 'query'
+        > =
+          typeof pageParam === 'object'
+            ? pageParam
+            : {
+                query: {
+                  skip: pageParam,
+                },
+              };
+        const params = createInfiniteParams(queryKey, page);
+        const { data } = await listSourceConnectionsGet({
+          ...options,
+          ...params,
+          signal,
+          throwOnError: true,
+        });
+        return data;
+      },
+      queryKey: listSourceConnectionsGetInfiniteQueryKey(options),
+    },
+  );
+
 /**
  * Create Source Connection
  *
@@ -2841,6 +3126,91 @@ export const getSourceConnectionJobsSourceConnectionsSourceConnectionIdJobsGetOp
           options,
         ),
     });
+
+export const getSourceConnectionJobsSourceConnectionsSourceConnectionIdJobsGetInfiniteQueryKey =
+  (
+    options: Options<GetSourceConnectionJobsSourceConnectionsSourceConnectionIdJobsGetData>,
+  ): QueryKey<
+    Options<GetSourceConnectionJobsSourceConnectionsSourceConnectionIdJobsGetData>
+  > =>
+    createQueryKey(
+      'getSourceConnectionJobsSourceConnectionsSourceConnectionIdJobsGet',
+      options,
+      true,
+    );
+
+/**
+ * List Sync Jobs
+ *
+ * Retrieve the sync job history for a source connection.
+ *
+ * Returns a list of sync jobs ordered by creation time (newest first). Each job
+ * includes status, timing information, and entity counts.
+ *
+ * Job statuses:
+ * - **PENDING**: Job is queued, waiting for the worker to pick it up
+ * - **RUNNING**: Sync is actively pulling and processing data
+ * - **COMPLETED**: Sync finished successfully
+ * - **FAILED**: Sync encountered an unrecoverable error
+ * - **CANCELLING**: Cancellation has been requested. The worker is
+ * gracefully stopping the pipeline and cleaning up destination data.
+ * - **CANCELLED**: Sync was cancelled. The worker has fully stopped
+ * and destination data cleanup has been scheduled.
+ */
+export const getSourceConnectionJobsSourceConnectionsSourceConnectionIdJobsGetInfiniteOptions =
+  (
+    options: Options<GetSourceConnectionJobsSourceConnectionsSourceConnectionIdJobsGetData>,
+  ) =>
+    infiniteQueryOptions<
+      GetSourceConnectionJobsSourceConnectionsSourceConnectionIdJobsGetResponse,
+      GetSourceConnectionJobsSourceConnectionsSourceConnectionIdJobsGetError,
+      InfiniteData<GetSourceConnectionJobsSourceConnectionsSourceConnectionIdJobsGetResponse>,
+      QueryKey<
+        Options<GetSourceConnectionJobsSourceConnectionsSourceConnectionIdJobsGetData>
+      >,
+      | number
+      | Pick<
+          QueryKey<
+            Options<GetSourceConnectionJobsSourceConnectionsSourceConnectionIdJobsGetData>
+          >[0],
+          'body' | 'headers' | 'path' | 'query'
+        >
+    >(
+      // @ts-ignore
+      {
+        queryFn: async ({ pageParam, queryKey, signal }) => {
+          // @ts-ignore
+          const page: Pick<
+            QueryKey<
+              Options<GetSourceConnectionJobsSourceConnectionsSourceConnectionIdJobsGetData>
+            >[0],
+            'body' | 'headers' | 'path' | 'query'
+          > =
+            typeof pageParam === 'object'
+              ? pageParam
+              : {
+                  query: {
+                    limit: pageParam,
+                  },
+                };
+          const params = createInfiniteParams(queryKey, page);
+          const { data } =
+            await getSourceConnectionJobsSourceConnectionsSourceConnectionIdJobsGet(
+              {
+                ...options,
+                ...params,
+                signal,
+                throwOnError: true,
+              },
+            );
+          return data;
+        },
+        queryKey:
+          getSourceConnectionJobsSourceConnectionsSourceConnectionIdJobsGetInfiniteQueryKey(
+            options,
+          ),
+      },
+    );
 
 /**
  * Cancel Sync Job
@@ -3501,6 +3871,78 @@ export const listAllOrganizationsAdminOrganizationsGetOptions = (
     queryKey: listAllOrganizationsAdminOrganizationsGetQueryKey(options),
   });
 
+export const listAllOrganizationsAdminOrganizationsGetInfiniteQueryKey = (
+  options?: Options<ListAllOrganizationsAdminOrganizationsGetData>,
+): QueryKey<Options<ListAllOrganizationsAdminOrganizationsGetData>> =>
+  createQueryKey('listAllOrganizationsAdminOrganizationsGet', options, true);
+
+/**
+ * List All Organizations
+ *
+ * List all organizations with comprehensive metrics (admin only).
+ *
+ * This endpoint fetches all organizations with their billing info and usage metrics
+ * using optimized queries to minimize database round-trips.
+ *
+ * Args:
+ * db: Database session
+ * ctx: API context
+ * skip: Number of organizations to skip
+ * limit: Maximum number of organizations to return (default 1000, max 10000)
+ * search: Optional search term to filter by organization name
+ * sort_by: Field to sort by (name, created_at, billing_plan, user_count,
+ * source_connection_count, entity_count, query_count, last_active_at)
+ * sort_order: Sort order (asc or desc)
+ *
+ * Returns:
+ * List of all organizations with comprehensive metrics
+ *
+ * Raises:
+ * HTTPException: If user is not an admin
+ */
+export const listAllOrganizationsAdminOrganizationsGetInfiniteOptions = (
+  options?: Options<ListAllOrganizationsAdminOrganizationsGetData>,
+) =>
+  infiniteQueryOptions<
+    ListAllOrganizationsAdminOrganizationsGetResponse,
+    ListAllOrganizationsAdminOrganizationsGetError,
+    InfiniteData<ListAllOrganizationsAdminOrganizationsGetResponse>,
+    QueryKey<Options<ListAllOrganizationsAdminOrganizationsGetData>>,
+    | number
+    | Pick<
+        QueryKey<Options<ListAllOrganizationsAdminOrganizationsGetData>>[0],
+        'body' | 'headers' | 'path' | 'query'
+      >
+  >(
+    // @ts-ignore
+    {
+      queryFn: async ({ pageParam, queryKey, signal }) => {
+        // @ts-ignore
+        const page: Pick<
+          QueryKey<Options<ListAllOrganizationsAdminOrganizationsGetData>>[0],
+          'body' | 'headers' | 'path' | 'query'
+        > =
+          typeof pageParam === 'object'
+            ? pageParam
+            : {
+                query: {
+                  skip: pageParam,
+                },
+              };
+        const params = createInfiniteParams(queryKey, page);
+        const { data } = await listAllOrganizationsAdminOrganizationsGet({
+          ...options,
+          ...params,
+          signal,
+          throwOnError: true,
+        });
+        return data;
+      },
+      queryKey:
+        listAllOrganizationsAdminOrganizationsGetInfiniteQueryKey(options),
+    },
+  );
+
 /**
  * Add Self To Organization
  *
@@ -4133,6 +4575,97 @@ export const adminListAllSyncsAdminSyncsGetOptions = (
     },
     queryKey: adminListAllSyncsAdminSyncsGetQueryKey(options),
   });
+
+export const adminListAllSyncsAdminSyncsGetInfiniteQueryKey = (
+  options?: Options<AdminListAllSyncsAdminSyncsGetData>,
+): QueryKey<Options<AdminListAllSyncsAdminSyncsGetData>> =>
+  createQueryKey('adminListAllSyncsAdminSyncsGet', options, true);
+
+/**
+ * Admin List All Syncs
+ *
+ * Admin-only: List all syncs across organizations with entity counts.
+ *
+ * Supports extensive filtering for migration and monitoring purposes.
+ *
+ * **Note**: Orphaned syncs (deleted source connections) are excluded by default.
+ * Set `has_source_connection=false` to see only orphaned syncs.
+ *
+ * **Entity Counts**:
+ * - total_entity_count: Count from Postgres (EntityCount table) - always included
+ * - total_arf_entity_count: Count from ARF storage (None unless include_arf_counts=true)
+ * - total_vespa_entity_count: Count from Vespa (None unless include_destination_counts=true)
+ *
+ * **Performance Note**: Setting `include_destination_counts=true` or `include_arf_counts=true`
+ * queries external storage for each sync. Optimized with connection pooling but still slower.
+ * Uses approximate counts for better performance. Recommended for result sets <50 syncs.
+ *
+ * Args:
+ * db: Database session
+ * ctx: API context
+ * skip: Number of syncs to skip for pagination
+ * limit: Maximum number of syncs to return
+ * sync_ids: Optional comma-separated list of sync IDs
+ * organization_id: Optional filter by organization ID
+ * collection_id: Optional filter by collection readable ID
+ * source_type: Optional filter by source short name
+ * has_source_connection: Include syncs with source connections (default true)
+ * is_authenticated: Optional filter by authentication status
+ * status: Optional filter by sync status
+ * last_job_status: Optional filter by last job status
+ * ghost_syncs_last_n: Optional filter to syncs with N consecutive failures
+ * tags: Optional comma-separated list of tags to filter by
+ * exclude_tags: Optional comma-separated list of tags to exclude
+ * include_destination_counts: Whether to fetch Vespa counts (slower)
+ * include_arf_counts: Whether to fetch ARF entity counts (slower)
+ *
+ * Returns:
+ * List of syncs with extended information including entity counts
+ *
+ * Raises:
+ * HTTPException: If not admin or invalid parameters
+ */
+export const adminListAllSyncsAdminSyncsGetInfiniteOptions = (
+  options?: Options<AdminListAllSyncsAdminSyncsGetData>,
+) =>
+  infiniteQueryOptions<
+    AdminListAllSyncsAdminSyncsGetResponse,
+    AdminListAllSyncsAdminSyncsGetError,
+    InfiniteData<AdminListAllSyncsAdminSyncsGetResponse>,
+    QueryKey<Options<AdminListAllSyncsAdminSyncsGetData>>,
+    | number
+    | Pick<
+        QueryKey<Options<AdminListAllSyncsAdminSyncsGetData>>[0],
+        'body' | 'headers' | 'path' | 'query'
+      >
+  >(
+    // @ts-ignore
+    {
+      queryFn: async ({ pageParam, queryKey, signal }) => {
+        // @ts-ignore
+        const page: Pick<
+          QueryKey<Options<AdminListAllSyncsAdminSyncsGetData>>[0],
+          'body' | 'headers' | 'path' | 'query'
+        > =
+          typeof pageParam === 'object'
+            ? pageParam
+            : {
+                query: {
+                  skip: pageParam,
+                },
+              };
+        const params = createInfiniteParams(queryKey, page);
+        const { data } = await adminListAllSyncsAdminSyncsGet({
+          ...options,
+          ...params,
+          signal,
+          throwOnError: true,
+        });
+        return data;
+      },
+      queryKey: adminListAllSyncsAdminSyncsGetInfiniteQueryKey(options),
+    },
+  );
 
 /**
  * Admin Cancel Sync Job
