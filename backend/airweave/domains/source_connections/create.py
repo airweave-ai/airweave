@@ -451,12 +451,10 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             )
             sync_result = None
             if bool(obj_in.sync_immediately) or has_schedule:
-                destination_ids = await self._sync_service.resolve_destination_ids(
-                    uow.session, ctx
-                )
+                destination_ids = await self._sync_service.resolve_destination_ids(uow.session, ctx)
                 sync_result = await self._sync_service.create(
                     uow.session,
-                    name=obj_in.name,
+                    name=obj_in.name or entry.name,
                     source_connection_id=connection.id,
                     destination_connection_ids=destination_ids,
                     collection_id=collection.id,
@@ -665,12 +663,10 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             )
             sync_result = None
             if bool(obj_in.sync_immediately) or has_schedule:
-                destination_ids = await self._sync_service.resolve_destination_ids(
-                    uow.session, ctx
-                )
+                destination_ids = await self._sync_service.resolve_destination_ids(uow.session, ctx)
                 sync_result = await self._sync_service.create(
                     uow.session,
-                    name=obj_in.name,
+                    name=obj_in.name or entry.name,
                     source_connection_id=connection.id,
                     destination_connection_ids=destination_ids,
                     collection_id=collection.id,
