@@ -1,6 +1,8 @@
 export { createClientConfig } from './client';
 export { hasApiErrorDetail, parseApiErrorWithDetail } from './errors';
 export { QueryClientProvider, queryClient } from './query-client';
+export type { RequestContext } from './request-context';
+export { useCurrentRequestContext } from './request-context';
 export {
   withCurrentRequestContext,
   withRequestContext,

@@ -1,39 +1,235 @@
-import { FolderKanban, Layers3 } from 'lucide-react';
-import { mockCollections } from '@/features/collections/model/mock-collections';
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card';
+import * as React from 'react';
+import {
+  keepPreviousData,
+  useQuery,
+  useSuspenseQuery,
+} from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
+import { Maximize2, Plus, Search } from 'lucide-react';
+import {
+  useCollectionCountQueryOptions,
+  useListCollectionsQueryOptions,
+} from '../api';
+import {
+  demoCollectionDescription,
+  useDemoCollection,
+} from '../demo-collection';
+import { CollectionActionsMenu } from './collection-actions-menu';
+import type { Collection } from '@/shared/api';
+import type { ReactNode } from 'react';
+import { Badge } from '@/shared/ui/badge';
+import { Button } from '@/shared/ui/button';
+import { Card, CardContent, CardHeader } from '@/shared/ui/card';
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@/shared/ui/input-group';
+import { Skeleton } from '@/shared/ui/skeleton';
+import {
+  CollectionSourceConnections,
+  CollectionSourceConnectionsSkeleton,
+} from './collection-source-connections';
+import { CollectionStatusBadge } from './collection-status-badge';
 
 export function CollectionsSummaryCard() {
-  const syncedCollections = mockCollections.filter(
-    (collection) => collection.status === 'Synced',
-  );
-  const totalSources = mockCollections.reduce(
-    (sum, collection) => sum + collection.sourceCount,
-    0,
-  );
+  const [search, setSearch] = React.useState<string | undefined>(undefined);
+  const deferredSearch = React.useDeferredValue(search);
+  const normalizedSearch = (deferredSearch ?? '').trim();
+  const hasActiveSearch = normalizedSearch.length > 0;
+  const collectionCountQueryOptions = useCollectionCountQueryOptions({
+    search: deferredSearch,
+  });
+  const { data: collectionCount } = useQuery({
+    ...collectionCountQueryOptions,
+    placeholderData: keepPreviousData,
+  });
+
+  const hasCollections = (collectionCount ?? 0) > 0;
+  const displayedCollectionCount =
+    collectionCount === undefined
+      ? '...'
+      : hasCollections
+        ? collectionCount
+        : hasActiveSearch
+          ? 0
+          : 1;
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-        <CardTitle>Collections</CardTitle>
-        <FolderKanban className="size-4 text-muted-foreground" />
+      <CardHeader className="flex items-center justify-between">
+        <div className="flex items-center gap-1">
+          <h2 className="font-heading text-base font-semibold text-foreground">
+            Collections
+          </h2>
+          <Badge
+            variant="secondary"
+            className="text-[0.625rem] text-muted-foreground"
+          >
+            {displayedCollectionCount}
+          </Badge>
+        </div>
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <InputGroup className="w-full sm:w-64">
+            <InputGroupAddon align="inline-start">
+              <Search className="size-4" />
+            </InputGroupAddon>
+            <InputGroupInput
+              value={search ?? ''}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search..."
+            />
+          </InputGroup>
+
+          <div className="flex items-center gap-2">
+            <Button size="lg" type="button">
+              <Plus />
+              Create Collection
+            </Button>
+            <Button asChild size="icon-lg" type="button" variant="outline">
+              <Link to="/collections">
+                <Maximize2 />
+                <span className="sr-only">Expand collections</span>
+              </Link>
+            </Button>
+          </div>
+        </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div>
-          <p className="text-3xl font-semibold tracking-tight">
-            {mockCollections.length}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            {syncedCollections.length} synced and searchable now.
-          </p>
-        </div>
-        <div className="flex items-center justify-between rounded-xl border bg-muted/30 px-4 py-3 text-sm">
-          <span className="text-muted-foreground">Connected sources</span>
-          <span className="inline-flex items-center gap-2 font-medium text-foreground">
-            <Layers3 className="size-4" />
-            {totalSources}
-          </span>
-        </div>
+      <CardContent>
+        {collectionCount === undefined ? (
+          <CollectionsSummaryCardContentSkeleton />
+        ) : !hasCollections && !hasActiveSearch ? (
+          <DemoCollectionContent />
+        ) : (
+          <React.Suspense fallback={<CollectionsSummaryCardContentSkeleton />}>
+            <CollectionsSummaryCardListContent search={deferredSearch} />
+          </React.Suspense>
+        )}
       </CardContent>
     </Card>
+  );
+}
+
+function NoCollectionsSearchResults({ search }: { search: string }) {
+  return (
+    <div className="rounded-sm border border-dashed border-border/70 bg-background/30 px-3 py-3 text-sm text-muted-foreground">
+      No collections found matching "{search}"
+    </div>
+  );
+}
+
+function CollectionsSummaryCardListContent({ search }: { search?: string }) {
+  const collectionsQueryOptions = useListCollectionsQueryOptions({ search });
+  const { data: collections } = useSuspenseQuery(collectionsQueryOptions);
+
+  if (search && collections.length === 0) {
+    return <NoCollectionsSearchResults search={search} />;
+  }
+
+  return (
+    <ul className="space-y-1">
+      {collections.map((collection) => (
+        <CollectionListItem key={collection.id} collection={collection} />
+      ))}
+    </ul>
+  );
+}
+
+function CollectionsSummaryCardContentSkeleton() {
+  return (
+    <ul className="space-y-1">
+      {Array.from({ length: 3 }).map((_, index) => (
+        <li
+          key={index}
+          className="flex flex-col gap-3 rounded-sm bg-foreground/5 px-3 py-2 md:flex-row md:items-center md:justify-between"
+        >
+          <div className="space-y-1">
+            <Skeleton className="h-4 w-32 bg-muted/60" />
+            <Skeleton className="h-3 w-24 bg-muted/40" />
+          </div>
+
+          <div className="flex items-center justify-between gap-4 md:justify-start">
+            <CollectionSourceConnectionsSkeleton />
+
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-5 w-18 rounded-full bg-muted/50" />
+              <Skeleton className="size-8 rounded-sm bg-muted/50" />
+            </div>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function DemoCollectionContent() {
+  const demoCollection = useDemoCollection();
+
+  return (
+    <ul>
+      <CollectionListItem
+        collection={demoCollection}
+        header={
+          <Badge
+            variant="outline"
+            className="border-none bg-foreground/5 text-muted-foreground uppercase"
+          >
+            Demo
+          </Badge>
+        }
+        description={demoCollectionDescription}
+      />
+    </ul>
+  );
+}
+
+function CollectionListItem({
+  collection,
+  header,
+  description,
+}: {
+  collection: Collection;
+  header?: ReactNode;
+  description?: ReactNode;
+}) {
+  const sourceConnections = collection.source_connection_summaries ?? [];
+  const sourceCount = sourceConnections.length;
+
+  return (
+    <li className="flex flex-col gap-3 rounded-sm bg-foreground/5 px-3 py-2 md:flex-row md:items-center md:justify-between">
+      <div className="space-y-0.5">
+        <div className="flex flex-wrap items-center gap-1">
+          {/* TODO: add valid href */}
+          <Link to="/">
+            <p className="text-sm font-medium text-foreground">
+              {collection.name}
+            </p>
+          </Link>
+          {header}
+        </div>
+
+        <p className="font-mono text-xs leading-5 text-muted-foreground">
+          {description ?? (
+            <span className="flex items-center gap-1.5">
+              {sourceCount} Connections{' '}
+              <span className="size-[3px] rounded-full bg-current" /> X Entities
+            </span>
+          )}
+        </p>
+      </div>
+
+      <div className="flex items-center justify-between gap-4 md:justify-start">
+        <CollectionSourceConnections sourceConnections={sourceConnections} />
+
+        <div className="flex items-center gap-2">
+          {collection.status ? (
+            <CollectionStatusBadge status={collection.status} />
+          ) : null}
+
+          <CollectionActionsMenu collectionId={collection.id} />
+        </div>
+      </div>
+    </li>
   );
 }

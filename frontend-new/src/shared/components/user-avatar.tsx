@@ -1,6 +1,6 @@
-import type { ComponentProps } from 'react';
-import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { cn } from '../tailwind/cn';
+import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
+import type { ComponentProps } from 'react';
 
 interface UserAvatarProps extends Omit<
   ComponentProps<typeof Avatar>,

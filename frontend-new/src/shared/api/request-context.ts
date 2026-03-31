@@ -1,3 +1,4 @@
+import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 
 export interface RequestContext {
@@ -32,6 +33,10 @@ export const requestContextStore = createStore<RequestContextStoreState>()(
 
 export function getCurrentRequestContext() {
   return requestContextStore.getState().currentRequestContext;
+}
+
+export function useCurrentRequestContext() {
+  return useStore(requestContextStore, (state) => state.currentRequestContext);
 }
 
 export function setCurrentRequestContext(requestContext: RequestContext) {

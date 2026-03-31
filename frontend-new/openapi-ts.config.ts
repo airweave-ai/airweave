@@ -1,8 +1,13 @@
-import { defineConfig } from '@hey-api/openapi-ts';
+import { defaultPaginationKeywords, defineConfig } from '@hey-api/openapi-ts';
 
 export default defineConfig({
   input: './openapi/internal-openapi.json',
   output: 'src/shared/api/generated',
+  parser: {
+    pagination: {
+      keywords: [...defaultPaginationKeywords, 'skip', 'limit'],
+    },
+  },
   plugins: [
     '@hey-api/typescript',
     '@hey-api/sdk',

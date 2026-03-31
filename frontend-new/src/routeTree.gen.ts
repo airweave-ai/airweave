@@ -15,6 +15,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated/onboarding'
 import { Route as AuthenticatedAppRouteRouteImport } from './routes/_authenticated/_app/route'
 import { Route as AuthenticatedAppIndexRouteImport } from './routes/_authenticated/_app/index'
+import { Route as AuthenticatedAppCollectionsRouteImport } from './routes/_authenticated/_app/collections'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -44,18 +45,26 @@ const AuthenticatedAppIndexRoute = AuthenticatedAppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedAppRouteRoute,
 } as any)
+const AuthenticatedAppCollectionsRoute =
+  AuthenticatedAppCollectionsRouteImport.update({
+    id: '/collections',
+    path: '/collections',
+    getParentRoute: () => AuthenticatedAppRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedAppIndexRoute
   '/callback': typeof CallbackRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
+  '/collections': typeof AuthenticatedAppCollectionsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AuthenticatedAppIndexRoute
   '/callback': typeof CallbackRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
+  '/collections': typeof AuthenticatedAppCollectionsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -64,13 +73,14 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_authenticated/_app': typeof AuthenticatedAppRouteRouteWithChildren
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
+  '/_authenticated/_app/collections': typeof AuthenticatedAppCollectionsRoute
   '/_authenticated/_app/': typeof AuthenticatedAppIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/callback' | '/login' | '/onboarding'
+  fullPaths: '/' | '/callback' | '/login' | '/onboarding' | '/collections'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/callback' | '/login' | '/onboarding'
+  to: '/' | '/callback' | '/login' | '/onboarding' | '/collections'
   id:
     | '__root__'
     | '/_authenticated'
@@ -78,6 +88,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/_authenticated/_app'
     | '/_authenticated/onboarding'
+    | '/_authenticated/_app/collections'
     | '/_authenticated/_app/'
   fileRoutesById: FileRoutesById
 }
@@ -131,14 +142,23 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppIndexRouteImport
       parentRoute: typeof AuthenticatedAppRouteRoute
     }
+    '/_authenticated/_app/collections': {
+      id: '/_authenticated/_app/collections'
+      path: '/collections'
+      fullPath: '/collections'
+      preLoaderRoute: typeof AuthenticatedAppCollectionsRouteImport
+      parentRoute: typeof AuthenticatedAppRouteRoute
+    }
   }
 }
 
 interface AuthenticatedAppRouteRouteChildren {
+  AuthenticatedAppCollectionsRoute: typeof AuthenticatedAppCollectionsRoute
   AuthenticatedAppIndexRoute: typeof AuthenticatedAppIndexRoute
 }
 
 const AuthenticatedAppRouteRouteChildren: AuthenticatedAppRouteRouteChildren = {
+  AuthenticatedAppCollectionsRoute: AuthenticatedAppCollectionsRoute,
   AuthenticatedAppIndexRoute: AuthenticatedAppIndexRoute,
 }
 
