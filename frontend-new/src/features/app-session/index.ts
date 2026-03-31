@@ -1,4 +1,3 @@
-export { AppSessionProvider, useAppSession } from './app-session-provider';
 export { ensureCurrentUser } from './ensure-current-user';
 export { MissingOrganizationError } from './errors';
 export { ensureAppSession } from './ensure-app-session';
@@ -13,6 +12,7 @@ export {
 export {
   resolveCurrentOrganization,
   resolveCurrentOrganizationId,
+  resolveRequiredCurrentOrganization,
 } from './selectors';
 export { buildUserSyncPayload, syncAuthUser } from './user-sync';
 export {

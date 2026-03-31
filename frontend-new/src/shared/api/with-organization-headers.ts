@@ -1,15 +1,14 @@
-import { getCurrentRequestContext } from './request-context';
-import type { RequestContext } from './request-context';
+import type { OrganizationScope } from './organization-scope';
 
 interface OptionsWithHeaders {
   headers?: RequestInit['headers'] | Record<string, unknown>;
 }
 
-function getRequestContextHeaders(requestContext: RequestContext) {
+function getOrganizationHeaders(organizationScope: OrganizationScope) {
   const headers: Record<string, string> = {};
 
-  if (requestContext.organizationId) {
-    headers['X-Organization-ID'] = requestContext.organizationId;
+  if (organizationScope.organizationId) {
+    headers['X-Organization-ID'] = organizationScope.organizationId;
   }
 
   return headers;
@@ -45,13 +44,13 @@ function normalizeHeaders(headers?: OptionsWithHeaders['headers']) {
   );
 }
 
-export function withRequestContext<T extends OptionsWithHeaders>(
-  requestContext: RequestContext,
+export function withOrganizationHeaders<T extends OptionsWithHeaders>(
+  organizationScope: OrganizationScope,
   options: T | undefined = undefined,
 ) {
   const headers = {
     ...normalizeHeaders(options?.headers),
-    ...getRequestContextHeaders(requestContext),
+    ...getOrganizationHeaders(organizationScope),
   };
 
   if (Object.keys(headers).length === 0) {
@@ -62,10 +61,4 @@ export function withRequestContext<T extends OptionsWithHeaders>(
     ...(options ?? {}),
     headers,
   } as T;
-}
-
-export function withCurrentRequestContext<T extends OptionsWithHeaders>(
-  options?: T,
-) {
-  return withRequestContext(getCurrentRequestContext(), options);
 }

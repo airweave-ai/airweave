@@ -1,12 +1,10 @@
-import type { RequestContext } from '@/shared/api';
 import {
   countCollectionsCountGetOptions,
   listCollectionsGetOptions,
-  useCurrentRequestContext,
-  withRequestContext,
+  withOrganizationHeaders,
 } from '@/shared/api';
-import { getCurrentRequestContext } from '@/shared/api/request-context';
 import type { QueryClient } from '@tanstack/react-query';
+import { useCurrentOrganizationId } from '@/shared/session';
 
 type CollectionListParams = NonNullable<
   Parameters<typeof listCollectionsGetOptions>[0]
@@ -15,7 +13,7 @@ type CollectionListParams = NonNullable<
 type SearchParams = { search?: string };
 
 export function listCollectionsQueryOptions(
-  requestContext: RequestContext,
+  organizationId: string,
   { search }: SearchParams = {},
 ) {
   const params: CollectionListParams = {
@@ -25,13 +23,15 @@ export function listCollectionsQueryOptions(
       search,
     },
   };
-  return listCollectionsGetOptions(withRequestContext(requestContext, params));
+  return listCollectionsGetOptions(
+    withOrganizationHeaders({ organizationId }, params),
+  );
 }
 
 export function useListCollectionsQueryOptions(searchParams?: SearchParams) {
-  const requestContext = useCurrentRequestContext();
+  const currentOrganizationId = useCurrentOrganizationId();
 
-  return listCollectionsQueryOptions(requestContext, searchParams);
+  return listCollectionsQueryOptions(currentOrganizationId, searchParams);
 }
 
 type CollectionCountParams = NonNullable<
@@ -39,7 +39,7 @@ type CollectionCountParams = NonNullable<
 >;
 
 function collectionCountQueryOptions(
-  requestContext: RequestContext,
+  organizationId: string,
   searchParams?: SearchParams,
 ) {
   const params: CollectionCountParams = {
@@ -47,22 +47,26 @@ function collectionCountQueryOptions(
   };
 
   return countCollectionsCountGetOptions(
-    withRequestContext(requestContext, params),
+    withOrganizationHeaders({ organizationId }, params),
   );
 }
 
 export function useCollectionCountQueryOptions(searchParams?: SearchParams) {
-  const requestContext = useCurrentRequestContext();
+  const currentOrganizationId = useCurrentOrganizationId();
 
-  return collectionCountQueryOptions(requestContext, searchParams);
+  return collectionCountQueryOptions(currentOrganizationId, searchParams);
 }
 
 export function ensureListCollections({
   queryClient,
+  organizationId,
+  search,
 }: {
   queryClient: QueryClient;
+  organizationId: string;
+  search?: string;
 }) {
   return queryClient.ensureQueryData(
-    listCollectionsQueryOptions(getCurrentRequestContext()),
+    listCollectionsQueryOptions(organizationId, { search }),
   );
 }

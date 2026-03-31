@@ -1,19 +1,46 @@
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { Search } from 'lucide-react';
 import { CollectionsTable } from '@/features/collections';
 import { useListCollectionsQueryOptions } from '@/features/collections/api';
+import type { Collection } from '@/shared/api';
+import { cn } from '@/shared/tailwind/cn';
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@/shared/ui/input-group';
+import { Spinner } from '@/shared/ui/spinner';
 
-export function CollectionsPage() {
-  const collectionsQueryOptions = useListCollectionsQueryOptions();
+interface CollectionsPageProps {
+  initialCollections: Array<Collection>;
+  search?: string;
+  onSearchChange: (search: string | undefined) => void;
+}
+
+export function CollectionsPage({
+  initialCollections,
+  search,
+  onSearchChange,
+}: CollectionsPageProps) {
+  const collectionsQueryOptions = useListCollectionsQueryOptions({
+    search,
+  });
   const {
     data: collections,
     error,
-    isLoading,
-  } = useQuery(collectionsQueryOptions);
+    isFetching,
+  } = useQuery({
+    ...collectionsQueryOptions,
+    placeholderData: keepPreviousData,
+    initialData: initialCollections,
+  });
 
-  const emptyMessage = isLoading
-    ? 'Loading collections...'
-    : error
-      ? 'Failed to load collections.'
+  const activeSearch = search ?? '';
+  const displayedCollections = collections ?? initialCollections;
+  const emptyMessage = error
+    ? 'Failed to load collections.'
+    : activeSearch
+      ? `No collections found matching "${activeSearch}".`
       : 'No collections found.';
 
   return (
@@ -27,8 +54,32 @@ export function CollectionsPage() {
         </p>
       </div>
 
+      <InputGroup className="w-full">
+        <InputGroupAddon align="inline-start">
+          <Search className="size-4" />
+        </InputGroupAddon>
+        <InputGroupInput
+          value={activeSearch}
+          onChange={(e) => onSearchChange(e.target.value.trim() || undefined)}
+          placeholder="Search collections by name or ID..."
+        />
+        <InputGroupAddon
+          align="inline-end"
+          aria-hidden={!isFetching}
+          className="w-8 justify-center"
+        >
+          <Spinner
+            className={cn(
+              'size-4 transition-opacity duration-150',
+              isFetching ? 'opacity-100 delay-150' : 'opacity-0 delay-0',
+            )}
+          />
+          <span className="sr-only">Loading collections</span>
+        </InputGroupAddon>
+      </InputGroup>
+
       <CollectionsTable
-        collections={collections ?? []}
+        collections={displayedCollections}
         emptyMessage={emptyMessage}
       />
     </section>
