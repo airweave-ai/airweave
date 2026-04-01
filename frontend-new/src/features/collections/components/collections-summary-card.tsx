@@ -31,6 +31,7 @@ import {
   CollectionSourceConnectionsSkeleton,
 } from './collection-source-connections';
 import { CollectionStatusBadge } from './collection-status-badge';
+import { CollectionCountBadge } from './collection-count-badge';
 
 export function CollectionsSummaryCard() {
   const [search, setSearch] = React.useState<string | undefined>(undefined);
@@ -51,12 +52,7 @@ export function CollectionsSummaryCard() {
           <h2 className="font-heading text-base font-semibold text-foreground">
             Collections
           </h2>
-          <Badge
-            variant="secondary"
-            className="text-[0.625rem] text-muted-foreground"
-          >
-            {collectionCount}
-          </Badge>
+          <CollectionCountBadge />
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -211,10 +207,7 @@ function CollectionListItem({
       </div>
 
       <div className="flex items-center justify-between gap-4 md:justify-start">
-        <CollectionSourceConnections
-          size="lg"
-          sourceConnections={sourceConnections}
-        />
+        <CollectionSourceConnections sourceConnections={sourceConnections} />
 
         <div className="flex items-center gap-2">
           {collection.status ? (
