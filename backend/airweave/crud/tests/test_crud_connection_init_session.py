@@ -9,6 +9,7 @@ Tests cover:
 - Log messages redact token values
 """
 
+import hashlib
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -128,7 +129,8 @@ async def test_logs_redact_token_values(mock_logger, crud):
         str(call) for call in mock_logger.debug.call_args_list
     )
 
-    # The truncated prefix should appear in the logs
-    assert full_token[:8] in debug_args
+    # The SHA-256 fingerprint should appear in the logs
+    expected_fp = hashlib.sha256(full_token.encode()).hexdigest()[:8]
+    assert f"fp={expected_fp}" in debug_args
     # The full token must NOT appear in any log message
     assert full_token not in debug_args

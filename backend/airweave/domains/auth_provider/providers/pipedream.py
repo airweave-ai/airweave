@@ -219,7 +219,7 @@ class PipedreamAuthProvider(BaseAuthProvider):
             except httpx.HTTPStatusError as e:
                 status = e.response.status_code
                 self.logger.error(
-                    f"❌ [Pipedream] Failed to refresh token: {status} - {e.response.text}"
+                    f"❌ [Pipedream] Failed to refresh token: {status} {e.response.reason_phrase}"
                 )
                 if status == 401:
                     raise AuthProviderAuthError(
@@ -269,7 +269,8 @@ class PipedreamAuthProvider(BaseAuthProvider):
             return response.json()
         except httpx.HTTPStatusError as e:
             self.logger.error(
-                f"❌ [Pipedream] API request failed: {e.response.status_code} - {e.response.text}"
+                f"❌ [Pipedream] API request failed: "
+                f"{e.response.status_code} {e.response.reason_phrase}"
             )
             raise
 
@@ -380,11 +381,10 @@ class PipedreamAuthProvider(BaseAuthProvider):
                 raise AuthProviderAuthError(error_msg, provider_name="pipedream") from e
 
             try:
-                detail = e.response.json().get(
-                    "error_description", e.response.json().get("error", e.response.text)
-                )
+                body = e.response.json()
+                detail = body.get("error_description", body.get("error", f"HTTP {status}"))
             except Exception:
-                detail = e.response.text
+                detail = e.response.text or f"HTTP {status}"
 
             error_msg = f"Pipedream client credentials validation failed: {status} - {detail}"
             self.logger.error(f"❌ [Pipedream] {error_msg}")
@@ -476,8 +476,18 @@ class PipedreamAuthProvider(BaseAuthProvider):
                     provider_name="pipedream",
                     status_code=status,
                 ) from e
+            try:
+                body = e.response.json()
+                error_code = body.get("error", "")
+                msg = (
+                    f"Pipedream API error {status}: {error_code}"
+                    if error_code
+                    else f"Pipedream API error {status}"
+                )
+            except Exception:
+                msg = f"Pipedream API error {status}"
             raise AuthProviderTemporaryError(
-                f"Pipedream API error {status}: {e.response.text[:200]}",
+                msg,
                 provider_name="pipedream",
                 status_code=status,
             ) from e

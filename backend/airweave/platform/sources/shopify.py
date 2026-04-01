@@ -156,7 +156,9 @@ class ShopifySource(BaseSource):
 
         if response.status_code != 200:
             raise SourceAuthError(
-                message=f"Failed to get access token: {response.status_code} - {response.text}",
+                message=(
+                    f"Failed to get access token: {response.status_code} {response.reason_phrase}"
+                ),
                 status_code=response.status_code,
                 source_short_name=self.short_name,
                 token_provider_kind=self.auth.provider_kind,

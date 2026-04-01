@@ -4,6 +4,7 @@ This keeps the global CRUD behavior unchanged and only filters unknown fields
 (e.g., auto-injected audit keys) for ConnectionInitSession to avoid TypeError.
 """
 
+import hashlib
 import hmac
 from typing import Any, Dict, Optional
 from uuid import UUID
@@ -111,7 +112,8 @@ class CRUDConnectionInitSession(CRUDBaseOrganization[ConnectionInitSession, Base
         Returns:
             ConnectionInitSession if found, None otherwise
         """
-        logger.debug(f"Searching for OAuth1 session with oauth_token: {oauth_token[:8]}…")
+        token_fingerprint = hashlib.sha256(oauth_token.encode()).hexdigest()[:8]
+        logger.debug(f"Searching for OAuth1 session by token (fp={token_fingerprint})")
 
         all_pending = select(self.model).where(
             self.model.status == ConnectionInitStatus.PENDING,
@@ -131,7 +133,7 @@ class CRUDConnectionInitSession(CRUDBaseOrganization[ConnectionInitSession, Base
                 logger.debug(f"Found matching session: {session.id}")
                 return session
 
-        logger.warning(f"No OAuth1 session found with oauth_token: {oauth_token[:8]}…")
+        logger.warning(f"No OAuth1 session found matching token (fp={token_fingerprint})")
         return None
 
     async def mark_completed(

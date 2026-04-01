@@ -695,9 +695,12 @@ class OAuth2Service(OAuth2ServiceProtocol):
 
                 try:
                     error_content = e.response.json()
-                    logger.error(f"Error response body: {error_content}")
+                    logger.error(
+                        f"Error response: error={error_content.get('error')}, "
+                        f"description={error_content.get('error_description')}"
+                    )
                 except Exception:
-                    logger.error(f"Error response text: {e.response.text}")
+                    logger.error(f"Error response: <redacted, {len(e.response.text)} bytes>")
 
                 self._raise_typed_refresh_error(e, integration_short_name=integration_short_name)
 
@@ -736,7 +739,7 @@ class OAuth2Service(OAuth2ServiceProtocol):
             body = exc.response.json()
             detail = body.get("error_description", body.get("error", ""))
         except Exception:
-            detail = exc.response.text[:200] if exc.response.text else ""
+            detail = f"<redacted, {len(exc.response.text)} bytes>" if exc.response.text else ""
 
         if status == 401:
             raise OAuthRefreshTokenRevokedError(
@@ -900,7 +903,6 @@ class OAuth2Service(OAuth2ServiceProtocol):
             f"OAuth2 code exchange request - "
             f"URL: {backend_url}, "
             f"Redirect URI: {redirect_uri}, "
-            f"Client ID: {client_id}, "
             f"Code length: {len(code)}, "
             f"Grant type: {integration_config.grant_type}, "
             f"Credential location: {integration_config.client_credential_location}"
@@ -911,11 +913,10 @@ class OAuth2Service(OAuth2ServiceProtocol):
                 response = await client.post(backend_url, headers=headers, data=payload)
                 response.raise_for_status()
         except httpx.HTTPStatusError as e:
-            logger.error(
-                f"OAuth2 token exchange failed - Status: {e.response.status_code}, "
-                f"Response text: {e.response.text}"
-            )
-            raise HTTPException(status_code=400, detail=e.response.text) from e
+            logger.error(f"OAuth2 token exchange failed - Status: {e.response.status_code}")
+            raise HTTPException(
+                status_code=400, detail="Failed to exchange authorization code"
+            ) from e
         except Exception as e:
             logger.error(f"Failed to exchange authorization code: {str(e)}")
             raise HTTPException(
