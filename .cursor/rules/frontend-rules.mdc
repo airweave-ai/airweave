@@ -392,3 +392,8 @@ Available helpers from `useOrganizationContext()`:
 - Never assign to `innerHTML` — it is banned by ESLint (CASA-41)
 - Never use `dangerouslySetInnerHTML` — it is banned by ESLint (CASA-41)
 - Use React state-driven rendering and `textContent` instead
+
+### 8. **Console Logging**
+- Never use `console.log()`, `console.info()`, or `console.debug()` — they are banned by ESLint
+- Use `console.error()` for errors/exceptions and `console.warn()` for deprecation or potential issues
+- For DEV-only flow tracing, gate behind `import.meta.env.DEV` and add `// eslint-disable-next-line no-console` above

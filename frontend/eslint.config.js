@@ -28,6 +28,7 @@ export default tseslint.config(
       "@typescript-eslint/no-empty-object-type": "off",
       "react-refresh/only-export-components": "off",
       "react-hooks/exhaustive-deps": "off",
+      "no-console": ["warn", { "allow": ["error", "warn"] }],
       "no-restricted-properties": ["error", {
         "object": "Math",
         "property": "random",
