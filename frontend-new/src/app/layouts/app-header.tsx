@@ -43,7 +43,7 @@ export function AppHeader() {
   const routeBreadcrumbs = useMatches({
     select: (matches) =>
       matches.flatMap((match) => {
-        const breadcrumb = match.staticData?.breadcrumb;
+        const breadcrumb = match.staticData.breadcrumb;
 
         if (!breadcrumb) {
           return [];

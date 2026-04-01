@@ -1,8 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { DashboardPage } from '@/app/pages/dashboard';
 import {
-  prefetchCollectionCount,
   ensureListCollections,
+  prefetchCollectionCount,
 } from '@/features/collections';
 
 export const Route = createFileRoute('/_authenticated/_app/')({

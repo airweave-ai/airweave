@@ -1,8 +1,12 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Plus, Search } from 'lucide-react';
+import type { CollectionsSearch } from './search';
 import {
+  CollectionCountBadge,
   CollectionFilterButtonGroup,
   CollectionsTable,
+  normalizeSearch,
+  useListCollectionsQueryOptions,
 } from '@/features/collections';
 import { cn } from '@/shared/tailwind/cn';
 import { Button } from '@/shared/ui/button';
@@ -12,12 +16,6 @@ import {
   InputGroupInput,
 } from '@/shared/ui/input-group';
 import { Spinner } from '@/shared/ui/spinner';
-import {
-  CollectionCountBadge,
-  useListCollectionsQueryOptions,
-  normalizeSearch,
-} from '@/features/collections';
-import type { CollectionsSearch } from './search';
 
 type CollectionsPageProps = CollectionsSearch & {
   onSearchChange: (search: string | undefined) => void;

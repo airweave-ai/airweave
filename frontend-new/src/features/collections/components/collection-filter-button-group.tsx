@@ -1,7 +1,7 @@
 import { ChevronDown } from 'lucide-react';
 import { cn } from '@/shared/tailwind/cn';
 import { Button } from '@/shared/ui/button';
-import { ButtonGroup, ButtonGroupSeparator } from '@/shared/ui/button-group';
+import { ButtonGroup } from '@/shared/ui/button-group';
 
 type CollectionFilterButtonGroupProps = {
   label: string;

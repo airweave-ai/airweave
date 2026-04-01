@@ -1,9 +1,9 @@
+import type { QueryClient } from '@tanstack/react-query';
 import {
   countCollectionsCountGetOptions,
   listCollectionsGetOptions,
   withOrganizationHeaders,
 } from '@/shared/api';
-import type { QueryClient } from '@tanstack/react-query';
 import { useCurrentOrganizationId } from '@/shared/session';
 
 type CollectionListParams = NonNullable<
@@ -49,7 +49,7 @@ export function collectionCountQueryOptions(
   const params: CollectionCountParams | undefined = searchParams?.search
     ? {
         query: {
-          search: searchParams?.search,
+          search: searchParams.search,
         },
       }
     : undefined;

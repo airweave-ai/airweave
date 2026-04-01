@@ -7,7 +7,9 @@ export interface BreadcrumbResolverMatch {
 
 export type BreadcrumbValue =
   | string
-  | string[]
+  | Array<string>
   | null
   | undefined
-  | ((match: BreadcrumbResolverMatch) => string | string[] | null | undefined);
+  | ((
+      match: BreadcrumbResolverMatch,
+    ) => string | Array<string> | null | undefined);

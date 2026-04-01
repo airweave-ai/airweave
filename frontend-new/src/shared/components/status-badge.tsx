@@ -1,7 +1,8 @@
 import * as React from 'react';
+import { cva } from 'class-variance-authority';
 import { Badge } from '../ui/badge';
-import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../tailwind/cn';
+import type { VariantProps } from 'class-variance-authority';
 
 const statusBadgeVariants = cva(
   'h-auto rounded-full border-[0.5px] px-2 py-0.5 font-mono text-xs font-normal',

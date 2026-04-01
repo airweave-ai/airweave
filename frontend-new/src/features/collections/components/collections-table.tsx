@@ -68,6 +68,7 @@ export const collectionsTableColumns: Array<ColumnDef<Collection>> = [
       );
     },
   },
+  // TODO: update Last Sync, Entities, and Last Query columns to display data from backend
   {
     id: 'last-sync',
     header: 'Last Sync',
