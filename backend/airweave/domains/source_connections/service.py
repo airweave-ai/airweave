@@ -258,14 +258,7 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         ctx: ApiContext,
     ) -> SourceConnectionJob:
         """Cancel a running sync job."""
-        source_conn = await self._resolve_source_connection(db, source_connection_id, ctx)
-        sync_id = source_conn.sync_id
-        assert sync_id is not None
-
         sync_job = await self._sync_service.cancel_job(db, job_id=job_id, ctx=ctx)
-
-        if sync_job.sync_id != sync_id:
-            raise NotFoundException("Job not found for this source connection")
 
         return SourceConnectionJob(
             id=sync_job.id,

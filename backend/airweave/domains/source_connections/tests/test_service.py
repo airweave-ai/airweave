@@ -611,36 +611,16 @@ async def test_get_jobs_not_found_raises():
         await svc.get_jobs(AsyncMock(), id=uuid4(), ctx=_make_ctx())
 
 
-async def test_cancel_job_validates_ownership():
-    sc = _make_source_conn()
-    sc_repo = FakeSourceConnectionRepository()
-    sc_repo.seed(SC_ID, sc)
-
+async def test_cancel_job_delegates_to_sync_service():
     sync_svc = FakeSyncService()
     job = _make_sync_job_schema(sync_id=SYNC_ID)
     sync_svc.set_cancel_result(job)
 
-    svc = _build_run_service(sc_repo=sc_repo, sync_service=sync_svc)
+    svc = _build_run_service(sync_service=sync_svc)
     result = await svc.cancel_job(
         AsyncMock(), source_connection_id=SC_ID, job_id=JOB_ID, ctx=_make_ctx()
     )
     assert result.id == JOB_ID
-
-
-async def test_cancel_job_wrong_sync_raises():
-    sc = _make_source_conn()
-    sc_repo = FakeSourceConnectionRepository()
-    sc_repo.seed(SC_ID, sc)
-
-    sync_svc = FakeSyncService()
-    wrong_job = _make_sync_job_schema(sync_id=uuid4())
-    sync_svc.set_cancel_result(wrong_job)
-
-    svc = _build_run_service(sc_repo=sc_repo, sync_service=sync_svc)
-    with pytest.raises(NotFoundException, match="Job not found for this source connection"):
-        await svc.cancel_job(
-            AsyncMock(), source_connection_id=SC_ID, job_id=JOB_ID, ctx=_make_ctx()
-        )
 
 
 async def test_run_with_force_full_sync():
