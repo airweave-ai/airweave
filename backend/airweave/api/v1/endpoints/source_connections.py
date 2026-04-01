@@ -386,14 +386,17 @@ async def google_drive_native_search(
         access_token=None,
     )
 
-    if not hasattr(source, "native_search"):
-        raise HTTPException(
-            status_code=500,
-            detail="google_drive source does not implement native_search()",
-        )
+    try:
+        if not hasattr(source, "native_search"):
+            raise HTTPException(
+                status_code=500,
+                detail="google_drive source does not implement native_search()",
+            )
 
-    results = await source.native_search(body.query, limit=body.limit)  # type: ignore[attr-defined]
-    return GoogleDriveNativeSearchResponse(results=results)
+        results = await source.native_search(body.query, limit=body.limit)  # type: ignore[attr-defined]
+        return GoogleDriveNativeSearchResponse(results=results)
+    finally:
+        await source.http_client.aclose()
 
 
 @router.delete(

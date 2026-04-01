@@ -39,9 +39,14 @@ def _make_source_connection(
 
 
 class _FakeGoogleDriveSource:
+    class _HttpClientStub:
+        async def aclose(self) -> None:
+            return None
+
     def __init__(self, results):
         self._results = results
         self.calls = []
+        self.http_client = self._HttpClientStub()
 
     async def native_search(self, query: str, *, limit: int):
         self.calls.append({"query": query, "limit": limit})
@@ -49,7 +54,12 @@ class _FakeGoogleDriveSource:
 
 
 class _FakeNoNativeSearchSource:
-    pass
+    class _HttpClientStub:
+        async def aclose(self) -> None:
+            return None
+
+    def __init__(self):
+        self.http_client = self._HttpClientStub()
 
 
 class TestSourceConnectionsNativeSearch:
