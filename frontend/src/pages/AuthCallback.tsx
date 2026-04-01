@@ -108,7 +108,8 @@ async function exchangeCodeForCredentials(
   shortName: string,
   savedState: any
 ): Promise<{ id: string }> {
-  console.log(`🔄 Exchanging code for credentials for ${shortName}`);
+  // eslint-disable-next-line no-console
+  if (import.meta.env.DEV) console.log(`Exchanging code for credentials for ${shortName}`);
 
   // Define interface for type safety
   interface CredentialRequestData {
@@ -133,7 +134,6 @@ async function exchangeCodeForCredentials(
     requestData.client_secret = savedState.authValues.client_secret;
   }
 
-  console.log("📋 Credential request data:", requestData);
 
   const response = await apiClient.post(
     `/source-connections/${shortName}/code_to_token_credentials?code=${encodeURIComponent(code)}`,
@@ -147,7 +147,8 @@ async function exchangeCodeForCredentials(
 
   // Get credential data
   const credential = await response.json();
-  console.log("✅ Credentials created:", credential.id);
+  // eslint-disable-next-line no-console
+  if (import.meta.env.DEV) console.log(`Credentials created: ${credential.id}`);
 
   return credential;
 }
@@ -162,10 +163,8 @@ async function handleSemanticMcpOAuthCallback(
   setIsProcessing: (value: boolean) => void
 ): Promise<void> {
   try {
-    console.log("🎯 [AuthCallback] Handling SemanticMcp OAuth callback");
-    console.log("📋 Code:", code);
-    console.log("📋 Short name:", shortName);
-    console.log("📋 Saved state:", savedState);
+    // eslint-disable-next-line no-console
+    if (import.meta.env.DEV) console.log("[AuthCallback] Handling SemanticMcp OAuth callback");
 
     // Keep processing state true to maintain loading screen
     setIsProcessing(true);
@@ -180,7 +179,6 @@ async function handleSemanticMcpOAuthCallback(
       isAuthenticated: true,
     };
 
-    console.log("📊 UPDATED STATE WITH CREDENTIALS:", JSON.stringify(updatedState, null, 2));
     sessionStorage.setItem("oauth_dialog_state", JSON.stringify(updatedState));
 
     // Redirect back to SemanticMcp with restore flag
@@ -270,8 +268,6 @@ async function handleOriginalOAuthCallback(
       throw new Error("Missing short_name in state and no saved fallback");
     }
 
-    console.log("📋 Retrieved saved state:", savedState);
-    console.log("📊 FULL SAVED STATE IN AUTH CALLBACK:", JSON.stringify(savedState, null, 2));
 
     // Exchange code for credentials using the shared function
     const credential = await exchangeCodeForCredentials(code, shortName, savedState);
@@ -282,7 +278,6 @@ async function handleOriginalOAuthCallback(
       credentialId: credential.id,
       isAuthenticated: true,
     };
-    console.log("📊 UPDATED STATE WITH CREDENTIALS:", JSON.stringify(updatedState, null, 2));
     sessionStorage.setItem("oauth_dialog_state", JSON.stringify(updatedState));
 
     // Redirect back to original page with flag to restore dialog
@@ -343,7 +338,8 @@ export function AuthCallback() {
     // We must wait for our auth context to be ready and the user to be authenticated
     // before making an authenticated API call.
     if (!auth.isReady() || !auth.isAuthenticated) {
-      console.log("[AuthCallback] Waiting for authentication to be ready...");
+      // eslint-disable-next-line no-console
+      if (import.meta.env.DEV) console.log("[AuthCallback] Waiting for authentication to be ready...");
       setIsProcessing(true); // Ensure loading indicator is shown
       return;
     }
@@ -364,7 +360,8 @@ export function AuthCallback() {
 
           // Check if this is from SemanticMcp
           if (savedState.source === "semantic-mcp") {
-            console.log("🔍 [AuthCallback] Detected SemanticMcp OAuth flow");
+            // eslint-disable-next-line no-console
+            if (import.meta.env.DEV) console.log("[AuthCallback] Detected SemanticMcp OAuth flow");
             hasProcessedRef.current = true; // Prevent duplicate processing
             setIsSemanticMcpFlow(true); // Set the flag
 
@@ -427,7 +424,8 @@ export function AuthCallback() {
       }
 
       // If we get here, it's not from SemanticMcp, so use the original flow (short_name via state)
-      console.log("🔍 [AuthCallback] Using original OAuth flow");
+      // eslint-disable-next-line no-console
+      if (import.meta.env.DEV) console.log("[AuthCallback] Using original OAuth flow");
       await handleOriginalOAuthCallback(searchParams, statePayload, hasProcessedRef, setIsProcessing);
     };
 

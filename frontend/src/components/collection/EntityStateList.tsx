@@ -51,7 +51,6 @@ const AnimatedCount: React.FC<{
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    console.log(`[AnimatedCount] Count changed from ${prevCount} to ${count}`);
     if (count !== prevCount && count > prevCount) {
       // Clear any existing interval
       if (intervalRef.current) {
@@ -616,17 +615,6 @@ export const EntityStateList: React.FC<EntityStateListProps> = ({
   const [isLoadingDefinitions, setIsLoadingDefinitions] = useState(true);
   const isSyncing = isRunning || isPending;
 
-  // Debug logging to track real-time updates
-  useEffect(() => {
-    console.log('[EntityStateList] Props updated:', {
-      hasState: !!state,
-      stateEntityStates: state?.entity_states,
-      propEntityStates: entityStates,
-      isRunning,
-      isPending,
-      stateLastUpdated: state?.lastUpdated
-    });
-  }, [state, entityStates, isRunning, isPending]);
 
   // Fetch entity definitions for this source
   useEffect(() => {
@@ -659,15 +647,6 @@ export const EntityStateList: React.FC<EntityStateListProps> = ({
     const entityStatesToUse = state?.entity_states && state.entity_states.length > 0
       ? state.entity_states  // Real-time updates from store
       : entityStates;  // Fallback to prop data
-
-    console.log('[EntityStateList] Computing combined entities:', {
-      entityStatesFromProp: entityStates,
-      entityStatesFromStore: state?.entity_states,
-      usingSource: state?.entity_states ? 'store' : 'prop',
-      storeLastUpdated: state?.lastUpdated,
-      isRunning,
-      isPending
-    });
 
     const entityMap = new Map<string, { name: string; count: number; definition?: EntityDefinition }>();
 
@@ -721,15 +700,12 @@ export const EntityStateList: React.FC<EntityStateListProps> = ({
   }, [combinedEntities]);
 
   const handleEntityClick = (entityName: string) => {
-    console.log('EntityClick:', entityName, 'Current expanded:', expandedEntity);
-
     if (expandedEntity === entityName) {
       // Closing the same entity
       setExpandedEntity(null);
     } else {
       // Check if entity exists before expanding
       const entity = combinedEntities.find(e => e.name === entityName);
-      console.log('Found entity:', entity);
 
       if (entity) {
         // Opening a new entity or switching - direct transition
@@ -753,12 +729,9 @@ export const EntityStateList: React.FC<EntityStateListProps> = ({
   // Use height transition for detail view
   const expandedEntityData = expandedEntity ? combinedEntities.find(e => e.name === expandedEntity) : null;
 
-  console.log('Expanded state:', { expandedEntity, expandedEntityData, combinedEntitiesCount: combinedEntities.length });
-
   // If expandedEntity is set but data not found, clear it
   useEffect(() => {
     if (expandedEntity && !combinedEntities.find(e => e.name === expandedEntity)) {
-      console.log('Clearing orphaned expanded entity:', expandedEntity);
       setExpandedEntity(null);
     }
   }, [expandedEntity, combinedEntities]);

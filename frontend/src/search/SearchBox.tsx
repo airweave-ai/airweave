@@ -313,9 +313,8 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                     break;
             }
 
-            console.log(`[SearchBox] ---- ${tier.toUpperCase()} SEARCH ----`);
-            console.log(`[SearchBox] URL: POST ${streamUrl}`);
-            console.log(`[SearchBox] Body:`, JSON.stringify(requestBody, null, 2));
+            // eslint-disable-next-line no-console
+            if (import.meta.env.DEV) console.log(`[SearchBox] ${tier.toUpperCase()} SEARCH:`, JSON.stringify(requestBody));
 
             const response = await apiClient.post(
                 streamUrl,

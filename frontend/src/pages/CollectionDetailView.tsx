@@ -281,12 +281,10 @@ const Collections = () => {
     // Fetch source connections for a collection with detailed sync job status
     const fetchSourceConnections = async (collectionId: string) => {
         try {
-            console.log("Fetching source connections for collection:", collectionId);
             const response = await apiClient.get(`/source-connections/?collection=${collectionId}`);
 
             if (response.ok) {
                 const listData = await response.json();
-                console.log("Loaded source connection list:", listData);
 
                 // Fetch detailed data for each connection to get sync job status
                 const detailedConnections = await Promise.all(
@@ -295,10 +293,6 @@ const Collections = () => {
                             const detailResponse = await apiClient.get(`/source-connections/${connection.id}`);
                             if (detailResponse.ok) {
                                 const detailedData = await detailResponse.json();
-                                console.log(`📝 Fetched detailed data for ${connection.name}:`, {
-                                    last_sync_job_status: detailedData.last_sync_job_status,
-                                    last_sync_job_id: detailedData.last_sync_job_id
-                                });
                                 return detailedData;
                             } else {
                                 console.warn(`Failed to fetch details for connection ${connection.id}`);
@@ -328,7 +322,6 @@ const Collections = () => {
                 } else {
                     // If no connections, ensure selectedConnection is null
                     setSelectedConnection(null);
-                    console.log("No connections to select");
                 }
             } else {
                 console.error("Failed to load source connections:", await response.text());
@@ -474,7 +467,6 @@ const Collections = () => {
     };
 
     const handleSelectConnection = (connection: SourceConnection) => {
-        console.log("Manually selecting connection:", connection.id);
         setSelectedConnection(connection);
     };
 
@@ -574,7 +566,6 @@ const Collections = () => {
 
     // Initial data loading
     useEffect(() => {
-        console.log(`\nFetching collection because of readable id change\n`)
         setSelectedConnection(null);
         fetchCollection();
     }, [readable_id]); // Only depend on readable_id
@@ -622,7 +613,6 @@ const Collections = () => {
     // Listen for source connection updates
     useEffect(() => {
         const unsubscribe = onCollectionEvent(SOURCE_CONNECTION_UPDATED, (data) => {
-            console.log("Source connection updated:", data);
 
             // Always refresh the list from server to ensure consistency
             if (collection?.readable_id) {
@@ -639,20 +629,7 @@ const Collections = () => {
         return unsubscribe;
     }, [collection?.readable_id, selectedConnection?.id]);
 
-    // Add right before the source connections section in render
-    useEffect(() => {
-        console.log("Source connections state:", {
-            count: sourceConnections.length,
-            connections: sourceConnections,
-            selectedId: selectedConnection?.id
-        });
-    }, [sourceConnections, selectedConnection]);
 
-    // Add this in the Source Connections Section right above the mapping
-    console.log("Rendering source connections section", {
-        count: sourceConnections.length,
-        selectedId: selectedConnection?.id
-    });
 
     // Get connection status indicator based on connection state
     const getConnectionStatusIndicator = (connection: SourceConnection) => {

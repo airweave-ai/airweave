@@ -226,19 +226,9 @@ export const AuthProviderDetailView: React.FC<AuthProviderDetailViewProps> = ({
     const [isDeleting, setIsDeleting] = useState(false);
     const [isClosing, setIsClosing] = useState(false);
 
-    console.log('🔍 [AuthProviderDetailView] Component mounted with:', {
-        authProviderConnectionId,
-        authProviderName,
-        authProviderShortName,
-        viewData
-    });
-
     // Log component lifecycle
     useEffect(() => {
-        console.log('🌟 [AuthProviderDetailView] useEffect mount check');
-
         return () => {
-            console.log('💥 [AuthProviderDetailView] Component unmounting');
             // Clear any stored errors when component unmounts
             clearStoredErrorDetails();
         };
@@ -256,7 +246,6 @@ export const AuthProviderDetailView: React.FC<AuthProviderDetailViewProps> = ({
         let isMounted = true;
 
         const fetchConnectionDetails = async () => {
-            console.log('📡 [AuthProviderDetailView] Fetching connection details for:', authProviderConnectionId);
             setLoading(true);
             try {
                 const response = await apiClient.get(`/auth-providers/connections/${authProviderConnectionId}`);

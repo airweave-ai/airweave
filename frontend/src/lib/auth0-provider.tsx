@@ -60,14 +60,6 @@ export const Auth0ProviderWithNavigation = ({ children }: Auth0ProviderWithNavig
   // We are on a third-party OAuth callback path, so we should skip the redirect callback
   const isThirdPartyCallback = window.location.pathname.startsWith('/auth/callback/');
 
-  if (import.meta.env.DEV) {
-    console.log('Auth0 Configuration:', {
-      domain: authConfig.auth0.domain,
-      clientId: authConfig.auth0.clientId,
-      callbackUrl: window.location.origin + '/callback',
-      cacheLocation,
-    });
-  }
 
   return (
     <Auth0Provider

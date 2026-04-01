@@ -131,8 +131,6 @@ export const SourceSelectorView: React.FC<SourceSelectorViewProps> = ({
      * Handle source selection - simplified to just pass source data to next view
      */
     const handleSourceSelect = (source: Source) => {
-        console.log(`Selected source: ${source.name} (${source.short_name})`);
-
         // Include collection data from viewData in the data passed to next view
         onNext?.({
             sourceId: source.short_name,

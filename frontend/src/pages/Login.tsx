@@ -27,7 +27,6 @@ const Login = () => {
           },
         };
 
-        console.log('Attempting login with invitation. Check Auth0 if this fails.', redirectOptions);
 
         loginWithRedirect(redirectOptions);
       } else {

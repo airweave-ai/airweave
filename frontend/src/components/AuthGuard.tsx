@@ -27,7 +27,6 @@ export const AuthGuard = ({ children }: AuthGuardProps) => {
       // This will use the superuser's organization created by the backend
       useOrganizationStore.getState().initializeOrganizations()
         .then((orgs) => {
-          console.log('Local dev: Loaded organizations:', orgs.length);
           setCanRenderChildren(true);
         })
         .catch((error) => {

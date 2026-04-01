@@ -66,17 +66,14 @@ export const useAPIKeysStore = create<APIKeysState>((set, get) => ({
 
     // If we already have data and no force refresh, return cached data
     if (apiKeys.length > 0 && !forceRefresh) {
-      console.log("🔍 [APIKeysStore] Using cached API keys, skipping API call");
       return apiKeys;
     }
 
     // If already loading, don't start another request
     if (isLoading && !forceRefresh) {
-      console.log("🔍 [APIKeysStore] API keys already loading, skipping duplicate request");
       return apiKeys;
     }
 
-    console.log("🔍 [APIKeysStore] Fetching API keys from API");
     set({ isLoading: true, error: null });
 
     try {
@@ -176,7 +173,6 @@ export const useAPIKeysStore = create<APIKeysState>((set, get) => ({
 
   // Utility action for clearing state (useful when switching organizations)
   clearAPIKeys: () => {
-    console.log("🧹 [APIKeysStore] Clearing API keys state");
     set({
       apiKeys: [],
       isLoading: false,

@@ -60,9 +60,6 @@ export const CollectionCreationModal: React.FC = () => {
     // Close the modal immediately - this MUST set isOpen to false
     closeModal();
 
-    // Double-check it's actually closed
-    console.log('Modal closing, isOpen should be false:', useCollectionCreationStore.getState().isOpen);
-
     // Reset state after modal is fully closed (animation complete)
     // This prevents the "stateless" modal issue
     setTimeout(() => {
@@ -116,14 +113,10 @@ export const CollectionCreationModal: React.FC = () => {
 
   const columnWidths = getColumnWidths();
 
-  // Debug logging
-  console.log('Modal render - isOpen:', isOpen, 'currentStep:', currentStep);
-
   return (
     <DialogPrimitive.Root
       open={isOpen}
       onOpenChange={(open) => {
-        console.log('onOpenChange called - open:', open, 'isOpen:', isOpen);
         // Only handle close events, not open events
         if (!open && isOpen) {
           handleClose();

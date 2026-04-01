@@ -58,7 +58,6 @@ export const useUsageStore = create<UsageState>((set, get) => ({
 
     // If there's already an in-flight request, return it (deduplication)
     if (state.inflightRequest) {
-      console.log('[UsageStore] Deduplicating request - returning existing promise');
       return state.inflightRequest;
     }
 

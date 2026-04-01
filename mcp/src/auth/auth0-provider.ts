@@ -220,13 +220,8 @@ export class Auth0OAuthProvider implements OAuthServerProvider {
             });
 
             if (!tokenResponse.ok) {
-                const errorBody = await tokenResponse.text();
-                console.error(`[${new Date().toISOString()}] Auth0 token exchange error:`, {
-                    status: tokenResponse.status,
-                    body: errorBody,
-                    redirect_uri: callbackUrl.toString(),
-                });
-                throw new Error(`Auth0 code exchange failed with status ${tokenResponse.status}: ${errorBody}`);
+                console.error(`[${new Date().toISOString()}] Auth0 token exchange error: status=${tokenResponse.status}`);
+                throw new Error(`Auth0 code exchange failed with status ${tokenResponse.status}`);
             }
 
             const tokens = await tokenResponse.json() as Auth0TokenResponse;

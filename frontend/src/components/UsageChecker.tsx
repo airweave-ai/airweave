@@ -13,7 +13,6 @@ export const UsageChecker = () => {
   useEffect(() => {
     // Check usage when organization changes or on mount
     if (currentOrganization) {
-      console.log('[UsageChecker] Checking usage for organization:', currentOrganization.id);
       checkActions({
         source_connections: 1,
         entities: 1,

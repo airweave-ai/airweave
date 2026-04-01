@@ -160,7 +160,6 @@ export class EntityStateMediator {
             if (data.type === 'entity_state') {
               // Handle entity state updates from backend
               // The backend sends entity_counts as a map of entity_type -> count
-              console.log('[EntityStateMediator] Entity state update received:', data);
 
               // Update the store's entity_states array
               const currentConnection = this.stateStore.getConnection(this.connectionId);
@@ -191,7 +190,6 @@ export class EntityStateMediator {
               const progressUpdate: SyncProgressUpdate = data as SyncProgressUpdate;
               this.stateStore.updateFromProgress(progressUpdate);
             } else if (data.type === 'sync_complete') {
-              console.log('[EntityStateMediator] Sync completion message received:', data);
 
               // Update the store with final entity states
               const currentConnection = this.stateStore.getConnection(this.connectionId);

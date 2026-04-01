@@ -78,8 +78,6 @@ export const AuthProviderDialog: React.FC<AuthProviderDialogProps> = ({
     };
 
     const handleNext = (data?: any) => {
-        console.log("🚀 [AuthProviderDialog] handleNext called with:", data);
-
         // Merge new data with existing viewData
         const newViewData = { ...viewData, ...data };
         setViewData(newViewData);
@@ -91,8 +89,6 @@ export const AuthProviderDialog: React.FC<AuthProviderDialogProps> = ({
     };
 
     const handleComplete = (result?: any) => {
-        console.log("✅ [AuthProviderDialog] handleComplete called with:", result);
-
         // Handle different completion actions
         if (result?.action === 'edit') {
             // Switch to edit mode

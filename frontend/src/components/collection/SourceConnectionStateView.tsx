@@ -277,7 +277,6 @@ const SourceConnectionStateView: React.FC<Props> = ({
             currentState.last_sync_job.status === 'pending' ||
             currentState.last_sync_job.status === 'created' ||
             currentState.last_sync_job.status === 'cancelling')) {
-          console.log('Subscribing to active sync job:', currentState.last_sync_job.id);
           await mediator.current.subscribeToJobUpdates(currentState.last_sync_job.id);
         }
       }).catch(error => {
@@ -342,7 +341,6 @@ const SourceConnectionStateView: React.FC<Props> = ({
         syncStatus === 'completed' ||
         syncStatus === 'failed' ||
         (!syncStatus || (syncStatus !== 'running' && syncStatus !== 'in_progress' && syncStatus !== 'pending' && syncStatus !== 'created'))) {
-        console.log('Clearing isLocalCancelling due to status:', syncStatus);
         setIsLocalCancelling(false);
         if (cancelTimeoutRef.current) {
           clearTimeout(cancelTimeoutRef.current);
@@ -423,7 +421,6 @@ const SourceConnectionStateView: React.FC<Props> = ({
       return;
     }
 
-    console.log('CANCEL CLICKED - Setting isLocalCancelling to true');
     // Set cancelling state immediately for instant UI feedback
     setIsLocalCancelling(true);
 
@@ -545,7 +542,6 @@ const SourceConnectionStateView: React.FC<Props> = ({
     syncState = 'SYNCING';
   }
 
-  console.log('SYNC STATE:', { syncState, isLocalCancelling, jobStatus });
 
   // Legacy flags for compatibility
   const isRunning = jobStatus === 'running' || jobStatus === 'in_progress';
@@ -760,12 +756,10 @@ const SourceConnectionStateView: React.FC<Props> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        console.log('BUTTON CLICKED, syncState:', syncState);
                         if (syncState === 'IDLE') {
                           if (!entitiesAllowed || isCheckingUsage) return;
                           handleRunSync();
                         } else if (syncState === 'SYNCING') {
-                          console.log('Calling handleCancelSync');
                           handleCancelSync();
                         }
                         // Do nothing if CANCELLING
