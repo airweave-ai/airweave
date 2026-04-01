@@ -18,10 +18,12 @@ logger = logging.getLogger(__name__)
 ORG_KEY_PREFIX = "context:org"
 USER_KEY_PREFIX = "context:user"
 API_KEY_PREFIX = "context:apikey"
+SESSION_KEY_PREFIX = "context:session"
 
 ORG_TTL = 30
 USER_TTL = 30
 API_KEY_TTL = 600
+SESSION_TTL = 300
 
 
 class RedisContextCache(ContextCache):
@@ -100,6 +102,34 @@ class RedisContextCache(ContextCache):
             await self._redis.setex(f"{API_KEY_PREFIX}:{key_hash}", API_KEY_TTL, str(org_id))
         except Exception as e:
             logger.debug("Cache write error (api_key): %s", e)
+
+    # --- Session validity ---
+
+    async def get_session_valid(self, session_id: str) -> Optional[bool]:
+        """Return cached session validity, or None on miss."""
+        try:
+            data = await self._redis.get(f"{SESSION_KEY_PREFIX}:{session_id}")
+            if data is None:
+                return None
+            return bool(data.decode("utf-8") == "1")
+        except Exception as e:
+            logger.debug("Cache read error (session %s): %s", session_id, e)
+            return None
+
+    async def set_session_valid(self, session_id: str, is_valid: bool, ttl: int = SESSION_TTL) -> None:
+        """Cache session validity with TTL."""
+        try:
+            value = "1" if is_valid else "0"
+            await self._redis.setex(f"{SESSION_KEY_PREFIX}:{session_id}", ttl, value)
+        except Exception as e:
+            logger.debug("Cache write error (session %s): %s", session_id, e)
+
+    async def invalidate_session(self, session_id: str) -> None:
+        """Negative-cache a revoked session so concurrent readers don't re-populate it as valid."""
+        try:
+            await self._redis.setex(f"{SESSION_KEY_PREFIX}:{session_id}", SESSION_TTL, "0")
+        except Exception as e:
+            logger.debug("Cache invalidation error (session %s): %s", session_id, e)
 
     # --- Invalidation ---
 
