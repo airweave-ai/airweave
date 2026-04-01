@@ -110,6 +110,10 @@ class Settings(BaseSettings):
     AUTH0_CLIENT_ID: Optional[str] = None  # SPA Client ID
     AUTH0_M2M_CLIENT_ID: Optional[str] = None  # Machine-to-Machine Client ID for Management API
     AUTH0_M2M_CLIENT_SECRET: Optional[str] = None  # Machine-to-Machine Client Secret
+    AUTH0_WEBHOOK_SECRET: str = ""  # Shared secret for Auth0 Action webhooks
+    AUTH0_SID_CLAIM_KEY: str = "https://airweave.ai/sid"  # Namespaced claim for session ID
+    # When True, reject JWTs without sid (requires Post Login Action deployed)
+    AUTH0_SID_REQUIRED: bool = False
 
     ENCRYPTION_KEY: str
 
@@ -416,6 +420,23 @@ class Settings(BaseSettings):
         if not v or len(v) < 32:
             raise ValueError(
                 "STATE_SECRET must be at least 32 characters long. "
+                "Generate a strong secret using: "
+                "python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+            )
+        return v
+
+    @field_validator("AUTH0_WEBHOOK_SECRET", mode="before")
+    def validate_auth0_webhook_secret(cls, v: str, info: ValidationInfo) -> str:
+        """Validate AUTH0_WEBHOOK_SECRET minimum length when non-empty.
+
+        An empty string disables the webhook endpoint entirely.
+        When set, enforce a minimum length to prevent weak secrets.
+        """
+        if not v:
+            return v
+        if len(v) < 32:
+            raise ValueError(
+                "AUTH0_WEBHOOK_SECRET must be at least 32 characters long when set. "
                 "Generate a strong secret using: "
                 "python -c 'import secrets; print(secrets.token_urlsafe(32))'"
             )
