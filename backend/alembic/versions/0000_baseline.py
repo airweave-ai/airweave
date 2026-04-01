@@ -320,9 +320,9 @@ def upgrade():
     sa.Column('sync_id', sa.UUID(), nullable=False),
     sa.Column('entity_definition_short_name', sa.String(), nullable=False, comment='Registry short_name (e.g. asana_task_entity)'),
     sa.Column('count', sa.Integer(), nullable=False),
-    sa.Column('id', sa.UUID(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
-    sa.Column('modified_at', sa.DateTime(), nullable=False),
+    sa.Column('id', sa.UUID(), server_default=sa.text('gen_random_uuid()'), nullable=False),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
+    sa.Column('modified_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
     sa.ForeignKeyConstraint(['sync_id'], ['sync.id'], name='fk_entity_count_sync_id', ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('sync_id', 'entity_definition_short_name', name='uq_sync_entity_def_short_name')
