@@ -12,10 +12,6 @@ type CollectionListParams = NonNullable<
 
 type SearchParams = { search?: string };
 
-export function normalizeSearch(search?: string) {
-  return search?.trim() || undefined;
-}
-
 export function listCollectionsQueryOptions(
   organizationId: string,
   { search }: SearchParams = {},

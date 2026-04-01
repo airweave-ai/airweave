@@ -9,10 +9,10 @@ const MAX_SOURCE_CONNECTIONS_ICONS = 3;
 
 export function CollectionSourceConnections({
   sourceConnections,
-  size = 'default',
+  size,
 }: {
   sourceConnections: Array<SourceConnectionSummary>;
-  size?: 'default' | 'sm';
+  size?: CollectionSourceConnectionIconProps['size'];
 }) {
   const sourceConnectionCount = sourceConnections.length;
   if (!sourceConnectionCount) {
@@ -29,34 +29,15 @@ export function CollectionSourceConnections({
       >
         {sourceConnections
           .slice(0, MAX_SOURCE_CONNECTIONS_ICONS)
-          .map((source, index) => {
-            const sourceLogoSrc = getAppIconUrl(source.short_name);
-
-            return (
-              <div
-                key={`${source.name}:${index}`}
-                className={cn(
-                  'relative',
-                  index > 0 && (size === 'sm' ? '-ml-4' : '-ml-4.5'),
-                )}
-                style={{ zIndex: sourceConnectionCount - index }}
-              >
-                <div
-                  className={cn(
-                    'flex size-8 items-center justify-center rounded-md border border-[#1f1f1f] bg-[#353535] p-1.5',
-                    size === 'sm' && 'size-6 p-1',
-                  )}
-                >
-                  <img
-                    alt=""
-                    aria-hidden="true"
-                    className={cn('size-4.5', size === 'sm' && 'size-3')}
-                    src={sourceLogoSrc}
-                  />
-                </div>
-              </div>
-            );
-          })}
+          .map((source, index) => (
+            <CollectionSourceConnectionIcon
+              key={`${source.name}:${index}`}
+              shortName={source.short_name}
+              size={size}
+              overlap={index > 0}
+              style={{ zIndex: sourceConnectionCount - index }}
+            />
+          ))}
         {sourceConnectionCount > MAX_SOURCE_CONNECTIONS_ICONS && (
           <p className="font-mono text-xs text-muted-foreground">
             +{sourceConnectionCount - MAX_SOURCE_CONNECTIONS_ICONS}
@@ -74,6 +55,49 @@ export function CollectionSourceConnections({
         }
       />
     </Tooltip>
+  );
+}
+
+type CollectionSourceConnectionIconProps = React.ComponentProps<'div'> & {
+  size?: 'default' | 'sm';
+  shortName: string;
+  overlap: boolean;
+};
+
+function CollectionSourceConnectionIcon({
+  size = 'default',
+  shortName,
+  overlap,
+  ...props
+}: CollectionSourceConnectionIconProps) {
+  const sourceIconSrc = getAppIconUrl(shortName);
+
+  return (
+    <div
+      className={cn(
+        'relative',
+        overlap && (size === 'sm' ? '-ml-4' : '-ml-4.5'),
+      )}
+      {...props}
+    >
+      <div
+        className={cn(
+          'flex size-8 items-center justify-center rounded-md border border-[#1f1f1f] bg-[#353535] p-1.5',
+          size === 'sm' && 'size-6 p-1',
+        )}
+      >
+        {sourceIconSrc ? (
+          <img
+            alt=""
+            aria-hidden="true"
+            className={cn('size-4.5', size === 'sm' && 'size-3')}
+            src={sourceIconSrc}
+          />
+        ) : (
+          <span>{shortName.charAt(0).toUpperCase()}</span>
+        )}
+      </div>
+    </div>
   );
 }
 

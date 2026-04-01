@@ -9,5 +9,5 @@ export {
   useListCollectionsQueryOptions,
   prefetchCollectionCount,
   ensureListCollections,
-  normalizeSearch,
 } from './api';
+export { normalizeCollectionSearch } from './utils';
