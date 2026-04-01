@@ -1,11 +1,14 @@
+import * as React from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Plus, Search } from 'lucide-react';
+import { ConnectSourceDialog } from '../components/connect-source-dialog';
+import type { ConnectSourceStep } from '../components/connect-source-state';
 import type { CollectionsSearch } from './search';
 import {
   CollectionCountBadge,
   CollectionFilterButtonGroup,
   CollectionsTable,
-  normalizeSearch,
+  normalizeCollectionSearch,
   useListCollectionsQueryOptions,
 } from '@/features/collections';
 import { cn } from '@/shared/tailwind/cn';
@@ -18,6 +21,10 @@ import {
 import { Spinner } from '@/shared/ui/spinner';
 
 type CollectionsPageProps = CollectionsSearch & {
+  onConnectSourceChange: (
+    connectSource: ConnectSourceStep | undefined,
+    options?: { replace?: boolean },
+  ) => void;
   onSearchChange: (search: string | undefined) => void;
 };
 
@@ -29,10 +36,12 @@ const collectionsPageFilters = [
 ] as const;
 
 export function CollectionsPage({
+  connectSource,
   search,
+  onConnectSourceChange,
   onSearchChange,
 }: CollectionsPageProps) {
-  const normalizedSearch = normalizeSearch(search);
+  const normalizedSearch = normalizeCollectionSearch(search);
   const collectionsQueryOptions = useListCollectionsQueryOptions({
     search: normalizedSearch,
   });
@@ -66,7 +75,11 @@ export function CollectionsPage({
             <CollectionFilterButtonGroup key={filter} label={filter} />
           ))}
 
-          <Button data-icon="inline-start" type="button">
+          <Button
+            data-icon="inline-start"
+            type="button"
+            onClick={() => onConnectSourceChange({ step: 'source' })}
+          >
             <Plus />
             Create Collection
           </Button>
@@ -103,6 +116,12 @@ export function CollectionsPage({
           emptyMessage={emptyMessage}
         />
       </div>
+
+      <ConnectSourceDialog
+        step={connectSource}
+        onClose={() => onConnectSourceChange(undefined, { replace: true })}
+        onStepChange={(nextStep) => onConnectSourceChange(nextStep)}
+      />
     </section>
   );
 }

@@ -1,18 +1,21 @@
 import * as React from 'react';
 import { createFileRoute, stripSearchParams } from '@tanstack/react-router';
+import type { ConnectSourceStep } from '@/app/pages/components/connect-source-state';
 import {
   CollectionsPage,
   collectionsSearchSchema,
 } from '@/app/pages/collections';
 import {
   ensureListCollections,
-  normalizeSearch,
+  normalizeCollectionSearch,
   prefetchCollectionCount,
 } from '@/features/collections';
 
 export const Route = createFileRoute('/_authenticated/_app/collections')({
   component: RouteComponent,
-  loaderDeps: ({ search }) => ({ search: normalizeSearch(search.search) }),
+  loaderDeps: ({ search }) => ({
+    search: normalizeCollectionSearch(search.search),
+  }),
   loader: async ({ context, deps }) => {
     const collectionListPromise = ensureListCollections({
       queryClient: context.queryClient,
@@ -37,7 +40,7 @@ export const Route = createFileRoute('/_authenticated/_app/collections')({
 });
 
 function RouteComponent() {
-  const { search } = Route.useSearch();
+  const { connectSource, search } = Route.useSearch();
   const navigate = Route.useNavigate();
   const handleSearchChange = React.useCallback(
     (nextSearch: string | undefined) =>
@@ -51,7 +54,27 @@ function RouteComponent() {
     [navigate],
   );
 
+  const handleConnectSourceChange = React.useCallback(
+    (
+      nextConnectSource: ConnectSourceStep | undefined,
+      options?: { replace?: boolean },
+    ) =>
+      navigate({
+        replace: options?.replace,
+        search: (prev) => ({
+          ...prev,
+          connectSource: nextConnectSource,
+        }),
+      }),
+    [navigate],
+  );
+
   return (
-    <CollectionsPage search={search} onSearchChange={handleSearchChange} />
+    <CollectionsPage
+      connectSource={connectSource}
+      search={search}
+      onConnectSourceChange={handleConnectSourceChange}
+      onSearchChange={handleSearchChange}
+    />
   );
 }
