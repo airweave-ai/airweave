@@ -61,7 +61,10 @@ export const collectionsTableColumns: Array<ColumnDef<Collection>> = [
       }
 
       return (
-        <CollectionSourceConnections sourceConnections={sourceConnections} />
+        <CollectionSourceConnections
+          size="sm"
+          sourceConnections={sourceConnections}
+        />
       );
     },
   },

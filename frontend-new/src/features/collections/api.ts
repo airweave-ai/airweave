@@ -12,6 +12,10 @@ type CollectionListParams = NonNullable<
 
 type SearchParams = { search?: string };
 
+export function normalizeSearch(search?: string) {
+  return search?.trim() || undefined;
+}
+
 export function listCollectionsQueryOptions(
   organizationId: string,
   { search }: SearchParams = {},
@@ -38,13 +42,17 @@ type CollectionCountParams = NonNullable<
   Parameters<typeof countCollectionsCountGetOptions>[0]
 >;
 
-function collectionCountQueryOptions(
+export function collectionCountQueryOptions(
   organizationId: string,
   searchParams?: SearchParams,
 ) {
-  const params: CollectionCountParams = {
-    query: searchParams,
-  };
+  const params: CollectionCountParams | undefined = searchParams?.search
+    ? {
+        query: {
+          search: searchParams?.search,
+        },
+      }
+    : undefined;
 
   return countCollectionsCountGetOptions(
     withOrganizationHeaders({ organizationId }, params),
@@ -57,7 +65,7 @@ export function useCollectionCountQueryOptions(searchParams?: SearchParams) {
   return collectionCountQueryOptions(currentOrganizationId, searchParams);
 }
 
-export function ensureCollectionCount({
+export function prefetchCollectionCount({
   queryClient,
   organizationId,
   search,
@@ -66,7 +74,7 @@ export function ensureCollectionCount({
   organizationId: string;
   search?: string;
 }) {
-  return queryClient.ensureQueryData(
+  return queryClient.prefetchQuery(
     collectionCountQueryOptions(organizationId, { search }),
   );
 }

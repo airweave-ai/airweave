@@ -12,7 +12,7 @@ export function CollectionSourceConnections({
   size = 'default',
 }: {
   sourceConnections: Array<SourceConnectionSummary>;
-  size?: 'default' | 'lg';
+  size?: 'default' | 'sm';
 }) {
   const sourceConnectionCount = sourceConnections.length;
   if (!sourceConnectionCount) {
@@ -23,8 +23,8 @@ export function CollectionSourceConnections({
     <Tooltip>
       <TooltipTrigger
         className={cn(
-          'flex w-20 items-center gap-1.5',
-          size === 'lg' && 'w-26',
+          'flex w-26 items-center gap-1.5',
+          size === 'sm' && 'w-20',
         )}
       >
         {sourceConnections
@@ -37,20 +37,20 @@ export function CollectionSourceConnections({
                 key={`${source.name}:${index}`}
                 className={cn(
                   'relative',
-                  index > 0 && (size === 'lg' ? '-ml-4.5' : '-ml-4'),
+                  index > 0 && (size === 'sm' ? '-ml-4' : '-ml-4.5'),
                 )}
                 style={{ zIndex: sourceConnectionCount - index }}
               >
                 <div
                   className={cn(
-                    'flex size-6 items-center justify-center rounded-md border border-[#1f1f1f] bg-[#353535] p-1',
-                    size === 'lg' && 'size-8 p-1.5',
+                    'flex size-8 items-center justify-center rounded-md border border-[#1f1f1f] bg-[#353535] p-1.5',
+                    size === 'sm' && 'size-6 p-1',
                   )}
                 >
                   <img
                     alt=""
                     aria-hidden="true"
-                    className={cn('size-3', size === 'lg' && 'size-4.5')}
+                    className={cn('size-4.5', size === 'sm' && 'size-3')}
                     src={sourceLogoSrc}
                   />
                 </div>

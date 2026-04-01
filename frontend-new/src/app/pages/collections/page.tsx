@@ -1,16 +1,10 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Plus, Search } from 'lucide-react';
-import type { Collection } from '@/shared/api';
 import {
   CollectionFilterButtonGroup,
   CollectionsTable,
 } from '@/features/collections';
-import {
-  useCollectionCountQueryOptions,
-  useListCollectionsQueryOptions,
-} from '@/features/collections/api';
 import { cn } from '@/shared/tailwind/cn';
-import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import {
   InputGroup,
@@ -18,11 +12,16 @@ import {
   InputGroupInput,
 } from '@/shared/ui/input-group';
 import { Spinner } from '@/shared/ui/spinner';
+import {
+  CollectionCountBadge,
+  useListCollectionsQueryOptions,
+  normalizeSearch,
+} from '@/features/collections';
+import type { CollectionsSearch } from './search';
 
-interface CollectionsPageProps {
-  search?: string;
+type CollectionsPageProps = CollectionsSearch & {
   onSearchChange: (search: string | undefined) => void;
-}
+};
 
 const collectionsPageFilters = [
   'Health',
@@ -35,11 +34,9 @@ export function CollectionsPage({
   search,
   onSearchChange,
 }: CollectionsPageProps) {
-  const collectionCountQueryOptions = useCollectionCountQueryOptions();
-  const { data: collectionCount, isPending: isCollectionCountPending } =
-    useQuery(collectionCountQueryOptions);
+  const normalizedSearch = normalizeSearch(search);
   const collectionsQueryOptions = useListCollectionsQueryOptions({
-    search,
+    search: normalizedSearch,
   });
   const {
     data: collections,
@@ -50,15 +47,10 @@ export function CollectionsPage({
     placeholderData: keepPreviousData,
   });
 
-  const activeSearch = search ?? '';
-  const displayedCollections = collections;
-  const displayedCollectionCount = isCollectionCountPending
-    ? '...'
-    : collectionCount;
   const emptyMessage = error
     ? 'Failed to load collections.'
-    : activeSearch
-      ? `No collections found matching "${activeSearch}".`
+    : normalizedSearch
+      ? `No collections found matching "${normalizedSearch}".`
       : 'No collections found.';
 
   return (
@@ -68,12 +60,7 @@ export function CollectionsPage({
           <h1 className="font-heading text-lg font-semibold text-foreground">
             Collections
           </h1>
-          <Badge
-            variant="secondary"
-            className="text-[0.625rem] text-muted-foreground"
-          >
-            {displayedCollectionCount}
-          </Badge>
+          <CollectionCountBadge />
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -94,8 +81,8 @@ export function CollectionsPage({
             <Search className="size-4" />
           </InputGroupAddon>
           <InputGroupInput
-            value={activeSearch}
-            onChange={(e) => onSearchChange(e.target.value.trim() || undefined)}
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value || undefined)}
             placeholder="Search collections by name or ID..."
           />
           <InputGroupAddon
@@ -114,7 +101,7 @@ export function CollectionsPage({
         </InputGroup>
 
         <CollectionsTable
-          collections={displayedCollections}
+          collections={collections ?? []}
           emptyMessage={emptyMessage}
         />
       </div>

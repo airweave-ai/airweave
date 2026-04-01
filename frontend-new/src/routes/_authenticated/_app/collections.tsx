@@ -1,29 +1,43 @@
+import * as React from 'react';
 import {
   CollectionsPage,
   collectionsSearchSchema,
 } from '@/app/pages/collections';
-import { ensureListCollections } from '@/features/collections';
-import { createFileRoute } from '@tanstack/react-router';
-import * as React from 'react';
+import {
+  ensureListCollections,
+  normalizeSearch,
+  prefetchCollectionCount,
+} from '@/features/collections';
+import { createFileRoute, stripSearchParams } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/_authenticated/_app/collections')({
   component: RouteComponent,
-  loaderDeps: ({ search }) => ({ search: search.search }),
-  loader: ({ context, deps }) =>
-    ensureListCollections({
+  loaderDeps: ({ search }) => ({ search: normalizeSearch(search.search) }),
+  loader: async ({ context, deps }) => {
+    const collectionListPromise = ensureListCollections({
       queryClient: context.queryClient,
       organizationId: context.currentOrganizationId,
       search: deps.search,
-    }),
+    });
+
+    void prefetchCollectionCount({
+      queryClient: context.queryClient,
+      organizationId: context.currentOrganizationId,
+    });
+
+    await collectionListPromise;
+  },
   staticData: {
     breadcrumb: 'Collections',
   },
   validateSearch: collectionsSearchSchema,
+  search: {
+    middlewares: [stripSearchParams({ search: '' })],
+  },
 });
 
 function RouteComponent() {
-  const initialCollections = Route.useLoaderData();
-  const search = Route.useSearch();
+  const { search } = Route.useSearch();
   const navigate = Route.useNavigate();
   const handleSearchChange = React.useCallback(
     (nextSearch: string | undefined) =>
@@ -38,10 +52,6 @@ function RouteComponent() {
   );
 
   return (
-    <CollectionsPage
-      initialCollections={initialCollections}
-      search={search.search}
-      onSearchChange={handleSearchChange}
-    />
+    <CollectionsPage search={search} onSearchChange={handleSearchChange} />
   );
 }
