@@ -125,6 +125,21 @@ export interface SourceConnection {
   modified_by_email?: string;
 }
 
+// User session types for session management
+export interface UserSession {
+  id: string;
+  ip_address?: string;
+  user_agent?: string;
+  created_at: string;
+  last_active_at?: string;
+  is_current: boolean;
+}
+
+export interface SessionTerminationResult {
+  terminated_count: number;
+  terminated_at: string;
+}
+
 interface DataSourceCardProps {
   shortName: string;
   name: string;
