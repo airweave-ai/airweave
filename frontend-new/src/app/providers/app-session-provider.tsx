@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useSuspenseQueries } from '@tanstack/react-query';
+import type { AppSessionValue, AppSessionViewer } from '@/shared/session';
 import { router } from '@/app/router';
 import {
   currentOrganizationsQueryOptions,
@@ -9,11 +10,7 @@ import {
   usePreferredOrganizationId,
 } from '@/features/app-session';
 import { useAuth } from '@/shared/auth';
-import {
-  AppSessionContext,
-  type AppSessionValue,
-  type AppSessionViewer,
-} from '@/shared/session';
+import { AppSessionContext } from '@/shared/session';
 
 export function AppSessionProvider({ children }: React.PropsWithChildren) {
   const auth = useAuth();

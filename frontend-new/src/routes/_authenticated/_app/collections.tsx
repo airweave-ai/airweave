@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { createFileRoute, stripSearchParams } from '@tanstack/react-router';
 import {
   CollectionsPage,
   collectionsSearchSchema,
@@ -8,7 +9,6 @@ import {
   normalizeSearch,
   prefetchCollectionCount,
 } from '@/features/collections';
-import { createFileRoute, stripSearchParams } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/_authenticated/_app/collections')({
   component: RouteComponent,

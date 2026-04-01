@@ -24,7 +24,7 @@ export function CollectionCountBadge() {
       variant="secondary"
       className="text-[0.625rem] text-muted-foreground"
     >
-      {collectionCount ?? '-'}
+      {collectionCount}
     </Badge>
   );
 }

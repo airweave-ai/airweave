@@ -1,9 +1,5 @@
 import * as React from 'react';
-import {
-  keepPreviousData,
-  useQuery,
-  useSuspenseQuery,
-} from '@tanstack/react-query';
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { Maximize2, Plus, Search } from 'lucide-react';
 import {
@@ -15,6 +11,12 @@ import {
   useDemoCollection,
 } from '../demo-collection';
 import { CollectionActionsMenu } from './collection-actions-menu';
+import {
+  CollectionSourceConnections,
+  CollectionSourceConnectionsSkeleton,
+} from './collection-source-connections';
+import { CollectionStatusBadge } from './collection-status-badge';
+import { CollectionCountBadge } from './collection-count-badge';
 import type { Collection } from '@/shared/api';
 import type { ReactNode } from 'react';
 import { Badge } from '@/shared/ui/badge';
@@ -26,12 +28,6 @@ import {
   InputGroupInput,
 } from '@/shared/ui/input-group';
 import { Skeleton } from '@/shared/ui/skeleton';
-import {
-  CollectionSourceConnections,
-  CollectionSourceConnectionsSkeleton,
-} from './collection-source-connections';
-import { CollectionStatusBadge } from './collection-status-badge';
-import { CollectionCountBadge } from './collection-count-badge';
 
 export function CollectionsSummaryCard() {
   const [search, setSearch] = React.useState<string | undefined>(undefined);
@@ -82,9 +78,7 @@ export function CollectionsSummaryCard() {
         </div>
       </CardHeader>
       <CardContent>
-        {collectionCount === undefined ? (
-          <CollectionsSummaryCardContentSkeleton />
-        ) : !hasCollections && !hasActiveSearch ? (
+        {!hasCollections && !hasActiveSearch ? (
           <DemoCollectionContent />
         ) : (
           <React.Suspense fallback={<CollectionsSummaryCardContentSkeleton />}>
@@ -200,7 +194,8 @@ function CollectionListItem({
           {description ?? (
             <span className="flex items-center gap-1.5">
               {sourceCount} Connections{' '}
-              <span className="size-[3px] rounded-full bg-current" /> X Entities
+              {/* TODO: replace with fetched number of entities */}
+              <span className="size-[3px] rounded-full bg-current" /> 0 Entities
             </span>
           )}
         </p>
