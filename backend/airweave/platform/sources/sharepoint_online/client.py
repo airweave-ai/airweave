@@ -137,6 +137,12 @@ class GraphClient:
         async for site in self.get_paginated(url, params):
             yield site
 
+    async def get_all_sites(self) -> AsyncGenerator[Dict[str, Any], None]:
+        """Enumerate all sites in the tenant (requires application permissions)."""
+        url = f"{GRAPH_BASE_URL}/sites/getAllSites"
+        async for site in self.get_paginated(url):
+            yield site
+
     async def get_subsites(self, site_id: str) -> AsyncGenerator[Dict[str, Any], None]:
         """Get subsites of a SharePoint site."""
         url = f"{GRAPH_BASE_URL}/sites/{site_id}/sites"
@@ -233,11 +239,18 @@ class GraphClient:
         self,
         drive_id: str,
         delta_token: str = "",
+        prefer_headers: Optional[List[str]] = None,
     ) -> Tuple[List[Dict[str, Any]], str]:
         """Get changes since the last delta token.
 
         Returns (changed_items, new_delta_token).
         If delta_token is empty, returns all items (initial sync).
+
+        Args:
+            drive_id: The drive to query.
+            delta_token: Continuation token from a previous delta query.
+            prefer_headers: Optional Prefer header values for app-only delta
+                (e.g., ["deltashowsharingchanges", "deltashowremovedasdeleted"]).
         """
         if delta_token:
             url = delta_token  # Delta tokens are full URLs
@@ -249,7 +262,15 @@ class GraphClient:
         delta_link = ""
 
         while current_url:
-            data = await self.get(current_url)
+            if prefer_headers:
+                headers = await self._headers()
+                headers["Prefer"] = ", ".join(prefer_headers)
+                self.logger.debug(f"GET {current_url} (Prefer: {headers['Prefer']})")
+                response = await self._http_client.get(current_url, headers=headers, timeout=30.0)
+                response.raise_for_status()
+                data = response.json()
+            else:
+                data = await self.get(current_url)
             items = data.get("value", [])
             all_items.extend(items)
 

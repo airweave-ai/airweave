@@ -752,6 +752,42 @@ class ShopifyAuthConfig(AuthConfig):
     )
 
 
+class SharePointOnlineAppAuthConfig(AuthConfig):
+    """SharePoint Online app-only authentication using client credentials.
+
+    Uses client_id + client_secret for Microsoft Graph API calls,
+    and a certificate private key for SharePoint REST API calls.
+    Requires an Azure AD app registration with application permissions
+    and admin consent.
+    """
+
+    tenant_id: str = Field(
+        title="Tenant ID",
+        description="Azure AD tenant ID (e.g., 'contoso.onmicrosoft.com' or a UUID)",
+        min_length=1,
+    )
+    client_id: str = Field(
+        title="Client ID",
+        description="Application (client) ID from the Azure AD app registration",
+        min_length=1,
+    )
+    client_secret: str = Field(
+        title="Client Secret",
+        description="Client secret from the Azure AD app registration (for Graph API)",
+        min_length=1,
+        json_schema_extra={"is_secret": True},
+    )
+    private_key: str = Field(
+        title="Private Key (PEM)",
+        description=(
+            "PEM-encoded private key for certificate authentication "
+            "(for SharePoint REST API). Starts with '-----BEGIN PRIVATE KEY-----'"
+        ),
+        min_length=1,
+        json_schema_extra={"is_secret": True},
+    )
+
+
 class ServiceNowAuthConfig(AuthConfig):
     """ServiceNow instance authentication credentials schema.
 

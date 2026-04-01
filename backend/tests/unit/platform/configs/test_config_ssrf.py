@@ -221,13 +221,13 @@ class TestSharePointOnlineConfig:
         with pytest.raises(ValidationError, match="SSRF|blocked"):
             SharePointOnlineConfig(site_url="http://127.0.0.1")
 
-    def test_empty_site_url_rejected(self):
-        with pytest.raises(ValidationError):
-            SharePointOnlineConfig(site_url="")
+    def test_empty_site_url_passes(self):
+        cfg = SharePointOnlineConfig(site_url="")
+        assert cfg.site_url == ""
 
-    def test_missing_site_url_rejected(self):
-        with pytest.raises(ValidationError):
-            SharePointOnlineConfig()
+    def test_missing_site_url_defaults_empty(self):
+        cfg = SharePointOnlineConfig()
+        assert cfg.site_url == ""
 
     def test_accepts_valid_site_url(self):
         cfg = SharePointOnlineConfig(

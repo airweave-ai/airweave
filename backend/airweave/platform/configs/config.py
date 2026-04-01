@@ -1191,20 +1191,21 @@ class SharePointOnlineConfig(SourceConfig):
     """
 
     site_url: str = Field(
-        ...,
+        default="",
         title="SharePoint Site URL",
         description=(
-            "URL of the SharePoint site to sync "
+            "URL of a specific SharePoint site to sync "
             "(e.g., 'https://contoso.sharepoint.com/sites/Marketing'). "
-            "Create one source connection per site."
+            "Leave empty to sync all sites in the tenant."
         ),
-        min_length=1,
     )
 
     @field_validator("site_url")
     @classmethod
     def validate_site_url_ssrf(cls, v: str) -> str:
         """Validate site URL for SSRF safety."""
+        if not v:
+            return v
         validate_url(v.strip())
         return v.strip()
 
