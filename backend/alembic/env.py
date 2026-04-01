@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import sys
 from logging.config import fileConfig
 from pathlib import Path
 
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, text
 
 from alembic import context
 
@@ -48,6 +49,37 @@ def _set_incremental_rev_id(context, revision, directives):  # noqa: ARG001
         script.rev_id = _next_revision_id()
 
 
+_INCREMENTAL_REV = re.compile(r"^\d{4}$")
+
+
+def _stamp_legacy_revisions(connection) -> None:
+    """Transition from legacy Alembic revisions to the squashed baseline.
+
+    The migration history was squashed from 144 files into a single '0000'
+    baseline.  Existing databases still carry the old revision IDs in
+    ``alembic_version``.  This helper detects that and re-stamps to '0000'
+    so ``alembic upgrade head`` can proceed.
+    """
+    log = logging.getLogger("alembic.runtime.migration")
+    try:
+        rows = connection.execute(text("SELECT version_num FROM alembic_version")).fetchall()
+    except Exception:
+        return  # table doesn't exist yet — fresh database
+
+    versions = [r[0] for r in rows]
+    if not versions:
+        return
+
+    legacy = [v for v in versions if not _INCREMENTAL_REV.match(v)]
+    if not legacy:
+        return
+
+    log.info("Detected legacy revisions %s — stamping to baseline '0000'", legacy)
+    connection.execute(text("DELETE FROM alembic_version"))
+    connection.execute(text("INSERT INTO alembic_version (version_num) VALUES ('0000')"))
+    connection.commit()
+
+
 def get_url() -> str:
     """Get the sync database URL for Alembic (strips +asyncpg from the async URI)."""
     url = str(settings.SQLALCHEMY_ASYNC_DATABASE_URI)
@@ -78,6 +110,8 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        _stamp_legacy_revisions(connection)
+
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
