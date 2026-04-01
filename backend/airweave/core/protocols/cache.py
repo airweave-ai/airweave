@@ -51,11 +51,11 @@ class ContextCache(Protocol):
 
     # --- Session validity ---
 
-    async def get_session_valid(self, session_id: str) -> Optional[bool]:
+    async def is_session_valid(self, session_id: str) -> Optional[bool]:
         """Return True/False for cached validity, or None on miss."""
         ...
 
-    async def set_session_valid(self, session_id: str, is_valid: bool, ttl: int = 300) -> None:
+    async def mark_session_valid(self, session_id: str, is_valid: bool, ttl: int = 300) -> None:
         """Cache session validity with TTL."""
         ...
 

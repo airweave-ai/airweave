@@ -41,12 +41,12 @@ class FakeContextCache(ContextCache):
 
     # --- Session validity ---
 
-    async def get_session_valid(self, session_id: str) -> Optional[bool]:
+    async def is_session_valid(self, session_id: str) -> Optional[bool]:
         if session_id in self._sessions:
             return self._sessions[session_id]
         return None
 
-    async def set_session_valid(self, session_id: str, is_valid: bool, ttl: int = 300) -> None:
+    async def mark_session_valid(self, session_id: str, is_valid: bool, ttl: int = 300) -> None:
         self._sessions[session_id] = is_valid
 
     async def invalidate_session(self, session_id: str) -> None:

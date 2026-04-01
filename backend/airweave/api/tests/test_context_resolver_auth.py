@@ -29,6 +29,7 @@ def _make_resolver(cache=None):
         user_repo=MagicMock(),
         api_key_repo=MagicMock(),
         org_repo=MagicMock(),
+        session_repo=MagicMock(),
     )
 
 

@@ -21,6 +21,10 @@ class UserRepositoryProtocol(Protocol):
         """Return user ORM model by email, or raise NotFoundException."""
         ...
 
+    async def get_by_auth0_id(self, db: AsyncSession, *, auth0_id: str) -> Any:
+        """Return user ORM model by Auth0 ID, or None if not found."""
+        ...
+
     async def create(self, db: AsyncSession, *, obj_in: schemas.UserCreate) -> User:
         """Create a new user and flush. Returns ORM model."""
         ...

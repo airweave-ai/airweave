@@ -105,7 +105,7 @@ class RedisContextCache(ContextCache):
 
     # --- Session validity ---
 
-    async def get_session_valid(self, session_id: str) -> Optional[bool]:
+    async def is_session_valid(self, session_id: str) -> Optional[bool]:
         """Return cached session validity, or None on miss."""
         try:
             data = await self._redis.get(f"{SESSION_KEY_PREFIX}:{session_id}")
@@ -116,7 +116,9 @@ class RedisContextCache(ContextCache):
             logger.debug("Cache read error (session %s): %s", session_id, e)
             return None
 
-    async def set_session_valid(self, session_id: str, is_valid: bool, ttl: int = SESSION_TTL) -> None:
+    async def mark_session_valid(
+        self, session_id: str, is_valid: bool, ttl: int = SESSION_TTL
+    ) -> None:
         """Cache session validity with TTL."""
         try:
             value = "1" if is_valid else "0"
