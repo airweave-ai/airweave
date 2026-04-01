@@ -61,10 +61,19 @@ def _stamp_legacy_revisions(connection) -> None:
     so ``alembic upgrade head`` can proceed.
     """
     log = logging.getLogger("alembic.runtime.migration")
-    try:
-        rows = connection.execute(text("SELECT version_num FROM alembic_version")).fetchall()
-    except Exception:
-        return  # table doesn't exist yet — fresh database
+
+    has_table = connection.execute(
+        text(
+            "SELECT EXISTS("
+            "  SELECT 1 FROM information_schema.tables"
+            "  WHERE table_name = 'alembic_version'"
+            ")"
+        )
+    ).scalar()
+    if not has_table:
+        return  # fresh database — alembic will create the table
+
+    rows = connection.execute(text("SELECT version_num FROM alembic_version")).fetchall()
 
     versions = [r[0] for r in rows]
     if not versions:
