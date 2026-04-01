@@ -59,6 +59,10 @@ def _stamp_legacy_revisions(connection) -> None:
     baseline.  Existing databases still carry the old revision IDs in
     ``alembic_version``.  This helper detects that and re-stamps to '0000'
     so ``alembic upgrade head`` can proceed.
+
+    Every code-path must ``commit()`` or ``rollback()`` before returning so
+    the connection's autobegin transaction is closed and alembic's own
+    ``begin_transaction()`` can start cleanly.
     """
     log = logging.getLogger("alembic.runtime.migration")
 
@@ -71,16 +75,15 @@ def _stamp_legacy_revisions(connection) -> None:
         )
     ).scalar()
     if not has_table:
-        return  # fresh database — alembic will create the table
+        connection.rollback()
+        return
 
     rows = connection.execute(text("SELECT version_num FROM alembic_version")).fetchall()
 
     versions = [r[0] for r in rows]
-    if not versions:
-        return
-
     legacy = [v for v in versions if not _INCREMENTAL_REV.match(v)]
     if not legacy:
+        connection.rollback()
         return
 
     log.info("Detected legacy revisions %s — stamping to baseline '0000'", legacy)
