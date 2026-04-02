@@ -83,7 +83,6 @@ function renderConnectSourceStep({
               step: 'config',
             })
           }
-          selectedShortName={undefined}
         />
       );
     case 'config':
@@ -138,11 +137,9 @@ function renderConnectSourceStep({
 function ConnectSourcePickerStep({
   onClose,
   onSelectSource,
-  selectedShortName,
 }: {
   onClose: () => void;
   onSelectSource?: (source: Source) => void;
-  selectedShortName?: string;
 }) {
   const {
     activeLabel,
@@ -196,7 +193,6 @@ function ConnectSourcePickerStep({
             onClearFilters={clearFilters}
             onRetry={() => void refetch()}
             onSelectSource={onSelectSource}
-            selectedShortName={selectedShortName}
           />
         </FlowDialogMain>
       </FlowDialogBody>

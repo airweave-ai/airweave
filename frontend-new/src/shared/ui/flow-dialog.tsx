@@ -5,9 +5,7 @@ import { cn } from '@/shared/tailwind/cn';
 import { Button } from '@/shared/ui/button';
 import { Dialog, DialogContent } from '@/shared/ui/dialog';
 
-function FlowDialog({
-  ...props
-}: React.ComponentProps<typeof Dialog>) {
+function FlowDialog({ ...props }: React.ComponentProps<typeof Dialog>) {
   return <Dialog {...props} />;
 }
 
@@ -60,15 +58,12 @@ function FlowDialogHeader({
   );
 }
 
-function FlowDialogBody({
-  className,
-  ...props
-}: React.ComponentProps<'div'>) {
+function FlowDialogBody({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="flow-dialog-body"
       className={cn(
-        'flex min-h-0 flex-1 flex-col overflow-hidden divide-y divide-border xl:flex-row xl:divide-y-0 xl:divide-x',
+        'flex min-h-0 flex-1 flex-col divide-y divide-border overflow-hidden xl:flex-row xl:divide-x xl:divide-y-0',
         className,
       )}
       {...props}
@@ -76,10 +71,7 @@ function FlowDialogBody({
   );
 }
 
-function FlowDialogMain({
-  className,
-  ...props
-}: React.ComponentProps<'div'>) {
+function FlowDialogMain({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="flow-dialog-main"
