@@ -21,10 +21,17 @@ def check_db():
 check_db()
 "
 
-# Run migrations using our existing Alembic setup
-echo "Running database migrations..."
-cd /app && poetry run alembic upgrade head
-# cd /app #dev time to not rerun alembic on conflicting branches
+# Run migrations unless explicitly disabled
+_migrate_flag="$(echo "${RUN_ALEMBIC_MIGRATIONS:-true}" | tr '[:upper:]' '[:lower:]')"
+case "$_migrate_flag" in
+    true|1|yes|on)
+        echo "Running database migrations..."
+        cd /app && poetry run alembic upgrade head
+        ;;
+    *)
+        echo "Skipping migrations (RUN_ALEMBIC_MIGRATIONS=$RUN_ALEMBIC_MIGRATIONS)"
+        ;;
+esac
 
 # Start application with hot reloading enabled
 echo "Starting application with hot reloading..."
