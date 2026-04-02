@@ -11,7 +11,6 @@ interface SourcePickerResultsProps {
   onClearFilters: () => void;
   onRetry: () => void;
   onSelectSource?: (source: Source) => void;
-  selectedShortName?: string;
 }
 
 export function SourcePickerResults({
@@ -22,7 +21,6 @@ export function SourcePickerResults({
   onClearFilters,
   onRetry,
   onSelectSource,
-  selectedShortName,
 }: SourcePickerResultsProps) {
   if (isLoading) {
     return (
@@ -52,7 +50,9 @@ export function SourcePickerResults({
     return (
       <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-center">
         <p className="text-sm text-muted-foreground">
-          {hasFilters ? 'No sources match your filters.' : 'No sources available.'}
+          {hasFilters
+            ? 'No sources match your filters.'
+            : 'No sources available.'}
         </p>
         {hasFilters ? (
           <Button
@@ -74,7 +74,6 @@ export function SourcePickerResults({
         <SourceCard
           key={source.short_name}
           source={source}
-          selected={source.short_name === selectedShortName}
           onClick={() => onSelectSource?.(source)}
         />
       ))}

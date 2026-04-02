@@ -20,6 +20,7 @@
     "@tabler/icons-react": "^3.40.0",
     "@tailwindcss/vite": "^4.2.1",
     "@tanstack/react-devtools": "^0.10.0",
+    "@tanstack/react-form": "^1.28.6",
     "@tanstack/react-query": "^5.95.2",
     "@tanstack/react-query-devtools": "^5.95.2",
     "@tanstack/react-router": "^1.167.4",

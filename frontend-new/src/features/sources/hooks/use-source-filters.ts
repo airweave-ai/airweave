@@ -3,11 +3,7 @@ import * as React from 'react';
 import { filterSources, getSourceLabelCounts } from '../utils';
 import type { Source } from '@/shared/api';
 
-export function useSourceFilters({
-  sources,
-}: {
-  sources: Array<Source>;
-}) {
+export function useSourceFilters({ sources }: { sources: Array<Source> }) {
   const [search, setSearch] = React.useState('');
   const [activeLabel, setActiveLabel] = React.useState<string | undefined>();
 
