@@ -8,6 +8,7 @@ export {
   listCollectionsQueryOptions,
   useListCollectionsQueryOptions,
   prefetchCollectionCount,
+  ensureCollectionCount,
   ensureListCollections,
 } from './api';
 export { normalizeCollectionSearch } from './utils';

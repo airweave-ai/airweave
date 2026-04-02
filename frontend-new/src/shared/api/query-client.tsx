@@ -4,7 +4,13 @@ import {
   QueryClientProvider as ReactQueryClientProvider,
 } from '@tanstack/react-query';
 
-export const queryClient = new QueryClient();
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 300,
+    },
+  },
+});
 
 export function QueryClientProvider({ children }: React.PropsWithChildren) {
   return (

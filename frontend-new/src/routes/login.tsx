@@ -34,5 +34,7 @@ function LoginRouteComponent() {
 }
 
 function LoginPendingComponent() {
-  return <LoginRouteComponent />;
+  const search = Route.useSearch();
+
+  return <LoginPage organizationName={search.organization_name} />;
 }
