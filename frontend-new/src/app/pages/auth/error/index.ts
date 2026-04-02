@@ -1,0 +1,1 @@
+export { AuthErrorPage } from './page';

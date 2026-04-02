@@ -2,23 +2,21 @@ import { createFileRoute } from '@tanstack/react-router';
 import { DashboardPage } from '@/app/pages/dashboard';
 import {
   ensureListCollections,
-  prefetchCollectionCount,
+  ensureCollectionCount,
 } from '@/features/collections';
 
 export const Route = createFileRoute('/_authenticated/_app/')({
-  loader: async ({ context }) => {
-    const collectionListPromise = ensureListCollections({
-      queryClient: context.queryClient,
-      organizationId: context.currentOrganizationId,
-    });
-
-    void prefetchCollectionCount({
-      queryClient: context.queryClient,
-      organizationId: context.currentOrganizationId,
-    });
-
-    await collectionListPromise;
-  },
+  loader: ({ context }) =>
+    Promise.all([
+      ensureListCollections({
+        queryClient: context.queryClient,
+        organizationId: context.currentOrganizationId,
+      }),
+      ensureCollectionCount({
+        queryClient: context.queryClient,
+        organizationId: context.currentOrganizationId,
+      }),
+    ]),
   component: RouteComponent,
 });
 

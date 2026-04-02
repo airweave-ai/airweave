@@ -14,13 +14,13 @@ export interface AuthLoginOptions {
 }
 
 interface AuthStateSharedFields {
-  error: Error | null;
   getAccessToken: () => Promise<string | null>;
   login: (options?: AuthLoginOptions) => Promise<void>;
   logout: () => void;
 }
 
 export type AuthLoadingState = AuthStateSharedFields & {
+  error: null;
   isAuthenticated: false;
   isLoading: true;
   status: 'loading';
@@ -28,6 +28,7 @@ export type AuthLoadingState = AuthStateSharedFields & {
 };
 
 export type AuthUnauthenticatedState = AuthStateSharedFields & {
+  error: null;
   isAuthenticated: false;
   isLoading: false;
   status: 'unauthenticated';
@@ -35,14 +36,24 @@ export type AuthUnauthenticatedState = AuthStateSharedFields & {
 };
 
 export type AuthAuthenticatedState = AuthStateSharedFields & {
+  error: null;
   isAuthenticated: true;
   isLoading: false;
   status: 'authenticated';
   user: AuthUser;
 };
 
+export type AuthErrorState = AuthStateSharedFields & {
+  error: Error;
+  isAuthenticated: false;
+  isLoading: false;
+  status: 'error';
+  user: null;
+};
+
 export type AuthState =
   | AuthLoadingState
+  | AuthErrorState
   | AuthUnauthenticatedState
   | AuthAuthenticatedState;
 export type AuthResolvedState =
@@ -95,7 +106,6 @@ function createAuthState({
   user: AuthUser | undefined;
 }): AuthState {
   const sharedFields: AuthStateSharedFields = {
-    error,
     getAccessToken,
     login,
     logout,
@@ -104,6 +114,7 @@ function createAuthState({
   if (isLoading) {
     return {
       ...sharedFields,
+      error: null,
       isAuthenticated: false,
       isLoading: true,
       status: 'loading',
@@ -111,9 +122,21 @@ function createAuthState({
     };
   }
 
+  if (error) {
+    return {
+      ...sharedFields,
+      error,
+      isAuthenticated: false,
+      isLoading: false,
+      status: 'error',
+      user: null,
+    };
+  }
+
   if (!isAuthenticated) {
     return {
       ...sharedFields,
+      error: null,
       isAuthenticated: false,
       isLoading: false,
       status: 'unauthenticated',
@@ -124,6 +147,7 @@ function createAuthState({
   if (!user) {
     return {
       ...sharedFields,
+      error: null,
       isAuthenticated: false,
       isLoading: true,
       status: 'loading',
@@ -133,6 +157,7 @@ function createAuthState({
 
   return {
     ...sharedFields,
+    error: null,
     isAuthenticated: true,
     isLoading: false,
     status: 'authenticated',
@@ -329,6 +354,8 @@ export function AuthProvider({
       clientId={authConfig.clientId}
       domain={authConfig.domain}
       onRedirectCallback={onRedirectCallback}
+      useRefreshTokens={true}
+      useRefreshTokensFallback={true}
     >
       <AuthStateProvider>{children}</AuthStateProvider>
     </Auth0Provider>

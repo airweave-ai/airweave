@@ -1,4 +1,3 @@
-import * as React from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Plus, Search } from 'lucide-react';
 import { ConnectSourceDialog } from '../components/connect-source-dialog';

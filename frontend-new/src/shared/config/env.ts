@@ -2,6 +2,7 @@ import * as z from 'zod';
 
 const envSchema = z
   .object({
+    DEV: z.boolean().default(false),
     VITE_API_URL: z.string().default('http://localhost:8001'),
     VITE_ENABLE_AUTH: z.stringbool().default(false),
     VITE_DEV_IS_ADMIN: z.stringbool().optional(),
