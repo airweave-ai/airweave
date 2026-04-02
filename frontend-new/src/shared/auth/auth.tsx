@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Auth0Provider, useAuth0 } from '@auth0/auth0-react';
 import { getAuthCallbackRedirectTarget } from './auth-redirects';
+import type { AuthStoreSnapshot } from './auth-store';
 import { resetAuthStoreSnapshot, setAuthStoreSnapshot } from './auth-store';
 import type { AppState, User as AuthUser } from '@auth0/auth0-react';
 import { env } from '@/shared/config/env';
@@ -143,19 +144,29 @@ function AuthSnapshotReadyBoundary({
   children,
   value,
 }: React.PropsWithChildren<{ value: AuthState }>) {
-  const [isReady, setIsReady] = React.useState(false);
+  const snapshot = React.useMemo<AuthStoreSnapshot>(
+    () => ({
+      getAccessToken: value.getAccessToken,
+      isAuthenticated: value.isAuthenticated,
+      isLoading: value.isLoading,
+    }),
+    [value.getAccessToken, value.isAuthenticated, value.isLoading],
+  );
+  const [readySnapshot, setReadySnapshot] =
+    React.useState<AuthStoreSnapshot | null>(null);
 
   React.useLayoutEffect(() => {
-    setAuthStoreSnapshot(value);
-    setIsReady(true);
+    setAuthStoreSnapshot(snapshot);
+    setReadySnapshot(snapshot);
+  }, [snapshot]);
 
+  React.useEffect(() => {
     return () => {
       resetAuthStoreSnapshot();
-      setIsReady(false);
     };
-  }, [value.getAccessToken, value.isAuthenticated, value.isLoading]);
+  }, []);
 
-  if (!isReady) {
+  if (readySnapshot !== snapshot) {
     return null;
   }
 
@@ -318,8 +329,6 @@ export function AuthProvider({
       clientId={authConfig.clientId}
       domain={authConfig.domain}
       onRedirectCallback={onRedirectCallback}
-      useRefreshTokens
-      useRefreshTokensFallback
     >
       <AuthStateProvider>{children}</AuthStateProvider>
     </Auth0Provider>
