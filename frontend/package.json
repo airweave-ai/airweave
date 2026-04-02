@@ -43,6 +43,7 @@
     "@types/uuid": "^10.0.0",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
+    "bowser": "^2.14.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cronstrue": "^2.59.0",

@@ -35,7 +35,11 @@ function ApiAuthConnector({ children }: { children: React.ReactNode }) {
         auth.clearToken();
         console.log("Token cleared via auth context");
       },
-      isReady: () => auth.isReady()
+      isReady: () => auth.isReady(),
+      forceLogout: () => {
+        if (import.meta.env.DEV) console.log("Force logout triggered — session revoked");
+        auth.logout();
+      },
     });
 
     // Log the auth state for debugging

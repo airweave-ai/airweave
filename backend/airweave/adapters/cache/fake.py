@@ -14,6 +14,7 @@ class FakeContextCache(ContextCache):
         self._orgs: dict[UUID, schemas.Organization] = {}
         self._users: dict[str, schemas.User] = {}
         self._api_keys: dict[str, UUID] = {}
+        self._sessions: dict[str, bool] = {}
         self._invalidations: list[tuple[str, str]] = []
 
     # --- Read ---
@@ -37,6 +38,20 @@ class FakeContextCache(ContextCache):
 
     async def set_api_key_org_id(self, api_key: str, org_id: UUID) -> None:
         self._api_keys[api_key] = org_id
+
+    # --- Session validity ---
+
+    async def is_session_valid(self, session_id: str) -> Optional[bool]:
+        if session_id in self._sessions:
+            return self._sessions[session_id]
+        return None
+
+    async def mark_session_valid(self, session_id: str, is_valid: bool, ttl: int = 300) -> None:
+        self._sessions[session_id] = is_valid
+
+    async def invalidate_session(self, session_id: str) -> None:
+        self._sessions[session_id] = False
+        self._invalidations.append(("session", session_id))
 
     # --- Invalidation ---
 

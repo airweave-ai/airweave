@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
+import { ActiveSessions } from "@/components/sessions/ActiveSessions";
+import authConfig from "@/config/auth";
 
 const Profile = () => {
   const navigate = useNavigate();
@@ -65,6 +67,8 @@ const Profile = () => {
             </div>
           </CardContent>
         </Card>
+
+        {authConfig.authEnabled && <ActiveSessions />}
       </div>
     </div>
   );

@@ -48,6 +48,34 @@ export function calculateRuntime(startTime: number, endTime?: number): number {
 }
 
 /**
+ * Format relative time (e.g., "2m ago", "1h ago")
+ * Consolidated from SessionCard and webhooks/shared
+ */
+export function formatRelativeTime(timestamp?: string): string {
+    if (!timestamp) return "Unknown";
+    const ms = parseBackendTimestamp(timestamp);
+    if (ms === null) return "Unknown";
+    const date = new Date(ms);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHour = Math.floor(diffMin / 60);
+    const diffDay = Math.floor(diffHour / 24);
+
+    if (diffSec < 60) return "just now";
+    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffHour < 24) return `${diffHour}h ago`;
+    if (diffDay < 7) return `${diffDay}d ago`;
+    return new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+    }).format(date);
+}
+
+/**
  * Format runtime milliseconds into human-readable string
  */
 export function formatRuntime(milliseconds: number): string {

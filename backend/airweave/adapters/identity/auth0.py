@@ -383,6 +383,29 @@ class Auth0ManagementClient:
             logger.error(f"Failed to set roles for user {user_id} in org {org_id}: {e}")
             raise
 
+    # -- Grant revocation --
+
+    async def revoke_user_grants(self, auth0_user_id: str) -> None:
+        """Revoke all grants for a user, invalidating their refresh tokens."""
+        try:
+            grants = await self._get_all_pages(
+                f"/grants?user_id={auth0_user_id}",
+                return_empty_list_on_error=True,
+            )
+            revoked = 0
+            for grant in grants:
+                grant_id = grant.get("id")
+                if grant_id:
+                    try:
+                        await self._make_request("DELETE", f"/grants/{grant_id}")
+                        revoked += 1
+                    except Exception as e:
+                        logger.error("Failed to delete grant %s: %s", grant_id, e)
+            logger.info("Revoked %d/%d grants for user %s", revoked, len(grants), auth0_user_id)
+        except Exception as e:
+            logger.error("Failed to list grants for %s: %s", auth0_user_id, e)
+            raise
+
     # -- Connections --
 
     async def get_all_connections(self) -> List[Dict]:

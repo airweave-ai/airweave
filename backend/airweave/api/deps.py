@@ -5,13 +5,15 @@ logic lives in ``context_resolver.py``. This module just wires FastAPI
 ``Depends()`` to the resolver.
 """
 
+from datetime import timezone
 from typing import Any, Callable, Optional
 
 from fastapi import Depends, Header, HTTPException, Request
 from fastapi_auth0 import Auth0User
+from jose import jwt as jose_jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from airweave import crud, schemas
+from airweave import schemas
 from airweave.api.auth import auth0
 from airweave.api.context import ApiContext  # noqa: F401 — re-exported for backward compat
 from airweave.api.context_resolver import ContextResolver
@@ -25,11 +27,13 @@ from airweave.core.protocols.rate_limiter import RateLimiter
 from airweave.core.shared_models import AuthMethod
 from airweave.db.session import get_db
 from airweave.domains.organizations.repository import ApiKeyRepository, OrganizationRepository
+from airweave.domains.sessions.repository import SessionRepository
 from airweave.domains.users.repository import UserRepository
 
 _user_repo = UserRepository()
 _api_key_repo = ApiKeyRepository()
 _org_repo = OrganizationRepository()
+_session_repo = SessionRepository()
 
 
 def get_container() -> Container:
@@ -102,6 +106,7 @@ async def get_context(
         user_repo=_user_repo,
         api_key_repo=_api_key_repo,
         org_repo=_org_repo,
+        session_repo=_session_repo,
     )
     return await resolver.resolve(request, db, auth0_user, x_api_key, x_organization_id)
 
@@ -114,6 +119,7 @@ async def get_logger(
 
 
 async def get_user(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     auth0_user: Optional[Auth0User] = Depends(auth0.get_user),
     cache: ContextCache = Inject(ContextCache),
@@ -126,21 +132,46 @@ async def get_user(
         user_repo=_user_repo,
         api_key_repo=_api_key_repo,
         org_repo=_org_repo,
+        session_repo=_session_repo,
     )
-    return await resolver.authenticate_user_only(db, auth0_user)
+    return await resolver.authenticate_user_only(db, auth0_user, request)
+
+
+async def _is_token_revoked(token: str, user: schemas.User, db: AsyncSession) -> bool:
+    """Check user-wide and per-session revocation for a raw JWT."""
+    try:
+        claims = jose_jwt.get_unverified_claims(token)
+    except Exception:
+        return True
+
+    if user.tokens_revoked_at is not None:
+        iat = claims.get("iat")
+        revoked_ts = user.tokens_revoked_at.replace(tzinfo=timezone.utc).timestamp()
+        if iat is None or iat < revoked_ts:
+            return True
+
+    sid = claims.get(settings.AUTH0_SID_CLAIM_KEY)
+    if sid:
+        session = await _session_repo.get_by_session_id(db, sid)
+        if session is not None and session.is_revoked:
+            return True
+
+    return False
 
 
 async def get_user_from_token(token: str, db: AsyncSession) -> Optional[schemas.User]:
     """Verify a token and return the corresponding user.
 
     Used by WebSocket/SSE endpoints that receive tokens directly.
+    Checks both user-wide token revocation (``tokens_revoked_at``)
+    and per-session revocation via the ``user_session`` table.
     """
     try:
         if token.startswith("Bearer "):
             token = token[7:]
 
         if not settings.AUTH_ENABLED:
-            user = await crud.user.get_by_email(db, email=settings.FIRST_SUPERUSER)
+            user = await _user_repo.get_by_email(db, email=settings.FIRST_SUPERUSER)
             if user:
                 return schemas.User.model_validate(user)
             return None
@@ -151,11 +182,15 @@ async def get_user_from_token(token: str, db: AsyncSession) -> Optional[schemas.
         if not auth0_user:
             return None
 
-        user = await crud.user.get_by_email(db=db, email=auth0_user.email)
+        user = await _user_repo.get_by_email(db=db, email=auth0_user.email)
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
 
-        return schemas.User.model_validate(user)
+        user_schema = schemas.User.model_validate(user)
+        if await _is_token_revoked(token, user_schema, db):
+            return None
+
+        return user_schema
     except Exception:
         return None
 

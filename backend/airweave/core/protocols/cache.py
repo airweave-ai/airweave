@@ -49,6 +49,20 @@ class ContextCache(Protocol):
         """Cache an API key → org ID mapping."""
         ...
 
+    # --- Session validity ---
+
+    async def is_session_valid(self, session_id: str) -> Optional[bool]:
+        """Return True/False for cached validity, or None on miss."""
+        ...
+
+    async def mark_session_valid(self, session_id: str, is_valid: bool, ttl: int = 300) -> None:
+        """Cache session validity with TTL."""
+        ...
+
+    async def invalidate_session(self, session_id: str) -> None:
+        """Negative-cache a session as invalid (prevents race with concurrent readers)."""
+        ...
+
     # --- Invalidation ---
 
     async def invalidate_organization(self, org_id: UUID) -> None:

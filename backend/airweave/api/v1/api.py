@@ -4,6 +4,7 @@ from airweave.api.router import TrailingSlashRouter
 from airweave.api.v1.endpoints import (
     admin,
     api_keys,
+    auth0_events,
     auth_providers,
     billing,
     browse_tree,
@@ -59,3 +60,4 @@ api_router.include_router(
 )
 api_router.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
 api_router.include_router(connect.router, prefix="/connect", tags=["connect"])
+api_router.include_router(auth0_events.router, prefix="/webhooks/auth0", tags=["webhooks"])
