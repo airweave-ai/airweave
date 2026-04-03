@@ -181,8 +181,10 @@ function CollectionListItem({
     <li className="flex flex-col gap-3 rounded-sm bg-foreground/5 px-3 py-2 md:flex-row md:items-center md:justify-between">
       <div className="space-y-0.5">
         <div className="flex flex-wrap items-center gap-1">
-          {/* TODO: add valid href */}
-          <Link to="/">
+          <Link
+            to="/collections/$collectionId"
+            params={{ collectionId: collection.readable_id }}
+          >
             <p className="text-sm font-medium text-foreground">
               {collection.name}
             </p>

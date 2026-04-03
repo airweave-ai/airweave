@@ -11,7 +11,7 @@ import {
   prefetchCollectionCount,
 } from '@/features/collections';
 
-export const Route = createFileRoute('/_authenticated/_app/collections')({
+export const Route = createFileRoute('/_authenticated/_app/collections/')({
   component: RouteComponent,
   loaderDeps: ({ search }) => ({
     search: normalizeCollectionSearch(search.search),
@@ -30,12 +30,12 @@ export const Route = createFileRoute('/_authenticated/_app/collections')({
 
     await collectionListPromise;
   },
-  staticData: {
-    breadcrumb: 'Collections',
-  },
   validateSearch: collectionsSearchSchema,
   search: {
     middlewares: [stripSearchParams({ search: '' })],
+  },
+  staticData: {
+    breadcrumb: 'Collections',
   },
 });
 

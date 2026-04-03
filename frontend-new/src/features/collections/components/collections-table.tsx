@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { Link } from '@tanstack/react-router';
 import {
   flexRender,
   getCoreRowModel,
@@ -271,7 +272,13 @@ function CollectionNameCell({ collection }: { collection: Collection }) {
 
   return (
     <div className="space-y-px whitespace-normal">
-      <p className="text-sm font-medium text-foreground">{collection.name}</p>
+      <Link
+        to="/collections/$collectionId"
+        params={{ collectionId: collection.readable_id }}
+        className="text-sm font-medium text-foreground hover:underline"
+      >
+        {collection.name}
+      </Link>
       <div className="flex items-center gap-1 text-muted-foreground">
         <span className="font-mono text-xs leading-5 text-nowrap">
           {identifier}
