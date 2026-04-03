@@ -4,9 +4,13 @@ export { CollectionsTable } from './components/collections-table';
 export { CollectionCountBadge } from './components/collection-count-badge';
 export {
   collectionCountQueryOptions,
+  createCollectionMutationOptions,
   useCollectionCountQueryOptions,
+  useCreateCollectionMutation,
+  useCreateCollectionMutationOptions,
   listCollectionsQueryOptions,
   useListCollectionsQueryOptions,
+  invalidateCollectionQueries,
   prefetchCollectionCount,
   ensureCollectionCount,
   ensureListCollections,

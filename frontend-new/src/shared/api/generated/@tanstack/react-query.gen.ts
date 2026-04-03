@@ -519,7 +519,7 @@ const createQueryKey = <TOptions extends Options>(
 
 export const healthCheckHealthGetQueryKey = (
   options?: Options<HealthCheckHealthGetData>,
-) => createQueryKey('healthCheckHealthGet', options);
+) => createQueryKey('healthCheckHealthGet', options, false, ['health']);
 
 /**
  * Health Check
@@ -553,7 +553,7 @@ export const healthCheckHealthGetOptions = (
 
 export const livenessHealthLiveGetQueryKey = (
   options?: Options<LivenessHealthLiveGetData>,
-) => createQueryKey('livenessHealthLiveGet', options);
+) => createQueryKey('livenessHealthLiveGet', options, false, ['health']);
 
 /**
  * Liveness
@@ -583,7 +583,7 @@ export const livenessHealthLiveGetOptions = (
 
 export const readinessHealthReadyGetQueryKey = (
   options?: Options<ReadinessHealthReadyGetData>,
-) => createQueryKey('readinessHealthReadyGet', options);
+) => createQueryKey('readinessHealthReadyGet', options, false, ['health']);
 
 /**
  * Readiness
@@ -660,7 +660,7 @@ export const deleteApiKeyApiKeysDeleteMutation = (
 
 export const readApiKeysApiKeysGetQueryKey = (
   options?: Options<ReadApiKeysApiKeysGetData>,
-) => createQueryKey('readApiKeysApiKeysGet', options);
+) => createQueryKey('readApiKeysApiKeysGet', options, false, ['api-keys']);
 
 /**
  * Read Api Keys
@@ -840,7 +840,7 @@ export const createApiKeyApiKeysPostMutation = (
 
 export const readApiKeyApiKeysIdGetQueryKey = (
   options: Options<ReadApiKeyApiKeysIdGetData>,
-) => createQueryKey('readApiKeyApiKeysIdGet', options);
+) => createQueryKey('readApiKeyApiKeysIdGet', options, false, ['api-keys']);
 
 /**
  * Read Api Key
@@ -931,7 +931,7 @@ export const rotateApiKeyApiKeysIdRotatePostMutation = (
 
 export const readUserUsersGetQueryKey = (
   options?: Options<ReadUserUsersGetData>,
-) => createQueryKey('readUserUsersGet', options);
+) => createQueryKey('readUserUsersGet', options, false, ['users']);
 
 /**
  * Read User
@@ -961,7 +961,13 @@ export const readUserUsersGetOptions = (
 
 export const readUserOrganizationsUsersMeOrganizationsGetQueryKey = (
   options?: Options<ReadUserOrganizationsUsersMeOrganizationsGetData>,
-) => createQueryKey('readUserOrganizationsUsersMeOrganizationsGet', options);
+) =>
+  createQueryKey(
+    'readUserOrganizationsUsersMeOrganizationsGet',
+    options,
+    false,
+    ['users'],
+  );
 
 /**
  * Read User Organizations
@@ -1022,7 +1028,10 @@ export const createOrUpdateUserUsersCreateOrUpdatePostMutation = (
 
 export const listUserOrganizationsOrganizationsGetQueryKey = (
   options?: Options<ListUserOrganizationsOrganizationsGetData>,
-) => createQueryKey('listUserOrganizationsOrganizationsGet', options);
+) =>
+  createQueryKey('listUserOrganizationsOrganizationsGet', options, false, [
+    'organizations',
+  ]);
 
 /**
  * List User Organizations
@@ -1116,7 +1125,13 @@ export const deleteOrganizationOrganizationsOrganizationIdDeleteMutation = (
 
 export const getOrganizationOrganizationsOrganizationIdGetQueryKey = (
   options: Options<GetOrganizationOrganizationsOrganizationIdGetData>,
-) => createQueryKey('getOrganizationOrganizationsOrganizationIdGet', options);
+) =>
+  createQueryKey(
+    'getOrganizationOrganizationsOrganizationIdGet',
+    options,
+    false,
+    ['organizations'],
+  );
 
 /**
  * Get Organization
@@ -1250,6 +1265,8 @@ export const getPendingInvitationsOrganizationsOrganizationIdInvitationsGetQuery
     createQueryKey(
       'getPendingInvitationsOrganizationsOrganizationIdInvitationsGet',
       options,
+      false,
+      ['organizations'],
     );
 
 /**
@@ -1327,6 +1344,8 @@ export const getOrganizationMembersOrganizationsOrganizationIdMembersGetQueryKey
     createQueryKey(
       'getOrganizationMembersOrganizationsOrganizationIdMembersGet',
       options,
+      false,
+      ['organizations'],
     );
 
 /**
@@ -1589,7 +1608,10 @@ export const createPortalSessionBillingPortalSessionPostMutation = (
 
 export const getSubscriptionBillingSubscriptionGetQueryKey = (
   options?: Options<GetSubscriptionBillingSubscriptionGetData>,
-) => createQueryKey('getSubscriptionBillingSubscriptionGet', options);
+) =>
+  createQueryKey('getSubscriptionBillingSubscriptionGet', options, false, [
+    'billing',
+  ]);
 
 /**
  * Get Subscription
@@ -1825,7 +1847,8 @@ export const checkActionsUsageCheckActionsPostMutation = (
 
 export const checkActionUsageCheckActionGetQueryKey = (
   options: Options<CheckActionUsageCheckActionGetData>,
-) => createQueryKey('checkActionUsageCheckActionGet', options);
+) =>
+  createQueryKey('checkActionUsageCheckActionGet', options, false, ['usage']);
 
 /**
  * Check Action
@@ -1855,7 +1878,10 @@ export const checkActionUsageCheckActionGetOptions = (
 
 export const getUsageDashboardUsageDashboardGetQueryKey = (
   options?: Options<GetUsageDashboardUsageDashboardGetData>,
-) => createQueryKey('getUsageDashboardUsageDashboardGet', options);
+) =>
+  createQueryKey('getUsageDashboardUsageDashboardGet', options, false, [
+    'usage',
+  ]);
 
 /**
  * Get Usage Dashboard
@@ -1887,7 +1913,7 @@ export const getUsageDashboardUsageDashboardGetOptions = (
   });
 
 export const listSourcesGetQueryKey = (options?: Options<ListSourcesGetData>) =>
-  createQueryKey('listSourcesGet', options);
+  createQueryKey('listSourcesGet', options, false, ['sources']);
 
 /**
  * List Sources
@@ -1925,7 +1951,7 @@ export const listSourcesGetOptions = (options?: Options<ListSourcesGetData>) =>
 
 export const getSourcesShortNameGetQueryKey = (
   options: Options<GetSourcesShortNameGetData>,
-) => createQueryKey('getSourcesShortNameGet', options);
+) => createQueryKey('getSourcesShortNameGet', options, false, ['sources']);
 
 /**
  * Get Source
@@ -1964,7 +1990,10 @@ export const getSourcesShortNameGetOptions = (
 
 export const listAuthProvidersAuthProvidersListGetQueryKey = (
   options?: Options<ListAuthProvidersAuthProvidersListGetData>,
-) => createQueryKey('listAuthProvidersAuthProvidersListGet', options);
+) =>
+  createQueryKey('listAuthProvidersAuthProvidersListGet', options, false, [
+    'auth-providers',
+  ]);
 
 /**
  * List Auth Providers
@@ -1998,6 +2027,8 @@ export const listAuthProviderConnectionsAuthProvidersConnectionsGetQueryKey = (
   createQueryKey(
     'listAuthProviderConnectionsAuthProvidersConnectionsGet',
     options,
+    false,
+    ['auth-providers'],
   );
 
 /**
@@ -2107,6 +2138,8 @@ export const getAuthProviderConnectionAuthProvidersConnectionsReadableIdGetQuery
     createQueryKey(
       'getAuthProviderConnectionAuthProvidersConnectionsReadableIdGet',
       options,
+      false,
+      ['auth-providers'],
     );
 
 /**
@@ -2144,7 +2177,13 @@ export const getAuthProviderConnectionAuthProvidersConnectionsReadableIdGetOptio
 
 export const getAuthProviderAuthProvidersDetailShortNameGetQueryKey = (
   options: Options<GetAuthProviderAuthProvidersDetailShortNameGetData>,
-) => createQueryKey('getAuthProviderAuthProvidersDetailShortNameGet', options);
+) =>
+  createQueryKey(
+    'getAuthProviderAuthProvidersDetailShortNameGet',
+    options,
+    false,
+    ['auth-providers'],
+  );
 
 /**
  * Get Auth Provider
@@ -2268,7 +2307,7 @@ export const updateAuthProviderConnectionAuthProvidersReadableIdPutMutation = (
 
 export const listCollectionsGetQueryKey = (
   options?: Options<ListCollectionsGetData>,
-) => createQueryKey('listCollectionsGet', options);
+) => createQueryKey('listCollectionsGet', options, false, ['collections']);
 
 /**
  * List Collections
@@ -2400,7 +2439,8 @@ export const createCollectionsPostMutation = (
 
 export const countCollectionsCountGetQueryKey = (
   options?: Options<CountCollectionsCountGetData>,
-) => createQueryKey('countCollectionsCountGet', options);
+) =>
+  createQueryKey('countCollectionsCountGet', options, false, ['collections']);
 
 /**
  * Count
@@ -2467,7 +2507,10 @@ export const deleteCollectionsReadableIdDeleteMutation = (
 
 export const getCollectionsReadableIdGetQueryKey = (
   options: Options<GetCollectionsReadableIdGetData>,
-) => createQueryKey('getCollectionsReadableIdGet', options);
+) =>
+  createQueryKey('getCollectionsReadableIdGet', options, false, [
+    'collections',
+  ]);
 
 /**
  * Get Collection
@@ -2668,7 +2711,10 @@ export const streamAgenticSearchCollectionsReadableIdSearchAgenticStreamPostMuta
 
 export const oauthCallbackSourceConnectionsCallbackGetQueryKey = (
   options?: Options<OauthCallbackSourceConnectionsCallbackGetData>,
-) => createQueryKey('oauthCallbackSourceConnectionsCallbackGet', options);
+) =>
+  createQueryKey('oauthCallbackSourceConnectionsCallbackGet', options, false, [
+    'source-connections',
+  ]);
 
 /**
  * Oauth Callback
@@ -2782,7 +2828,10 @@ export const reinitiateOauthSourceConnectionsSourceConnectionIdReinitiateOauthPo
 
 export const listSourceConnectionsGetQueryKey = (
   options?: Options<ListSourceConnectionsGetData>,
-) => createQueryKey('listSourceConnectionsGet', options);
+) =>
+  createQueryKey('listSourceConnectionsGet', options, false, [
+    'source-connections',
+  ]);
 
 /**
  * List Source Connections
@@ -2961,7 +3010,10 @@ export const deleteSourceConnectionsSourceConnectionIdDeleteMutation = (
 
 export const getSourceConnectionsSourceConnectionIdGetQueryKey = (
   options: Options<GetSourceConnectionsSourceConnectionIdGetData>,
-) => createQueryKey('getSourceConnectionsSourceConnectionIdGet', options);
+) =>
+  createQueryKey('getSourceConnectionsSourceConnectionIdGet', options, false, [
+    'source-connections',
+  ]);
 
 /**
  * Get Source Connection
@@ -3077,6 +3129,8 @@ export const getSourceConnectionJobsSourceConnectionsSourceConnectionIdJobsGetQu
     createQueryKey(
       'getSourceConnectionJobsSourceConnectionsSourceConnectionIdJobsGet',
       options,
+      false,
+      ['source-connections'],
     );
 
 /**
@@ -3264,7 +3318,12 @@ export const cancelJobSourceConnectionsSourceConnectionIdJobsJobIdCancelPostMuta
 export const authorizeRedirectSourceConnectionsAuthorizeCodeGetQueryKey = (
   options: Options<AuthorizeRedirectSourceConnectionsAuthorizeCodeGetData>,
 ) =>
-  createQueryKey('authorizeRedirectSourceConnectionsAuthorizeCodeGet', options);
+  createQueryKey(
+    'authorizeRedirectSourceConnectionsAuthorizeCodeGet',
+    options,
+    false,
+    ['source-connections'],
+  );
 
 /**
  * Authorize Redirect
@@ -3304,7 +3363,10 @@ export const authorizeRedirectSourceConnectionsAuthorizeCodeGetOptions = (
 
 export const listSourceRateLimitsSourceRateLimitsGetQueryKey = (
   options?: Options<ListSourceRateLimitsSourceRateLimitsGetData>,
-) => createQueryKey('listSourceRateLimitsSourceRateLimitsGet', options);
+) =>
+  createQueryKey('listSourceRateLimitsSourceRateLimitsGet', options, false, [
+    'source-rate-limits',
+  ]);
 
 /**
  * List Source Rate Limits
@@ -3408,7 +3470,10 @@ export const setSourceRateLimitSourceRateLimitsSourceShortNamePutMutation = (
 
 export const subscribeSyncJobSyncJobJobIdSubscribeGetQueryKey = (
   options: Options<SubscribeSyncJobSyncJobJobIdSubscribeGetData>,
-) => createQueryKey('subscribeSyncJobSyncJobJobIdSubscribeGet', options);
+) =>
+  createQueryKey('subscribeSyncJobSyncJobJobIdSubscribeGet', options, false, [
+    'sync',
+  ]);
 
 /**
  * Subscribe Sync Job
@@ -3449,7 +3514,12 @@ export const subscribeSyncJobSyncJobJobIdSubscribeGetOptions = (
 export const subscribeEntityStateSyncJobJobIdSubscribeStateGetQueryKey = (
   options: Options<SubscribeEntityStateSyncJobJobIdSubscribeStateGetData>,
 ) =>
-  createQueryKey('subscribeEntityStateSyncJobJobIdSubscribeStateGet', options);
+  createQueryKey(
+    'subscribeEntityStateSyncJobJobIdSubscribeStateGet',
+    options,
+    false,
+    ['sync'],
+  );
 
 /**
  * Subscribe Entity State
@@ -3499,6 +3569,8 @@ export const getEntityDefinitionsBySourceShortNameEntitiesDefinitionsBySourceGet
     createQueryKey(
       'getEntityDefinitionsBySourceShortNameEntitiesDefinitionsBySourceGet',
       options,
+      false,
+      ['entities'],
     );
 
 /**
@@ -3542,6 +3614,8 @@ export const getEntityCountsForSyncEntityCountsSyncsSyncIdCountsGetQueryKey = (
   createQueryKey(
     'getEntityCountsForSyncEntityCountsSyncsSyncIdCountsGet',
     options,
+    false,
+    ['entity-counts'],
   );
 
 /**
@@ -3584,6 +3658,8 @@ export const getTotalEntityCountForSyncEntityCountsSyncsSyncIdTotalCountGetQuery
     createQueryKey(
       'getTotalEntityCountForSyncEntityCountsSyncsSyncIdTotalCountGet',
       options,
+      false,
+      ['entity-counts'],
     );
 
 /**
@@ -3621,7 +3697,7 @@ export const getTotalEntityCountForSyncEntityCountsSyncsSyncIdTotalCountGetOptio
 
 export const downloadFileFilesEntityIdGetQueryKey = (
   options: Options<DownloadFileFilesEntityIdGetData>,
-) => createQueryKey('downloadFileFilesEntityIdGet', options);
+) => createQueryKey('downloadFileFilesEntityIdGet', options, false, ['files']);
 
 /**
  * Download File
@@ -3663,7 +3739,10 @@ export const downloadFileFilesEntityIdGetOptions = (
 
 export const getFileContentFilesEntityIdContentGetQueryKey = (
   options: Options<GetFileContentFilesEntityIdContentGetData>,
-) => createQueryKey('getFileContentFilesEntityIdContentGet', options);
+) =>
+  createQueryKey('getFileContentFilesEntityIdContentGet', options, false, [
+    'files',
+  ]);
 
 /**
  * Get File Content
@@ -3746,7 +3825,7 @@ export const downloadFilesBatchFilesBatchDownloadPostMutation = (
 
 export const checkFilesExistFilesGetQueryKey = (
   options: Options<CheckFilesExistFilesGetData>,
-) => createQueryKey('checkFilesExistFilesGet', options);
+) => createQueryKey('checkFilesExistFilesGet', options, false, ['files']);
 
 /**
  * Check Files Exist
@@ -3785,7 +3864,13 @@ export const checkFilesExistFilesGetOptions = (
 
 export const listAvailableFeatureFlagsAdminFeatureFlagsGetQueryKey = (
   options?: Options<ListAvailableFeatureFlagsAdminFeatureFlagsGetData>,
-) => createQueryKey('listAvailableFeatureFlagsAdminFeatureFlagsGet', options);
+) =>
+  createQueryKey(
+    'listAvailableFeatureFlagsAdminFeatureFlagsGet',
+    options,
+    false,
+    ['admin'],
+  );
 
 /**
  * List Available Feature Flags
@@ -3824,7 +3909,10 @@ export const listAvailableFeatureFlagsAdminFeatureFlagsGetOptions = (
 
 export const listAllOrganizationsAdminOrganizationsGetQueryKey = (
   options?: Options<ListAllOrganizationsAdminOrganizationsGetData>,
-) => createQueryKey('listAllOrganizationsAdminOrganizationsGet', options);
+) =>
+  createQueryKey('listAllOrganizationsAdminOrganizationsGet', options, false, [
+    'admin',
+  ]);
 
 /**
  * List All Organizations
@@ -4373,6 +4461,8 @@ export const adminGetUserPrincipalsAdminCollectionsReadableIdUserPrincipalsGetQu
     createQueryKey(
       'adminGetUserPrincipalsAdminCollectionsReadableIdUserPrincipalsGet',
       options,
+      false,
+      ['admin'],
     );
 
 /**
@@ -4458,6 +4548,8 @@ export const adminGetCursorAdminSourceConnectionsSourceConnectionIdCursorGetQuer
     createQueryKey(
       'adminGetCursorAdminSourceConnectionsSourceConnectionIdCursorGet',
       options,
+      false,
+      ['admin'],
     );
 
 /**
@@ -4509,7 +4601,8 @@ export const adminGetCursorAdminSourceConnectionsSourceConnectionIdCursorGetOpti
 
 export const adminListAllSyncsAdminSyncsGetQueryKey = (
   options?: Options<AdminListAllSyncsAdminSyncsGetData>,
-) => createQueryKey('adminListAllSyncsAdminSyncsGet', options);
+) =>
+  createQueryKey('adminListAllSyncsAdminSyncsGet', options, false, ['admin']);
 
 /**
  * Admin List All Syncs
@@ -4846,6 +4939,8 @@ export const getSelectionsSourceConnectionsSourceConnectionIdBrowseTreeSelection
     createQueryKey(
       'getSelectionsSourceConnectionsSourceConnectionIdBrowseTreeSelectionsGet',
       options,
+      false,
+      ['browse-tree'],
     );
 
 /**
@@ -4890,6 +4985,8 @@ export const getBrowseTreeSourceConnectionsSourceConnectionIdBrowseTreeGetQueryK
     createQueryKey(
       'getBrowseTreeSourceConnectionsSourceConnectionIdBrowseTreeGet',
       options,
+      false,
+      ['browse-tree'],
     );
 
 /**
@@ -4965,7 +5062,10 @@ export const selectNodesSourceConnectionsSourceConnectionIdBrowseTreeSelectPostM
 
 export const getMessagesWebhooksMessagesGetQueryKey = (
   options?: Options<GetMessagesWebhooksMessagesGetData>,
-) => createQueryKey('getMessagesWebhooksMessagesGet', options);
+) =>
+  createQueryKey('getMessagesWebhooksMessagesGet', options, false, [
+    'webhooks',
+  ]);
 
 /**
  * List Messages
@@ -5002,7 +5102,10 @@ export const getMessagesWebhooksMessagesGetOptions = (
 
 export const getMessageWebhooksMessagesMessageIdGetQueryKey = (
   options: Options<GetMessageWebhooksMessagesMessageIdGetData>,
-) => createQueryKey('getMessageWebhooksMessagesMessageIdGet', options);
+) =>
+  createQueryKey('getMessageWebhooksMessagesMessageIdGet', options, false, [
+    'webhooks',
+  ]);
 
 /**
  * Get Message
@@ -5040,7 +5143,10 @@ export const getMessageWebhooksMessagesMessageIdGetOptions = (
 
 export const getSubscriptionsWebhooksSubscriptionsGetQueryKey = (
   options?: Options<GetSubscriptionsWebhooksSubscriptionsGetData>,
-) => createQueryKey('getSubscriptionsWebhooksSubscriptionsGet', options);
+) =>
+  createQueryKey('getSubscriptionsWebhooksSubscriptionsGet', options, false, [
+    'webhooks',
+  ]);
 
 /**
  * List Subscriptions
@@ -5156,6 +5262,8 @@ export const getSubscriptionWebhooksSubscriptionsSubscriptionIdGetQueryKey = (
   createQueryKey(
     'getSubscriptionWebhooksSubscriptionsSubscriptionIdGet',
     options,
+    false,
+    ['webhooks'],
   );
 
 /**
@@ -5289,7 +5397,8 @@ export const recoverFailedMessagesWebhooksSubscriptionsSubscriptionIdRecoverPost
 
 export const listSourcesConnectSourcesGetQueryKey = (
   options: Options<ListSourcesConnectSourcesGetData>,
-) => createQueryKey('listSourcesConnectSourcesGet', options);
+) =>
+  createQueryKey('listSourcesConnectSourcesGet', options, false, ['connect']);
 
 /**
  * List Sources
@@ -5321,7 +5430,10 @@ export const listSourcesConnectSourcesGetOptions = (
 
 export const getSourceConnectSourcesShortNameGetQueryKey = (
   options: Options<GetSourceConnectSourcesShortNameGetData>,
-) => createQueryKey('getSourceConnectSourcesShortNameGet', options);
+) =>
+  createQueryKey('getSourceConnectSourcesShortNameGet', options, false, [
+    'connect',
+  ]);
 
 /**
  * Get Source
@@ -5384,7 +5496,10 @@ export const createSessionConnectSessionsPostMutation = (
 
 export const getSessionConnectSessionsSessionIdGetQueryKey = (
   options: Options<GetSessionConnectSessionsSessionIdGetData>,
-) => createQueryKey('getSessionConnectSessionsSessionIdGet', options);
+) =>
+  createQueryKey('getSessionConnectSessionsSessionIdGet', options, false, [
+    'connect',
+  ]);
 
 /**
  * Get Session
@@ -5417,7 +5532,12 @@ export const getSessionConnectSessionsSessionIdGetOptions = (
 export const listSourceConnectionsConnectSourceConnectionsGetQueryKey = (
   options: Options<ListSourceConnectionsConnectSourceConnectionsGetData>,
 ) =>
-  createQueryKey('listSourceConnectionsConnectSourceConnectionsGet', options);
+  createQueryKey(
+    'listSourceConnectionsConnectSourceConnectionsGet',
+    options,
+    false,
+    ['connect'],
+  );
 
 /**
  * List Source Connections
@@ -5526,6 +5646,8 @@ export const getSourceConnectionConnectSourceConnectionsConnectionIdGetQueryKey 
     createQueryKey(
       'getSourceConnectionConnectSourceConnectionsConnectionIdGet',
       options,
+      false,
+      ['connect'],
     );
 
 /**
@@ -5642,6 +5764,8 @@ export const getConnectionJobsConnectSourceConnectionsConnectionIdJobsGetQueryKe
     createQueryKey(
       'getConnectionJobsConnectSourceConnectionsConnectionIdJobsGet',
       options,
+      false,
+      ['connect'],
     );
 
 /**
@@ -5686,6 +5810,8 @@ export const subscribeToConnectionSyncConnectSourceConnectionsConnectionIdSubscr
     createQueryKey(
       'subscribeToConnectionSyncConnectSourceConnectionsConnectionIdSubscribeGet',
       options,
+      false,
+      ['connect'],
     );
 
 /**

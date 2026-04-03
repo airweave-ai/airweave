@@ -1,9 +1,20 @@
 import * as React from 'react';
+import { useSuspenseQuery } from '@tanstack/react-query';
 import type { ConnectSourceStep } from './connect-source-state';
 import type { Source } from '@/shared/api';
+import type { SourceConnectionFormValues } from '@/features/source-connections';
+import { useCreateCollectionMutation } from '@/features/collections';
 import {
+  SourceConnectionForm,
+  buildSourceConnectionPayload,
+  getSyncImmediately,
+  useCreateSourceConnectionMutation,
+} from '@/features/source-connections';
+import {
+  SourceIcon,
   SourcePickerFilters,
   SourcePickerResults,
+  useGetSourceQueryOptions,
   useSourcePicker,
 } from '@/features/sources';
 import { Button } from '@/shared/ui/button';
@@ -50,19 +61,19 @@ export function ConnectSourceDialog({
           }
         }}
       >
-        {renderedStep
-          ? renderConnectSourceStep({
-              onClose,
-              onStepChange,
-              step: renderedStep,
-            })
-          : null}
+        {renderedStep ? (
+          <ConnectSourceStep
+            onClose={onClose}
+            onStepChange={onStepChange}
+            step={renderedStep}
+          />
+        ) : null}
       </FlowDialogContent>
     </FlowDialog>
   );
 }
 
-function renderConnectSourceStep({
+function ConnectSourceStep({
   onClose,
   onStepChange,
   step,
@@ -87,15 +98,8 @@ function renderConnectSourceStep({
       );
     case 'config':
       return (
-        <ConnectSourceStepPlaceholder
-          title="Configure Connection"
-          description="Step state is now driven by the URL. The config UI is next."
-          metadata={[
-            ['Source', step.source],
-            ...(step.collectionId
-              ? ([['Collection', step.collectionId]] as const)
-              : []),
-          ]}
+        <ConnectSourceConfigStep
+          collectionId={step.collectionId}
           onClose={onClose}
           onBack={() =>
             onStepChange({
@@ -103,6 +107,8 @@ function renderConnectSourceStep({
               step: 'source',
             })
           }
+          onStepChange={onStepChange}
+          source={step.source}
         />
       );
     case 'auth':
@@ -132,6 +138,168 @@ function renderConnectSourceStep({
         />
       );
   }
+}
+
+function ConnectSourceConfigStep({
+  collectionId,
+  onBack,
+  onClose,
+  onStepChange,
+  source: sourceShortName,
+}: {
+  collectionId?: string;
+  onBack: () => void;
+  onClose: () => void;
+  onStepChange: (step: ConnectSourceStep) => void;
+  source: string;
+}) {
+  const getSourceQueryOptions = useGetSourceQueryOptions({
+    sourceShortName: sourceShortName,
+  });
+  const { data: source } = useSuspenseQuery(getSourceQueryOptions);
+  const createCollectionMutation = useCreateCollectionMutation();
+  const createSourceConnectionMutation = useCreateSourceConnectionMutation();
+
+  const isPending =
+    createCollectionMutation.isPending ||
+    createSourceConnectionMutation.isPending;
+
+  const handleSubmit = async (values: SourceConnectionFormValues) => {
+    const resolvedCollectionName = deriveCollectionName({
+      connectionName: values.name,
+      sourceShortName: source.short_name,
+    });
+
+    const collection = collectionId
+      ? null
+      : await createCollectionMutation.mutateAsync({
+          body: { name: resolvedCollectionName },
+        });
+
+    const readableCollectionId = collection?.readable_id ?? collectionId;
+
+    if (!readableCollectionId) {
+      throw new Error(
+        'Could not resolve a collection for this source connection.',
+      );
+    }
+
+    const sourceConnection = await createSourceConnectionMutation.mutateAsync({
+      body: buildSourceConnectionPayload({
+        authMethod: values.authMethod,
+        collectionName: collection?.name ?? resolvedCollectionName,
+        readableCollectionId,
+        source,
+        values,
+      }),
+    });
+
+    onStepChange({
+      collectionId: sourceConnection.readable_collection_id,
+      source: sourceShortName,
+      sourceConnectionId: sourceConnection.id,
+      step: resolveNextConnectSourceStep({
+        authMethod: values.authMethod,
+        source,
+      }),
+    });
+  };
+
+  return (
+    <>
+      <FlowDialogHeader onClose={onClose}>
+        <div className="min-w-0 space-y-1">
+          <DialogTitle className="text-xl font-semibold text-foreground">
+            Create Source Connection
+          </DialogTitle>
+          <DialogDescription className="font-mono text-sm text-muted-foreground">
+            Make your {source.name} content searchable for your agent.
+          </DialogDescription>
+        </div>
+      </FlowDialogHeader>
+
+      <FlowDialogBody>
+        <FlowDialogMain className="space-y-6">
+          <div className="flex justify-between gap-3">
+            <div className="flex gap-3">
+              <div className="flex size-10 items-center justify-center rounded-xs border bg-muted">
+                <SourceIcon
+                  className="size-4"
+                  name={source.name}
+                  shortName={source.short_name}
+                />
+              </div>
+              <div>
+                <h2 className="font-medium">Connect {source.name}</h2>
+                <a className="font-mono text-sm font-normal text-muted-foreground">
+                  See Docs
+                </a>
+              </div>
+            </div>
+          </div>
+          <SourceConnectionForm
+            footerStart={
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={onBack}
+                  disabled={isPending}
+                >
+                  Back
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={onClose}
+                  disabled={isPending}
+                >
+                  Cancel
+                </Button>
+              </>
+            }
+            isSubmitting={isPending}
+            onSubmit={handleSubmit}
+            source={source}
+          />
+        </FlowDialogMain>
+
+        <FlowDialogAside className="xl:w-112">
+          <pre className="text-wrap">
+            # Initialize the Airweave client client = AirweaveSDK(
+            api_key="YOUR_API_KEY", ) # Create connection — returns auth_url for
+            OAuth flows response = client.source_connections.create(
+            short_name="notion", readable_collection_id="your-collection-id",
+            name="Notion Connection", )
+          </pre>
+        </FlowDialogAside>
+      </FlowDialogBody>
+    </>
+  );
+}
+
+function deriveCollectionName({
+  connectionName,
+  sourceShortName,
+}: {
+  connectionName: string;
+  sourceShortName: string;
+}) {
+  const trimmedName = connectionName.trim();
+
+  return trimmedName.length > 0
+    ? `${trimmedName} Collection`
+    : `${sourceShortName} Collection`;
+}
+
+function resolveNextConnectSourceStep({
+  authMethod,
+  source,
+}: {
+  authMethod: SourceConnectionFormValues['authMethod'];
+  source: Source;
+}) {
+  return getSyncImmediately({ authMethod, source }) ? 'sync' : 'auth';
 }
 
 function ConnectSourcePickerStep({

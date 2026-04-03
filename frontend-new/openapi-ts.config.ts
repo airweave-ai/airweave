@@ -18,7 +18,10 @@ export default defineConfig({
     {
       name: '@tanstack/react-query',
       queryOptions: true,
-      queryKeys: true,
+      queryKeys: {
+        enabled: true,
+        tags: true,
+      },
       mutationOptions: true,
       infiniteQueryOptions: true,
       infiniteQueryKeys: true,
