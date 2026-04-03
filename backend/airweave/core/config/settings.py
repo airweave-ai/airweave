@@ -111,6 +111,14 @@ class Settings(BaseSettings):
     AUTH0_M2M_CLIENT_ID: Optional[str] = None  # Machine-to-Machine Client ID for Management API
     AUTH0_M2M_CLIENT_SECRET: Optional[str] = None  # Machine-to-Machine Client Secret
 
+    # Step-up re-authentication for sensitive operations (CASA-29).
+    # Seconds since last interactive login before re-auth is required.
+    # 0 disables the check entirely.
+    REAUTH_MAX_AGE_SECONDS: int = 300
+    # JWT custom claim key where the Auth0 Post Login Action stores
+    # the epoch timestamp of the user's last interactive authentication.
+    AUTH0_AUTH_TIME_CLAIM_KEY: str = "https://airweave.ai/auth_time"
+
     ENCRYPTION_KEY: str
 
     # OAuth state HMAC secret for CSRF protection

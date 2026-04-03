@@ -262,6 +262,26 @@ const makeRequest = async <T>(
 
     let response = await fetch(url.toString(), fetchOptions);
 
+    // Intercept structured reauth-required 403 BEFORE the generic token
+    // refresh — a silently-refreshed token still has the same stale
+    // auth_time, so retrying would be wasted.
+    if (response.status === 403) {
+      try {
+        const cloned = response.clone();
+        const body = await cloned.json();
+        if (body.error === 'reauthentication_required') {
+          window.dispatchEvent(
+            new CustomEvent('airweave:reauth-required', {
+              detail: { maxAge: body.max_age },
+            }),
+          );
+          return response;
+        }
+      } catch {
+        // Not JSON or wrong shape — fall through to generic handling
+      }
+    }
+
     // Handle 401/403 by attempting token refresh once
     if ((response.status === 401 || response.status === 403) && tokenProvider.clearToken) {
       console.log(`Got ${response.status} error, attempting token refresh`);

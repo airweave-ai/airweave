@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
+import { toast } from 'sonner';
 import authConfig from '../config/auth';
 import { apiClient } from './api';
 
@@ -15,6 +16,7 @@ interface AuthContextType {
   logout: () => void;
   getToken: () => Promise<string | null>;
   clearToken: () => void;
+  reauthenticate: (maxAge?: number) => Promise<void>;
   token: string | null;
   tokenInitialized: boolean;
   isReady: () => boolean;
@@ -28,6 +30,7 @@ const AuthContext = createContext<AuthContextType>({
   logout: () => { },
   getToken: async () => null,
   clearToken: () => { },
+  reauthenticate: async () => { },
   token: null,
   tokenInitialized: false,
   isReady: () => false,
@@ -67,6 +70,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const accessToken = await getAccessTokenSilently();
           setToken(accessToken);
           setTokenInitialized(true);
+          sessionStorage.removeItem('airweave:reauth_attempts');
           console.log('Auth initialization complete');
 
           // Log token acquisition for debugging (without exposing token content)
@@ -167,6 +171,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(null);
   };
 
+  // Re-authenticate for sensitive operations (CASA-29 step-up auth).
+  // Tries silent re-auth first; falls back to interactive redirect.
+  const reauthenticate = useCallback(async (maxAge?: number) => {
+    if (!authConfig.authEnabled) return;
+
+    // Loop protection: bail after 2 attempts in 60s to prevent infinite
+    // redirect loops when the Auth0 Action isn't deployed.
+    const key = 'airweave:reauth_attempts';
+    const now = Date.now();
+    const attempts: number[] = JSON.parse(
+      sessionStorage.getItem(key) || '[]',
+    ).filter((t: number) => now - t < 60_000);
+    if (attempts.length >= 2) {
+      toast.error(
+        'Re-authentication failed repeatedly. Please contact your administrator.',
+      );
+      sessionStorage.removeItem(key);
+      return;
+    }
+    attempts.push(now);
+    sessionStorage.setItem(key, JSON.stringify(attempts));
+
+    // Try silent re-auth with the server's max_age so Auth0 can succeed
+    // via iframe when the session IS recent enough.  Do NOT use
+    // max_age: 0 here — that always fails silently.
+    if (maxAge && maxAge > 0) {
+      try {
+        const freshToken = await getAccessTokenSilently({
+          authorizationParams: { max_age: maxAge },
+          cacheMode: 'off' as const,
+        });
+        setToken(freshToken);
+        sessionStorage.removeItem(key);
+        return;
+      } catch {
+        // Silent auth failed — fall through to interactive redirect
+      }
+    }
+
+    // Interactive redirect: force login prompt
+    await loginWithRedirect({
+      authorizationParams: { max_age: 0 },
+      appState: {
+        returnTo: window.location.pathname + window.location.search,
+      },
+    });
+  }, [getAccessTokenSilently, loginWithRedirect]);
+
+  // Listen for reauth-required events dispatched by api.ts
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const maxAge = (e as CustomEvent).detail?.maxAge;
+      reauthenticate(maxAge);
+    };
+    window.addEventListener('airweave:reauth-required', handler);
+    return () => window.removeEventListener('airweave:reauth-required', handler);
+  }, [reauthenticate]);
+
   // Get token function
   const getToken = useCallback(async (): Promise<string | null> => {
     if (!authConfig.authEnabled) {
@@ -209,6 +271,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout,
         getToken,
         clearToken,
+        reauthenticate,
         token,
         tokenInitialized,
         isReady,
