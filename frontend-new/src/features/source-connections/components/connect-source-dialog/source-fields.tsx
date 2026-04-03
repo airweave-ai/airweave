@@ -1,5 +1,4 @@
-import { formatFieldValue, parseFieldValue } from '../utils';
-import type { SourceFieldGroupProps } from '../types';
+import type { SourceFieldGroupProps } from '../../types';
 import type { ConfigField } from '@/shared/api';
 import {
   Field,
@@ -131,4 +130,40 @@ function getTextFieldValue(field: ConfigField, value: unknown) {
   const fieldValue = formatFieldValue(field, value);
 
   return typeof fieldValue === 'string' ? fieldValue : '';
+}
+
+function parseFieldValue(field: ConfigField, rawValue: string | boolean) {
+  if (typeof rawValue === 'boolean') {
+    return rawValue;
+  }
+
+  if (isArrayField(field)) {
+    return rawValue
+      .split(/[\n,]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  if (isNumericField(field)) {
+    const trimmedValue = rawValue.trim();
+    return trimmedValue.length === 0 ? '' : Number(trimmedValue);
+  }
+
+  return rawValue;
+}
+
+function formatFieldValue(field: ConfigField, value: unknown) {
+  if (isBooleanField(field)) {
+    return Boolean(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.join('\n');
+  }
+
+  if (typeof value === 'number') {
+    return String(value);
+  }
+
+  return typeof value === 'string' ? value : '';
 }

@@ -1,4 +1,3 @@
-import { getSourcePrimaryLabel } from '../utils';
 import { SourceIcon } from './source-icon';
 import type { Source } from '@/shared/api';
 import { cn } from '@/shared/tailwind/cn';
@@ -15,7 +14,7 @@ export function SourceCard({
   selected = false,
   source,
 }: SourceCardProps) {
-  const primaryLabel = getSourcePrimaryLabel(source);
+  const primaryLabel = source.labels?.find((label) => label.trim().length > 0);
 
   return (
     <button

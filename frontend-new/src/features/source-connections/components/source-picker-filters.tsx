@@ -1,5 +1,4 @@
 import { Search } from 'lucide-react';
-import type { SourceLabelCount } from '../utils';
 import { cn } from '@/shared/tailwind/cn';
 import { Badge } from '@/shared/ui/badge';
 import {
@@ -12,7 +11,7 @@ interface SourcePickerFiltersProps {
   activeLabel?: string;
   filteredSourceCount: number;
   isLoading: boolean;
-  labelCounts: Array<SourceLabelCount>;
+  labelCounts: Array<{ count: number; label: string }>;
   onActiveLabelChange: (label?: string) => void;
   onSearchChange: (value: string) => void;
   search: string;

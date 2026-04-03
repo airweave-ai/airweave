@@ -1,19 +1,45 @@
+import * as React from 'react';
+
 import type { Source } from '@/shared/api';
 
-export interface SourceLabelCount {
-  count: number;
-  label: string;
+export function useSourceFilters({ sources }: { sources: Array<Source> }) {
+  const [search, setSearch] = React.useState('');
+  const [activeLabel, setActiveLabel] = React.useState<string | undefined>();
+
+  const filteredSources = React.useMemo(
+    () => filterSources({ activeLabel, search, sources }),
+    [activeLabel, search, sources],
+  );
+
+  const labelCounts = React.useMemo(
+    () => getSourceLabelCounts(sources),
+    [sources],
+  );
+
+  const clearFilters = React.useCallback(() => {
+    setSearch('');
+    setActiveLabel(undefined);
+  }, []);
+
+  return {
+    activeLabel,
+    clearFilters,
+    filteredSourceCount: filteredSources.length,
+    filteredSources,
+    hasFilters: search.trim().length > 0 || Boolean(activeLabel),
+    labelCounts,
+    search,
+    setActiveLabel,
+    setSearch,
+    totalSourceCount: sources.length,
+  };
 }
 
-export function normalizeSourceSearch(search?: string) {
+function normalizeSourceSearch(search?: string) {
   return search?.trim().toLowerCase() || '';
 }
 
-export function getSourcePrimaryLabel(source: Source) {
-  return source.labels?.find((label) => label.trim().length > 0) ?? null;
-}
-
-export function filterSources({
+function filterSources({
   activeLabel,
   search,
   sources,
@@ -48,7 +74,7 @@ export function filterSources({
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
-export function getSourceLabelCounts(sources: Array<Source>) {
+function getSourceLabelCounts(sources: Array<Source>) {
   const counts = new Map<string, number>();
 
   for (const source of sources) {

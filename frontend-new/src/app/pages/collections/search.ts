@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { connectSourceStepSchema } from '../components/connect-source-state';
+import { connectSourceStepSchema } from '@/features/source-connections';
 
 export const collectionsSearchSchema = z.object({
   connectSource: connectSourceStepSchema.optional(),

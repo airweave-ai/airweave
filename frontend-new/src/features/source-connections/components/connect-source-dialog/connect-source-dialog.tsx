@@ -1,22 +1,22 @@
 import * as React from 'react';
 import { useSuspenseQuery } from '@tanstack/react-query';
-import type { ConnectSourceStep } from './connect-source-state';
-import type { Source } from '@/shared/api';
-import type { SourceConnectionFormValues } from '@/features/source-connections';
-import { useCreateCollectionMutation } from '@/features/collections';
 import {
-  SourceConnectionForm,
-  buildSourceConnectionPayload,
-  getSyncImmediately,
   useCreateSourceConnectionMutation,
-} from '@/features/source-connections';
-import {
-  SourceIcon,
-  SourcePickerFilters,
-  SourcePickerResults,
   useGetSourceQueryOptions,
-  useSourcePicker,
-} from '@/features/sources';
+} from '../../api';
+import { useSourcePicker } from '../../hooks/use-source-picker';
+import { SourceIcon } from '../source-icon';
+import { SourcePickerFilters } from '../source-picker-filters';
+import { SourcePickerResults } from '../source-picker-results';
+import { SourceConnectionForm } from './source-connection-form';
+import type { ConnectSourceStep } from './connect-source-state';
+import type { SourceConnectionFormValues } from '../../types';
+import type {
+  DirectAuthentication,
+  Source,
+  SourceConnectionCreate,
+} from '@/shared/api';
+import { useCreateCollectionMutation } from '@/features/collections';
 import { Button } from '@/shared/ui/button';
 import { DialogDescription, DialogTitle } from '@/shared/ui/dialog';
 import {
@@ -300,6 +300,101 @@ function resolveNextConnectSourceStep({
   source: Source;
 }) {
   return getSyncImmediately({ authMethod, source }) ? 'sync' : 'auth';
+}
+
+function getSyncImmediately({
+  authMethod,
+  source,
+}: {
+  authMethod: SourceConnectionFormValues['authMethod'];
+  source: Source;
+}) {
+  if (source.supports_browse_tree) {
+    return false;
+  }
+
+  return authMethod !== 'oauth_browser';
+}
+
+function buildSourceConnectionPayload({
+  authMethod,
+  collectionName,
+  readableCollectionId,
+  source,
+  values,
+}: {
+  authMethod: SourceConnectionFormValues['authMethod'];
+  collectionName: string;
+  readableCollectionId: string;
+  source: Source;
+  values: SourceConnectionFormValues;
+}): SourceConnectionCreate {
+  const syncImmediately = getSyncImmediately({ authMethod, source });
+
+  return {
+    authentication:
+      authMethod === 'direct'
+        ? buildDirectAuthentication(values.authentication.credentials ?? {})
+        : null,
+    config: trimEmptyValues(values.config),
+    description: deriveConnectionDescription({
+      collectionName,
+      sourceName: source.name,
+    }),
+    name: trimFormString(values.name),
+    readable_collection_id: readableCollectionId,
+    short_name: source.short_name,
+    sync_immediately: syncImmediately,
+  };
+}
+
+function deriveConnectionDescription({
+  collectionName,
+  sourceName,
+}: {
+  collectionName: string;
+  sourceName: string;
+}) {
+  return `${sourceName} connection for ${collectionName}`;
+}
+
+function buildDirectAuthentication(
+  credentials: Record<string, unknown>,
+): DirectAuthentication {
+  return {
+    credentials: trimEmptyValues(credentials),
+  };
+}
+
+function trimFormString(value: string) {
+  const trimmedValue = value.trim();
+
+  return trimmedValue.length > 0 ? trimmedValue : undefined;
+}
+
+function trimEmptyValues(values: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(values).flatMap(([key, value]) => {
+      if (value === null || value === undefined) {
+        return [];
+      }
+
+      if (typeof value === 'string') {
+        const trimmedValue = value.trim();
+        return trimmedValue.length > 0 ? [[key, trimmedValue]] : [];
+      }
+
+      if (Array.isArray(value)) {
+        const nextValue = value
+          .map((item) => (typeof item === 'string' ? item.trim() : item))
+          .filter((item) => item !== '' && item != null);
+
+        return nextValue.length > 0 ? [[key, nextValue]] : [];
+      }
+
+      return [[key, value]];
+    }),
+  );
 }
 
 function ConnectSourcePickerStep({
