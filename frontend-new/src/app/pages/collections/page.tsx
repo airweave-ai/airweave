@@ -1,8 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Plus, Search } from 'lucide-react';
-import { ConnectSourceDialog } from '../components/connect-source-dialog';
-import type { ConnectSourceStep } from '../components/connect-source-state';
 import type { CollectionsSearch } from './search';
+import type { ConnectSourceStep } from '@/features/source-connections';
 import {
   CollectionCountBadge,
   CollectionFilterButtonGroup,
@@ -10,6 +9,7 @@ import {
   normalizeCollectionSearch,
   useListCollectionsQueryOptions,
 } from '@/features/collections';
+import { ConnectSourceDialog } from '@/features/source-connections';
 import { cn } from '@/shared/tailwind/cn';
 import { Button } from '@/shared/ui/button';
 import {

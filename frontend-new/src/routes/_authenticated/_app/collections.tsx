@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { createFileRoute, stripSearchParams } from '@tanstack/react-router';
-import type { ConnectSourceStep } from '@/app/pages/components/connect-source-state';
+import type { ConnectSourceStep } from '@/features/source-connections';
 import {
   CollectionsPage,
   collectionsSearchSchema,

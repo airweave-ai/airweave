@@ -1,12 +1,5 @@
 import * as React from 'react';
 import { useForm } from '@tanstack/react-form';
-import {
-  getAuthMethodLabel,
-  getAvailableAuthMethods,
-  getDefaultAuthMethod,
-  hasSourceConnectionFormErrors,
-  validateSourceConnectionForm,
-} from '../utils';
 import { SourceConnectionAuthProviderForm } from './source-connection-auth-provider-form';
 import { SourceConnectionDirectForm } from './source-connection-direct-form';
 import { SourceConnectionOAuthBrowserForm } from './source-connection-oauth-browser-form';
@@ -16,7 +9,7 @@ import type {
   SourceConnectionAuthMethod,
   SourceConnectionFormErrors,
   SourceConnectionFormValues,
-} from '../types';
+} from '../../types';
 import type { ConfigField, Source } from '@/shared/api';
 import { parseApiErrorWithDetail } from '@/shared/api';
 import { cn } from '@/shared/tailwind/cn';
@@ -51,6 +44,13 @@ const defaultFormValues: SourceConnectionFormValues = {
   config: {},
   name: '',
 };
+
+const SUPPORTED_AUTH_METHODS: Array<SourceConnectionAuthMethod> = [
+  'direct',
+  'oauth_browser',
+  'oauth_token',
+  'auth_provider',
+];
 
 export function SourceConnectionForm({
   footerStart,
@@ -336,4 +336,117 @@ function omitError(errors: Record<string, string>, fieldName: string) {
   return Object.fromEntries(
     Object.entries(errors).filter(([key]) => key !== fieldName),
   );
+}
+
+function normalizeAuthMethod(
+  authMethod: string | null | undefined,
+): SourceConnectionAuthMethod | null {
+  if (authMethod === 'oauth_byoc') {
+    return 'oauth_browser';
+  }
+
+  return SUPPORTED_AUTH_METHODS.includes(authMethod as SourceConnectionAuthMethod)
+    ? (authMethod as SourceConnectionAuthMethod)
+    : null;
+}
+
+function getAvailableAuthMethods(source: Source) {
+  const methods = (source.auth_methods ?? [])
+    .map((method) => normalizeAuthMethod(method))
+    .filter((method): method is SourceConnectionAuthMethod => method != null);
+
+  return Array.from(new Set(methods));
+}
+
+function getDefaultAuthMethod(source: Source): SourceConnectionAuthMethod {
+  const methods = getAvailableAuthMethods(source);
+
+  return methods[0] ?? 'direct';
+}
+
+function getAuthMethodLabel(method: SourceConnectionAuthMethod) {
+  switch (method) {
+    case 'direct':
+      return 'Direct';
+    case 'oauth_browser':
+      return 'OAuth Browser';
+    case 'oauth_token':
+      return 'OAuth Token';
+    case 'auth_provider':
+      return 'Auth Provider';
+  }
+}
+
+function validateSourceConnectionForm({
+  authMethod,
+  configFields,
+  source,
+  values,
+}: {
+  authMethod: SourceConnectionAuthMethod;
+  configFields: Array<ConfigField>;
+  source: Source;
+  values: SourceConnectionFormValues;
+}): SourceConnectionFormErrors {
+  const errors: SourceConnectionFormErrors = {
+    authentication: {},
+    config: {},
+  };
+
+  for (const field of configFields) {
+    const error = validateFieldValue(field, values.config[field.name]);
+    if (error) {
+      errors.config[field.name] = error;
+    }
+  }
+
+  if (authMethod === 'direct') {
+    const authFields = source.auth_fields?.fields ?? [];
+    const credentials = values.authentication.credentials ?? {};
+
+    for (const field of authFields) {
+      const error = validateFieldValue(field, credentials[field.name]);
+      if (error) {
+        errors.authentication[field.name] = error;
+      }
+    }
+  }
+
+  return errors;
+}
+
+function validateFieldValue(field: ConfigField, value: unknown) {
+  if (!field.required) {
+    return undefined;
+  }
+
+  if (isBooleanField(field)) {
+    return undefined;
+  }
+
+  if (Array.isArray(value)) {
+    return value.length > 0 ? undefined : `${field.title} is required.`;
+  }
+
+  if (typeof value === 'number') {
+    return Number.isNaN(value) ? `${field.title} is required.` : undefined;
+  }
+
+  if (typeof value === 'string') {
+    return value.trim().length > 0 ? undefined : `${field.title} is required.`;
+  }
+
+  return value == null ? `${field.title} is required.` : undefined;
+}
+
+function hasSourceConnectionFormErrors(errors: SourceConnectionFormErrors) {
+  return (
+    Object.keys(errors.config).length > 0 ||
+    Object.keys(errors.authentication).length > 0 ||
+    Boolean(errors.form)
+  );
+}
+
+function isBooleanField(field: ConfigField) {
+  return field.type === 'boolean' || field.type === 'bool';
 }

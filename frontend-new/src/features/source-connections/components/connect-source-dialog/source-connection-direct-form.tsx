@@ -1,5 +1,5 @@
 import { SourceFields } from './source-fields';
-import type { SourceConnectionAuthSectionProps } from '../types';
+import type { SourceConnectionAuthSectionProps } from '../../types';
 
 export function SourceConnectionDirectForm({
   authFields,

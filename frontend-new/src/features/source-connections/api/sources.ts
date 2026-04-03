@@ -1,6 +1,6 @@
 import {
-  listSourcesGetOptions,
   getSourcesShortNameGetOptions,
+  listSourcesGetOptions,
   withOrganizationHeaders,
 } from '@/shared/api';
 import { useCurrentOrganizationId } from '@/shared/session';
