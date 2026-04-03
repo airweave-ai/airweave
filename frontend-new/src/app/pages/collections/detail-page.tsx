@@ -1,8 +1,10 @@
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { useGetCollectionQueryOptions } from '@/features/collections';
-import { CollectionSourceConnections } from '@/features/collections/components/collection-source-connections';
-import { CollectionStatusBadge } from '@/features/collections/components/collection-status-badge';
+import {
+  CollectionSourceConnections,
+  CollectionStatusBadge,
+  useGetCollectionQueryOptions,
+} from '@/features/collections';
 import { Button } from '@/shared/ui/button';
 
 export function CollectionDetailPage({
@@ -51,13 +53,16 @@ export function CollectionDetailPage({
             <div>
               <Button asChild variant="outline">
                 <Link
-                  to="/collections"
+                  params={{ collectionId: collection.readable_id }}
+                  to="/collections/$collectionId"
                   search={{
-                    connectSource: {
-                      collectionId: collection.readable_id,
-                      step: 'source',
+                    dialog: {
+                      state: {
+                        collectionId: collection.readable_id,
+                        step: 'source',
+                      },
+                      type: 'connect-source',
                     },
-                    search: '',
                   }}
                 >
                   Add Source
@@ -74,13 +79,16 @@ export function CollectionDetailPage({
             <div>
               <Button asChild>
                 <Link
-                  to="/collections"
+                  params={{ collectionId: collection.readable_id }}
+                  to="/collections/$collectionId"
                   search={{
-                    connectSource: {
-                      collectionId: collection.readable_id,
-                      step: 'source',
+                    dialog: {
+                      state: {
+                        collectionId: collection.readable_id,
+                        step: 'source',
+                      },
+                      type: 'connect-source',
                     },
-                    search: '',
                   }}
                 >
                   Connect Source

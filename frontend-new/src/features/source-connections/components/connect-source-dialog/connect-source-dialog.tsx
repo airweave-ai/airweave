@@ -1,4 +1,3 @@
-import * as React from 'react';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import {
   useCreateSourceConnectionMutation,
@@ -16,60 +15,32 @@ import type {
   Source,
   SourceConnectionCreate,
 } from '@/shared/api';
-import { useCreateCollectionMutation } from '@/features/collections';
 import { Button } from '@/shared/ui/button';
 import { DialogDescription, DialogTitle } from '@/shared/ui/dialog';
 import {
-  FlowDialog,
   FlowDialogAside,
   FlowDialogBody,
-  FlowDialogContent,
   FlowDialogHeader,
   FlowDialogMain,
 } from '@/shared/ui/flow-dialog';
 
-interface ConnectSourceDialogProps {
+interface ConnectSourceDialogScreenProps {
   onClose: () => void;
   onStepChange: (step: ConnectSourceStep) => void;
-  step?: ConnectSourceStep;
+  step: ConnectSourceStep;
 }
 
-export function ConnectSourceDialog({
+export function ConnectSourceDialogScreen({
   onClose,
   onStepChange,
   step,
-}: ConnectSourceDialogProps) {
-  const [renderedStep, setRenderedStep] = React.useState(step);
-
-  // `step` is URL-driven, so it becomes `undefined` immediately on close.
-  // Keep the last rendered step long enough for Radix to play the exit animation.
-  React.useEffect(() => {
-    if (step) {
-      setRenderedStep(step);
-    }
-  }, [step]);
-
+}: ConnectSourceDialogScreenProps) {
   return (
-    <FlowDialog
-      open={Boolean(step)}
-      onOpenChange={(open) => !open && onClose()}
-    >
-      <FlowDialogContent
-        onAnimationEnd={() => {
-          if (!step && renderedStep) {
-            setRenderedStep(undefined);
-          }
-        }}
-      >
-        {renderedStep ? (
-          <ConnectSourceStep
-            onClose={onClose}
-            onStepChange={onStepChange}
-            step={renderedStep}
-          />
-        ) : null}
-      </FlowDialogContent>
-    </FlowDialog>
+    <ConnectSourceStep
+      onClose={onClose}
+      onStepChange={onStepChange}
+      step={step}
+    />
   );
 }
 
@@ -147,7 +118,7 @@ function ConnectSourceConfigStep({
   onStepChange,
   source: sourceShortName,
 }: {
-  collectionId?: string;
+  collectionId: string;
   onBack: () => void;
   onClose: () => void;
   onStepChange: (step: ConnectSourceStep) => void;
@@ -157,38 +128,15 @@ function ConnectSourceConfigStep({
     sourceShortName: sourceShortName,
   });
   const { data: source } = useSuspenseQuery(getSourceQueryOptions);
-  const createCollectionMutation = useCreateCollectionMutation();
   const createSourceConnectionMutation = useCreateSourceConnectionMutation();
 
-  const isPending =
-    createCollectionMutation.isPending ||
-    createSourceConnectionMutation.isPending;
+  const isPending = createSourceConnectionMutation.isPending;
 
   const handleSubmit = async (values: SourceConnectionFormValues) => {
-    const resolvedCollectionName = deriveCollectionName({
-      connectionName: values.name,
-      sourceShortName: source.short_name,
-    });
-
-    const collection = collectionId
-      ? null
-      : await createCollectionMutation.mutateAsync({
-          body: { name: resolvedCollectionName },
-        });
-
-    const readableCollectionId = collection?.readable_id ?? collectionId;
-
-    if (!readableCollectionId) {
-      throw new Error(
-        'Could not resolve a collection for this source connection.',
-      );
-    }
-
     const sourceConnection = await createSourceConnectionMutation.mutateAsync({
       body: buildSourceConnectionPayload({
         authMethod: values.authMethod,
-        collectionName: collection?.name ?? resolvedCollectionName,
-        readableCollectionId,
+        readableCollectionId: collectionId,
         source,
         values,
       }),
@@ -278,20 +226,6 @@ function ConnectSourceConfigStep({
   );
 }
 
-function deriveCollectionName({
-  connectionName,
-  sourceShortName,
-}: {
-  connectionName: string;
-  sourceShortName: string;
-}) {
-  const trimmedName = connectionName.trim();
-
-  return trimmedName.length > 0
-    ? `${trimmedName} Collection`
-    : `${sourceShortName} Collection`;
-}
-
 function resolveNextConnectSourceStep({
   authMethod,
   source,
@@ -318,13 +252,11 @@ function getSyncImmediately({
 
 function buildSourceConnectionPayload({
   authMethod,
-  collectionName,
   readableCollectionId,
   source,
   values,
 }: {
   authMethod: SourceConnectionFormValues['authMethod'];
-  collectionName: string;
   readableCollectionId: string;
   source: Source;
   values: SourceConnectionFormValues;
@@ -337,25 +269,11 @@ function buildSourceConnectionPayload({
         ? buildDirectAuthentication(values.authentication.credentials ?? {})
         : null,
     config: trimEmptyValues(values.config),
-    description: deriveConnectionDescription({
-      collectionName,
-      sourceName: source.name,
-    }),
     name: trimFormString(values.name),
     readable_collection_id: readableCollectionId,
     short_name: source.short_name,
     sync_immediately: syncImmediately,
   };
-}
-
-function deriveConnectionDescription({
-  collectionName,
-  sourceName,
-}: {
-  collectionName: string;
-  sourceName: string;
-}) {
-  return `${sourceName} connection for ${collectionName}`;
 }
 
 function buildDirectAuthentication(
