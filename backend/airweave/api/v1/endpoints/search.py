@@ -294,7 +294,7 @@ async def stream_agentic_search(
     return StreamingResponse(
         _agentic_event_stream_v2(ps, search_task, ctx),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
     )
 
 
@@ -347,5 +347,5 @@ async def admin_stream_agentic_search(
     return StreamingResponse(
         _agentic_event_stream_v2(ps, search_task, ctx),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
     )
