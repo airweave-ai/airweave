@@ -2,11 +2,11 @@ import * as z from 'zod';
 
 export const connectSourceStepSchema = z.discriminatedUnion('step', [
   z.object({
-    collectionId: z.string().optional(),
+    collectionId: z.string(),
     step: z.literal('source'),
   }),
   z.object({
-    collectionId: z.string().optional(),
+    collectionId: z.string(),
     source: z.string(),
     step: z.literal('config'),
   }),

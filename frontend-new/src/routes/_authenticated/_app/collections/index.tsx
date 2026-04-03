@@ -1,6 +1,5 @@
 import * as React from 'react';
 import { createFileRoute, stripSearchParams } from '@tanstack/react-router';
-import type { ConnectSourceStep } from '@/features/source-connections';
 import {
   CollectionsPage,
   collectionsSearchSchema,
@@ -40,7 +39,7 @@ export const Route = createFileRoute('/_authenticated/_app/collections/')({
 });
 
 function RouteComponent() {
-  const { connectSource, search } = Route.useSearch();
+  const { search } = Route.useSearch();
   const navigate = Route.useNavigate();
   const handleSearchChange = React.useCallback(
     (nextSearch: string | undefined) =>
@@ -54,26 +53,9 @@ function RouteComponent() {
     [navigate],
   );
 
-  const handleConnectSourceChange = React.useCallback(
-    (
-      nextConnectSource: ConnectSourceStep | undefined,
-      options?: { replace?: boolean },
-    ) =>
-      navigate({
-        replace: options?.replace,
-        search: (prev) => ({
-          ...prev,
-          connectSource: nextConnectSource,
-        }),
-      }),
-    [navigate],
-  );
-
   return (
     <CollectionsPage
-      connectSource={connectSource}
       search={search}
-      onConnectSourceChange={handleConnectSourceChange}
       onSearchChange={handleSearchChange}
     />
   );

@@ -1,7 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Plus, Search } from 'lucide-react';
 import type { CollectionsSearch } from './search';
-import type { ConnectSourceStep } from '@/features/source-connections';
 import { CreateCollectionButton } from '@/app/components/create-collection-button';
 import {
   CollectionCountBadge,
@@ -10,7 +9,6 @@ import {
   normalizeCollectionSearch,
   useListCollectionsQueryOptions,
 } from '@/features/collections';
-import { ConnectSourceDialog } from '@/features/source-connections';
 import { cn } from '@/shared/tailwind/cn';
 import {
   InputGroup,
@@ -20,10 +18,6 @@ import {
 import { Spinner } from '@/shared/ui/spinner';
 
 type CollectionsPageProps = CollectionsSearch & {
-  onConnectSourceChange: (
-    connectSource: ConnectSourceStep | undefined,
-    options?: { replace?: boolean },
-  ) => void;
   onSearchChange: (search: string | undefined) => void;
 };
 
@@ -35,9 +29,7 @@ const collectionsPageFilters = [
 ] as const;
 
 export function CollectionsPage({
-  connectSource,
   search,
-  onConnectSourceChange,
   onSearchChange,
 }: CollectionsPageProps) {
   const normalizedSearch = normalizeCollectionSearch(search);
@@ -112,11 +104,6 @@ export function CollectionsPage({
         />
       </div>
 
-      <ConnectSourceDialog
-        step={connectSource}
-        onClose={() => onConnectSourceChange(undefined, { replace: true })}
-        onStepChange={(nextStep) => onConnectSourceChange(nextStep)}
-      />
     </section>
   );
 }
