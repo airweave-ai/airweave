@@ -4,6 +4,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import {
   countCollectionsCountGetOptions,
   createCollectionsPostMutation,
+  getCollectionsReadableIdGetOptions,
   listCollectionsGetOptions,
   matchQueryKey,
   withOrganizationHeaders,
@@ -69,6 +70,14 @@ type CollectionCountParams = NonNullable<
   Parameters<typeof countCollectionsCountGetOptions>[0]
 >;
 
+type GetCollectionParams = NonNullable<
+  Parameters<typeof getCollectionsReadableIdGetOptions>[0]
+>;
+
+type ReadableIdParams = {
+  collectionId: string;
+};
+
 export function collectionCountQueryOptions(
   organizationId: string,
   searchParams?: SearchParams,
@@ -90,6 +99,30 @@ export function useCollectionCountQueryOptions(searchParams?: SearchParams) {
   const currentOrganizationId = useCurrentOrganizationId();
 
   return collectionCountQueryOptions(currentOrganizationId, searchParams);
+}
+
+export function getCollectionQueryOptions(
+  organizationId: string,
+  { collectionId }: ReadableIdParams,
+) {
+  const params: GetCollectionParams = {
+    path: {
+      readable_id: collectionId,
+    },
+  };
+
+  return getCollectionsReadableIdGetOptions(
+    withOrganizationHeaders({ organizationId }, params),
+  );
+}
+
+export function useGetCollectionQueryOptions(params: ReadableIdParams) {
+  const currentOrganizationId = useCurrentOrganizationId();
+
+  return React.useMemo(
+    () => getCollectionQueryOptions(currentOrganizationId, params),
+    [currentOrganizationId, params],
+  );
 }
 
 export function prefetchCollectionCount({
@@ -131,6 +164,20 @@ export function ensureListCollections({
 }) {
   return queryClient.ensureQueryData(
     listCollectionsQueryOptions(organizationId, { search }),
+  );
+}
+
+export function ensureCollection({
+  collectionId,
+  queryClient,
+  organizationId,
+}: {
+  collectionId: string;
+  queryClient: QueryClient;
+  organizationId: string;
+}) {
+  return queryClient.ensureQueryData(
+    getCollectionQueryOptions(organizationId, { collectionId }),
   );
 }
 
