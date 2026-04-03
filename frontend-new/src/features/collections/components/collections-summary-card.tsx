@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { Maximize2, Plus, Search } from 'lucide-react';
+import { Maximize2, Search } from 'lucide-react';
 import {
   useCollectionCountQueryOptions,
   useListCollectionsQueryOptions,
@@ -29,7 +29,11 @@ import {
 } from '@/shared/ui/input-group';
 import { Skeleton } from '@/shared/ui/skeleton';
 
-export function CollectionsSummaryCard() {
+export function CollectionsSummaryCard({
+  createCollectionAction,
+}: {
+  createCollectionAction?: ReactNode;
+}) {
   const [search, setSearch] = React.useState<string | undefined>(undefined);
   const deferredSearch = React.useDeferredValue(search);
   const normalizedSearch = (deferredSearch ?? '').trim();
@@ -64,10 +68,7 @@ export function CollectionsSummaryCard() {
           </InputGroup>
 
           <div className="flex items-center gap-2">
-            <Button size="lg" type="button">
-              <Plus />
-              Create Collection
-            </Button>
+            {createCollectionAction}
             <Button asChild size="icon-lg" type="button" variant="outline">
               <Link to="/collections">
                 <Maximize2 />
