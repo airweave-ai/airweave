@@ -13,7 +13,8 @@ export const Route = createFileRoute(
       organizationId: context.currentOrganizationId,
     }),
   staticData: {
-    breadcrumb: ({ loaderData }) => (loaderData as Collection).name,
+    breadcrumb: ({ loaderData }) =>
+      (loaderData as Collection | undefined)?.name,
   },
   component: RouteComponent,
 });

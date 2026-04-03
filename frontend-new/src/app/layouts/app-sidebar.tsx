@@ -9,6 +9,7 @@ import {
 import { Link, useMatchRoute } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
+import { CreateCollectionButton } from '@/app/components/create-collection-button';
 import { UserAvatar } from '@/shared/components/user-avatar';
 import { useAppSession } from '@/shared/session';
 import {
@@ -17,7 +18,6 @@ import {
   OrganizationSwitcherTrigger,
 } from '@/features/organizations';
 import { LogoMark } from '@/shared/ui/logo-mark';
-import { Button } from '@/shared/ui/button';
 import {
   Sidebar,
   SidebarContent,
@@ -104,10 +104,10 @@ export function AppSidebar() {
           </div>
         </div>
 
-        <Button variant="secondary" data-icon="inline-start">
+        <CreateCollectionButton variant="secondary" data-icon="inline-start">
           <Plus />
           Create Collection
-        </Button>
+        </CreateCollectionButton>
       </SidebarHeader>
 
       <SidebarContent>

@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Plus, Search } from 'lucide-react';
 import type { CollectionsSearch } from './search';
 import type { ConnectSourceStep } from '@/features/source-connections';
+import { CreateCollectionButton } from '@/app/components/create-collection-button';
 import {
   CollectionCountBadge,
   CollectionFilterButtonGroup,
@@ -11,7 +12,6 @@ import {
 } from '@/features/collections';
 import { ConnectSourceDialog } from '@/features/source-connections';
 import { cn } from '@/shared/tailwind/cn';
-import { Button } from '@/shared/ui/button';
 import {
   InputGroup,
   InputGroupAddon,
@@ -74,14 +74,10 @@ export function CollectionsPage({
             <CollectionFilterButtonGroup key={filter} label={filter} />
           ))}
 
-          <Button
-            data-icon="inline-start"
-            type="button"
-            onClick={() => onConnectSourceChange({ step: 'source' })}
-          >
+          <CreateCollectionButton data-icon="inline-start">
             <Plus />
             Create Collection
-          </Button>
+          </CreateCollectionButton>
         </div>
       </div>
 

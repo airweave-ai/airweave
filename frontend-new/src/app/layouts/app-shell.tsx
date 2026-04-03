@@ -1,3 +1,4 @@
+import { AppDialog } from './app-dialog';
 import type { PropsWithChildren } from 'react';
 import { AppHeader } from '@/app/layouts/app-header';
 import { AppSidebar } from '@/app/layouts/app-sidebar';
@@ -10,6 +11,7 @@ export function AppShell({ children }: PropsWithChildren) {
       <SidebarInset className="overflow-hidden">
         <AppHeader />
         <div className="flex-1 overflow-auto p-3">{children}</div>
+        <AppDialog />
       </SidebarInset>
     </SidebarProvider>
   );
