@@ -273,7 +273,9 @@ function CollectionNameCell({ collection }: { collection: Collection }) {
     <div className="space-y-px whitespace-normal">
       <p className="text-sm font-medium text-foreground">{collection.name}</p>
       <div className="flex items-center gap-1 text-muted-foreground">
-        <span className="font-mono text-xs leading-5">{identifier}</span>
+        <span className="font-mono text-xs leading-5 text-nowrap">
+          {identifier}
+        </span>
         <CopyIdentifierButton value={identifier} />
       </div>
     </div>

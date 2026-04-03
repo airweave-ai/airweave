@@ -5,3 +5,4 @@ export type { OrganizationScope } from './organization-scope';
 export { withOrganizationHeaders } from './with-organization-headers';
 export * from './generated/@tanstack/react-query.gen';
 export type * from './generated/types.gen';
+export { matchQueryKey } from './match-query-key';
