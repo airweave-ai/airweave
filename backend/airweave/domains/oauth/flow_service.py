@@ -138,10 +138,18 @@ class OAuthFlowService:
         api_callback = f"{self._settings.api_url}/source-connections/callback"
         effective_consumer_key = consumer_key or oauth_settings.consumer_key
         effective_consumer_secret = consumer_secret or oauth_settings.consumer_secret
-        if not effective_consumer_secret:
+        if not effective_consumer_key or not effective_consumer_secret:
+            missing = []
+            if not effective_consumer_key:
+                missing.append("consumer_key")
+            if not effective_consumer_secret:
+                missing.append("consumer_secret")
             raise HTTPException(
                 status_code=400,
-                detail=f"Missing consumer_secret for OAuth1 source: {short_name}",
+                detail=(
+                    f"Missing {', '.join(missing)} for OAuth1 source: {short_name}. "
+                    "Provide custom OAuth credentials (BYOC) or configure platform credentials."
+                ),
             )
 
         request_token_response = await self._oauth1_service.get_request_token(

@@ -776,3 +776,94 @@ class TestOAuthCallbackRedirect:
 
         # Cleanup
         await api_client.delete(f"/source-connections/{connection['id']}")
+
+
+class TestByocNoPlatformCredentials:
+    """Tests for BYOC flows where platform YAML may not have credentials.
+
+    These tests verify that:
+    - BYOC credentials work when supplied by the caller
+    - Clear error messages are returned when neither platform nor BYOC credentials exist
+    """
+
+    @pytest.mark.asyncio
+    async def test_byoc_credentials_override_platform(
+        self, api_client: httpx.AsyncClient, collection: Dict, config
+    ):
+        """BYOC client_id + client_secret should produce a valid auth_url even when
+        the platform YAML might not have credentials for this source."""
+        payload = {
+            "name": "BYOC Override Test",
+            "short_name": "google_drive",
+            "readable_collection_id": collection["readable_id"],
+            "authentication": {
+                "client_id": config.TEST_GOOGLE_CLIENT_ID,
+                "client_secret": config.TEST_GOOGLE_CLIENT_SECRET,
+            },
+            "sync_immediately": False,
+        }
+
+        response = await api_client.post("/source-connections", json=payload)
+        response.raise_for_status()
+        connection = response.json()
+
+        assert connection["auth"]["method"] == "oauth_browser"
+        assert connection["status"] == "pending_auth"
+        assert connection["auth"]["auth_url"] is not None
+
+        auth_url = connection["auth"]["auth_url"]
+        proxy_response = await api_client.get(auth_url, follow_redirects=False)
+        assert proxy_response.status_code == 303
+        provider_url = proxy_response.headers.get("location")
+        assert provider_url is not None
+        assert f"client_id={config.TEST_GOOGLE_CLIENT_ID}" in provider_url
+
+        await api_client.delete(f"/source-connections/{connection['id']}")
+
+    @pytest.mark.asyncio
+    async def test_byoc_error_message_when_no_credentials(
+        self, api_client: httpx.AsyncClient, collection: Dict
+    ):
+        """When a source that requires BYOC gets no credentials, the error
+        should clearly mention 'BYOC' or 'credentials'."""
+        payload = {
+            "name": "No Credentials Test",
+            "short_name": "zendesk",
+            "readable_collection_id": collection["readable_id"],
+            "config": {"subdomain": "testcompany"},
+            "authentication": {},
+            "sync_immediately": False,
+        }
+
+        response = await api_client.post("/source-connections", json=payload)
+        assert response.status_code == 400
+
+        error = response.json()
+        detail = error.get("detail", "").lower()
+        assert any(kw in detail for kw in ("credentials", "client", "byoc")), (
+            f"Error should guide toward BYOC, got: {error}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_partial_byoc_rejected(
+        self, api_client: httpx.AsyncClient, collection: Dict
+    ):
+        """Providing only client_id without client_secret should be rejected."""
+        payload = {
+            "name": "Partial BYOC Test",
+            "short_name": "google_drive",
+            "readable_collection_id": collection["readable_id"],
+            "authentication": {
+                "client_id": "only-client-id",
+            },
+            "sync_immediately": False,
+        }
+
+        response = await api_client.post("/source-connections", json=payload)
+        assert response.status_code in (400, 422)
+
+        error = response.json()
+        error_str = str(error).lower()
+        assert "client" in error_str and ("both" in error_str or "secret" in error_str), (
+            f"Expected validation error about partial credentials, got: {error}"
+        )

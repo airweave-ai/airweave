@@ -87,6 +87,14 @@ class OAuth2Service(OAuth2ServiceProtocol):
 
         if not client_id:
             client_id = oauth2_settings.client_id
+        if not client_id:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"No client_id available for {oauth2_settings.integration_short_name}. "
+                    "Provide custom OAuth credentials (BYOC) or configure platform credentials."
+                ),
+            )
 
         if oauth2_settings.url_template:
             if not template_configs:
@@ -161,6 +169,9 @@ class OAuth2Service(OAuth2ServiceProtocol):
             client_id = oauth2_settings.client_id
         if not client_secret:
             client_secret = oauth2_settings.client_secret
+        self._require_credentials(source_short_name, client_id, client_secret)
+        assert client_id is not None
+        assert client_secret is not None
 
         return await self._exchange_code(
             logger=ctx.logger,
@@ -205,6 +216,14 @@ class OAuth2Service(OAuth2ServiceProtocol):
         """
         if not client_id:
             client_id = oauth2_settings.client_id
+        if not client_id:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"No client_id available for {oauth2_settings.integration_short_name}. "
+                    "Provide custom OAuth credentials (BYOC) or configure platform credentials."
+                ),
+            )
 
         if oauth2_settings.url_template:
             if not template_configs:
@@ -284,6 +303,9 @@ class OAuth2Service(OAuth2ServiceProtocol):
             client_id = oauth2_settings.client_id
         if not client_secret:
             client_secret = oauth2_settings.client_secret
+        self._require_credentials(source_short_name, client_id, client_secret)
+        assert client_id is not None
+        assert client_secret is not None
 
         return await self._exchange_code(
             logger=ctx.logger,
@@ -476,6 +498,27 @@ class OAuth2Service(OAuth2ServiceProtocol):
                 detail=f"{source_short_name} is not an OAuth2 integration",
             )
         return settings
+
+    @staticmethod
+    def _require_credentials(
+        short_name: str,
+        client_id: Optional[str],
+        client_secret: Optional[str],
+    ) -> None:
+        """Raise if client_id or client_secret resolved to nothing after BYOC fallback."""
+        missing = []
+        if not client_id:
+            missing.append("client_id")
+        if not client_secret:
+            missing.append("client_secret")
+        if missing:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Missing {', '.join(missing)} for {short_name}. "
+                    "Provide custom OAuth credentials (BYOC) or configure platform credentials."
+                ),
+            )
 
     def _resolve_backend_url(
         self,

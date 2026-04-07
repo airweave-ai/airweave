@@ -618,3 +618,127 @@ class TestDefaultExpiresAt:
 
         assert init_result.tzinfo is timezone.utc
         assert redirect_result.tzinfo is timezone.utc
+
+
+# ---------------------------------------------------------------------------
+# initiate_oauth1 – BYOC runtime credential guard
+# ---------------------------------------------------------------------------
+
+
+class TestInitiateOAuth1ByocGuard:
+    """Verify that initiate_oauth1 rejects requests when no credentials are available."""
+
+    async def test_byoc_overrides_none_platform_keys(self):
+        """BYOC consumer_key/secret should be used when platform entry has None."""
+        oauth1_svc = MagicMock()
+        oauth1_svc.get_request_token = AsyncMock(
+            return_value=OAuth1TokenResponse(oauth_token="tok", oauth_token_secret="sec")
+        )
+        oauth1_svc.build_authorization_url = MagicMock(return_value="https://p.com/auth?oauth_token=tok")
+
+        no_creds = OAuth1Settings(
+            integration_short_name="trello",
+            request_token_url="https://p.com/req",
+            authorization_url="https://p.com/auth",
+            access_token_url="https://p.com/access",
+            consumer_key=None,
+            consumer_secret=None,
+        )
+        int_settings = AsyncMock()
+        int_settings.get_by_short_name = AsyncMock(return_value=no_creds)
+
+        svc = _service(oauth1_service=oauth1_svc, integration_settings=int_settings)
+        url, overrides = await svc.initiate_oauth1(
+            "trello",
+            consumer_key="byoc-ck",
+            consumer_secret="byoc-cs",
+            ctx=_ctx(),
+        )
+        assert "oauth_token=tok" in url
+        assert overrides["consumer_key"] == "byoc-ck"
+        assert overrides["consumer_secret"] == "byoc-cs"
+
+    async def test_no_credentials_at_all_raises_400(self):
+        """Neither platform nor BYOC credentials → 400."""
+        no_creds = OAuth1Settings(
+            integration_short_name="trello",
+            request_token_url="https://p.com/req",
+            authorization_url="https://p.com/auth",
+            access_token_url="https://p.com/access",
+        )
+        int_settings = AsyncMock()
+        int_settings.get_by_short_name = AsyncMock(return_value=no_creds)
+
+        svc = _service(integration_settings=int_settings)
+        with pytest.raises(HTTPException) as exc:
+            await svc.initiate_oauth1(
+                "trello",
+                consumer_key="",
+                consumer_secret="",
+                ctx=_ctx(),
+            )
+        assert exc.value.status_code == 400
+        assert "consumer_key" in exc.value.detail
+        assert "consumer_secret" in exc.value.detail
+
+    async def test_missing_consumer_secret_only(self):
+        """Platform has consumer_key but not consumer_secret, BYOC provides neither."""
+        partial = OAuth1Settings(
+            integration_short_name="trello",
+            request_token_url="https://p.com/req",
+            authorization_url="https://p.com/auth",
+            access_token_url="https://p.com/access",
+            consumer_key="plat-ck",
+            consumer_secret=None,
+        )
+        int_settings = AsyncMock()
+        int_settings.get_by_short_name = AsyncMock(return_value=partial)
+
+        svc = _service(integration_settings=int_settings)
+        with pytest.raises(HTTPException) as exc:
+            await svc.initiate_oauth1(
+                "trello",
+                consumer_key="",
+                consumer_secret="",
+                ctx=_ctx(),
+            )
+        assert exc.value.status_code == 400
+        assert "consumer_secret" in exc.value.detail
+        assert "consumer_key" not in exc.value.detail
+
+    async def test_detail_mentions_byoc(self):
+        """Error message should guide the user toward BYOC."""
+        no_creds = OAuth1Settings(
+            integration_short_name="trello",
+            request_token_url="https://p.com/req",
+            authorization_url="https://p.com/auth",
+            access_token_url="https://p.com/access",
+        )
+        int_settings = AsyncMock()
+        int_settings.get_by_short_name = AsyncMock(return_value=no_creds)
+
+        svc = _service(integration_settings=int_settings)
+        with pytest.raises(HTTPException) as exc:
+            await svc.initiate_oauth1(
+                "trello", consumer_key="", consumer_secret="", ctx=_ctx()
+            )
+        assert "BYOC" in exc.value.detail
+
+    async def test_platform_keys_used_when_byoc_empty(self):
+        """Platform consumer_key/secret should be used when BYOC args are empty strings."""
+        oauth1_svc = MagicMock()
+        oauth1_svc.get_request_token = AsyncMock(
+            return_value=OAuth1TokenResponse(oauth_token="tok", oauth_token_secret="sec")
+        )
+        oauth1_svc.build_authorization_url = MagicMock(return_value="https://p.com/auth")
+
+        full_creds = _oauth1_settings()
+        int_settings = AsyncMock()
+        int_settings.get_by_short_name = AsyncMock(return_value=full_creds)
+
+        svc = _service(oauth1_service=oauth1_svc, integration_settings=int_settings)
+        url, overrides = await svc.initiate_oauth1(
+            "twitter", consumer_key="", consumer_secret="", ctx=_ctx()
+        )
+        assert overrides["consumer_key"] == "platform_key"
+        assert overrides["consumer_secret"] == "platform_secret"

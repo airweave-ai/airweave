@@ -1860,3 +1860,120 @@ class TestFakeOAuth2Service:
             {},
         )
         assert result.access_token == "tok"
+
+
+# ===========================================================================
+# _require_credentials  (BYOC runtime guard)
+# ===========================================================================
+
+
+class TestRequireCredentials:
+    """Verify that _require_credentials raises HTTPException when creds are missing."""
+
+    def test_both_present_no_error(self):
+        OAuth2Service._require_credentials("test_src", "cid", "csec")
+
+    def test_missing_client_id(self):
+        with pytest.raises(HTTPException) as exc:
+            OAuth2Service._require_credentials("test_src", None, "csec")
+        assert exc.value.status_code == 400
+        assert "client_id" in exc.value.detail
+        assert "client_secret" not in exc.value.detail
+
+    def test_missing_client_secret(self):
+        with pytest.raises(HTTPException) as exc:
+            OAuth2Service._require_credentials("test_src", "cid", None)
+        assert exc.value.status_code == 400
+        assert "client_secret" in exc.value.detail
+        assert "client_id" not in exc.value.detail
+
+    def test_both_missing(self):
+        with pytest.raises(HTTPException) as exc:
+            OAuth2Service._require_credentials("test_src", None, None)
+        assert exc.value.status_code == 400
+        assert "client_id" in exc.value.detail
+        assert "client_secret" in exc.value.detail
+
+    def test_empty_strings_treated_as_missing(self):
+        with pytest.raises(HTTPException) as exc:
+            OAuth2Service._require_credentials("test_src", "", "")
+        assert exc.value.status_code == 400
+        assert "client_id" in exc.value.detail
+        assert "client_secret" in exc.value.detail
+
+    def test_detail_mentions_byoc(self):
+        with pytest.raises(HTTPException) as exc:
+            OAuth2Service._require_credentials("my_source", None, None)
+        assert "BYOC" in exc.value.detail
+        assert "my_source" in exc.value.detail
+
+
+# ===========================================================================
+# generate_auth_url – BYOC credential fallback
+# ===========================================================================
+
+
+class TestGenerateAuthUrlByocFallback:
+    """Verify that generate_auth_url uses BYOC client_id and raises when neither is present."""
+
+    @pytest.mark.asyncio
+    async def test_byoc_client_id_overrides_settings(self):
+        svc = _svc()
+        settings = _make_oauth2_settings(client_id="platform-id")
+        url = await svc.generate_auth_url(settings, client_id="byoc-id")
+        assert "client_id=byoc-id" in url
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_settings_client_id(self):
+        svc = _svc()
+        settings = _make_oauth2_settings(client_id="platform-id")
+        url = await svc.generate_auth_url(settings)
+        assert "client_id=platform-id" in url
+
+    @pytest.mark.asyncio
+    async def test_raises_400_when_no_client_id(self):
+        svc = _svc()
+        settings = _make_oauth2_settings(client_id=None)
+        with pytest.raises(HTTPException) as exc:
+            await svc.generate_auth_url(settings)
+        assert exc.value.status_code == 400
+        assert "client_id" in exc.value.detail.lower()
+
+    @pytest.mark.asyncio
+    async def test_byoc_overrides_none_settings(self):
+        svc = _svc()
+        settings = _make_oauth2_settings(client_id=None)
+        url = await svc.generate_auth_url(settings, client_id="byoc-override")
+        assert "client_id=byoc-override" in url
+
+
+# ===========================================================================
+# generate_auth_url_with_redirect – BYOC credential fallback
+# ===========================================================================
+
+
+class TestGenerateAuthUrlWithRedirectByocFallback:
+    """Same BYOC fallback logic for the redirect-aware variant."""
+
+    @pytest.mark.asyncio
+    async def test_byoc_client_id_used(self):
+        svc = _svc()
+        settings = _make_oauth2_settings(client_id=None)
+        url, _ = await svc.generate_auth_url_with_redirect(
+            settings,
+            redirect_uri="https://cb.test/callback",
+            client_id="byoc-id",
+        )
+        assert "client_id=byoc-id" in url
+
+    @pytest.mark.asyncio
+    async def test_raises_400_without_any_client_id(self):
+        svc = _svc()
+        settings = _make_oauth2_settings(client_id=None)
+        with pytest.raises(HTTPException) as exc:
+            await svc.generate_auth_url_with_redirect(
+                settings,
+                redirect_uri="https://cb.test/callback",
+            )
+        assert exc.value.status_code == 400
+        assert "BYOC" in exc.value.detail

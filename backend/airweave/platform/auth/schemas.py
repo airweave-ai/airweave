@@ -91,7 +91,7 @@ class OAuth2Settings(BaseAuthSettings):
     url: str
     backend_url: str
     grant_type: str
-    client_id: str
+    client_id: Optional[str] = None
     client_secret: Optional[str] = None
     content_type: str
     client_credential_location: str
@@ -106,16 +106,12 @@ class OAuth2Settings(BaseAuthSettings):
 
     @model_validator(mode="after")
     def validate_oauth_fields(self):
-        """Validate that OAuth integrations have required fields."""
+        """Validate that OAuth integrations have required endpoint fields."""
         if not self.url:
             raise ValueError(f"OAuth integration {self.integration_short_name} missing 'url' field")
         if not self.backend_url:
             raise ValueError(
                 f"OAuth integration {self.integration_short_name} missing 'backend_url' field"
-            )
-        if not self.client_id:
-            raise ValueError(
-                f"OAuth integration {self.integration_short_name} missing 'client_id' field"
             )
         return self
 
@@ -200,14 +196,14 @@ class OAuth1Settings(BaseAuthSettings):
     request_token_url: str
     authorization_url: str
     access_token_url: str
-    consumer_key: str
+    consumer_key: Optional[str] = None
     consumer_secret: Optional[str] = None
     scope: Optional[str] = None
     expiration: Optional[str] = None
 
     @model_validator(mode="after")
     def validate_oauth1_fields(self):
-        """Validate that OAuth1 integrations have required fields."""
+        """Validate that OAuth1 integrations have required endpoint fields."""
         if not self.request_token_url:
             raise ValueError(
                 f"OAuth1 integration {self.integration_short_name} missing 'request_token_url'"
@@ -219,10 +215,6 @@ class OAuth1Settings(BaseAuthSettings):
         if not self.access_token_url:
             raise ValueError(
                 f"OAuth1 integration {self.integration_short_name} missing 'access_token_url'"
-            )
-        if not self.consumer_key:
-            raise ValueError(
-                f"OAuth1 integration {self.integration_short_name} missing 'consumer_key'"
             )
         return self
 

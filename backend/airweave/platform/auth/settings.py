@@ -188,11 +188,16 @@ class IntegrationSettings:
         # Explicit type checking: only OAuth1 and OAuth2 integrations need secret enrichment
         is_oauth = isinstance(settings, (OAuth1Settings, OAuth2Settings))
 
-        if is_oauth:
-            # Create a copy of the settings object
+        # Check if there's a secret to enrich (BYOC entries may have no platform secret)
+        has_secret = False
+        if isinstance(settings, OAuth1Settings):
+            has_secret = bool(settings.consumer_secret)
+        elif isinstance(settings, OAuth2Settings):
+            has_secret = bool(settings.client_secret)
+
+        if is_oauth and has_secret:
             settings_dict = settings.model_dump()
 
-            # Get the secret and set appropriate field
             secret = await self._get_client_secret(settings)
             if isinstance(settings, OAuth1Settings):
                 settings_dict["consumer_secret"] = secret
@@ -200,10 +205,8 @@ class IntegrationSettings:
                 settings_dict["client_secret"] = secret
 
             try:
-                # Return a new instance with the enriched secret
                 return type(settings)(**settings_dict)
             except Exception as e:
-                # If there's an error, log it and return the original settings
                 logger.error(f"Error creating settings object: {e}")
                 raise e
 
