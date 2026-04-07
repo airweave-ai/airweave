@@ -1,20 +1,11 @@
 import { useSuspenseQuery } from '@tanstack/react-query';
-import {
-  useCreateSourceConnectionMutation,
-  useGetSourceQueryOptions,
-} from '../../api';
+import { useGetSourceQueryOptions } from '../../api';
 import { useSourcePicker } from '../../hooks/use-source-picker';
-import { SourceIcon } from '../source-icon';
 import { SourcePickerFilters } from '../source-picker-filters';
 import { SourcePickerResults } from '../source-picker-results';
 import { SourceConnectionForm } from './source-connection-form';
 import type { ConnectSourceStep } from './connect-source-state';
-import type { SourceConnectionFormValues } from '../../types';
-import type {
-  DirectAuthentication,
-  Source,
-  SourceConnectionCreate,
-} from '@/shared/api';
+import type { Source, SourceConnection } from '@/shared/api';
 import { Button } from '@/shared/ui/button';
 import { DialogDescription, DialogTitle } from '@/shared/ui/dialog';
 import {
@@ -128,28 +119,15 @@ function ConnectSourceConfigStep({
     sourceShortName: sourceShortName,
   });
   const { data: source } = useSuspenseQuery(getSourceQueryOptions);
-  const createSourceConnectionMutation = useCreateSourceConnectionMutation();
 
-  const isPending = createSourceConnectionMutation.isPending;
-
-  const handleSubmit = async (values: SourceConnectionFormValues) => {
-    const sourceConnection = await createSourceConnectionMutation.mutateAsync({
-      body: buildSourceConnectionPayload({
-        authMethod: values.authMethod,
-        readableCollectionId: collectionId,
-        source,
-        values,
-      }),
-    });
-
+  const handleSourceConnectionCreated = (
+    sourceConnection: SourceConnection,
+  ) => {
     onStepChange({
       collectionId: sourceConnection.readable_collection_id,
       source: sourceShortName,
       sourceConnectionId: sourceConnection.id,
-      step: resolveNextConnectSourceStep({
-        authMethod: values.authMethod,
-        source,
-      }),
+      step: sourceConnection.auth.method === 'oauth_browser' ? 'auth' : 'sync',
     });
   };
 
@@ -167,48 +145,12 @@ function ConnectSourceConfigStep({
       </FlowDialogHeader>
 
       <FlowDialogBody>
-        <FlowDialogMain className="space-y-6">
-          <div className="flex justify-between gap-3">
-            <div className="flex gap-3">
-              <div className="flex size-10 items-center justify-center rounded-xs border bg-muted">
-                <SourceIcon
-                  className="size-4"
-                  name={source.name}
-                  shortName={source.short_name}
-                />
-              </div>
-              <div>
-                <h2 className="font-medium">Connect {source.name}</h2>
-                <a className="font-mono text-sm font-normal text-muted-foreground">
-                  See Docs
-                </a>
-              </div>
-            </div>
-          </div>
+        <FlowDialogMain>
           <SourceConnectionForm
-            footerStart={
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={onBack}
-                  disabled={isPending}
-                >
-                  Back
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={onClose}
-                  disabled={isPending}
-                >
-                  Cancel
-                </Button>
-              </>
-            }
-            isSubmitting={isPending}
-            onSubmit={handleSubmit}
+            collectionId={collectionId}
+            onSourceConnectionCreated={handleSourceConnectionCreated}
             source={source}
+            onBack={onBack}
           />
         </FlowDialogMain>
 
@@ -223,95 +165,6 @@ function ConnectSourceConfigStep({
         </FlowDialogAside>
       </FlowDialogBody>
     </>
-  );
-}
-
-function resolveNextConnectSourceStep({
-  authMethod,
-  source,
-}: {
-  authMethod: SourceConnectionFormValues['authMethod'];
-  source: Source;
-}) {
-  return getSyncImmediately({ authMethod, source }) ? 'sync' : 'auth';
-}
-
-function getSyncImmediately({
-  authMethod,
-  source,
-}: {
-  authMethod: SourceConnectionFormValues['authMethod'];
-  source: Source;
-}) {
-  if (source.supports_browse_tree) {
-    return false;
-  }
-
-  return authMethod !== 'oauth_browser';
-}
-
-function buildSourceConnectionPayload({
-  authMethod,
-  readableCollectionId,
-  source,
-  values,
-}: {
-  authMethod: SourceConnectionFormValues['authMethod'];
-  readableCollectionId: string;
-  source: Source;
-  values: SourceConnectionFormValues;
-}): SourceConnectionCreate {
-  const syncImmediately = getSyncImmediately({ authMethod, source });
-
-  return {
-    authentication:
-      authMethod === 'direct'
-        ? buildDirectAuthentication(values.authentication.credentials ?? {})
-        : null,
-    config: trimEmptyValues(values.config),
-    name: trimFormString(values.name),
-    readable_collection_id: readableCollectionId,
-    short_name: source.short_name,
-    sync_immediately: syncImmediately,
-  };
-}
-
-function buildDirectAuthentication(
-  credentials: Record<string, unknown>,
-): DirectAuthentication {
-  return {
-    credentials: trimEmptyValues(credentials),
-  };
-}
-
-function trimFormString(value: string) {
-  const trimmedValue = value.trim();
-
-  return trimmedValue.length > 0 ? trimmedValue : undefined;
-}
-
-function trimEmptyValues(values: Record<string, unknown>) {
-  return Object.fromEntries(
-    Object.entries(values).flatMap(([key, value]) => {
-      if (value === null || value === undefined) {
-        return [];
-      }
-
-      if (typeof value === 'string') {
-        const trimmedValue = value.trim();
-        return trimmedValue.length > 0 ? [[key, trimmedValue]] : [];
-      }
-
-      if (Array.isArray(value)) {
-        const nextValue = value
-          .map((item) => (typeof item === 'string' ? item.trim() : item))
-          .filter((item) => item !== '' && item != null);
-
-        return nextValue.length > 0 ? [[key, nextValue]] : [];
-      }
-
-      return [[key, value]];
-    }),
   );
 }
 

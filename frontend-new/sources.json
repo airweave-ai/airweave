@@ -1,0 +1,2425 @@
+[
+  {
+    "name": "Airtable",
+    "description": "Airtable source connector — syncs bases, tables, records, comments, attachments.",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "with_refresh",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "airtable",
+    "class_name": "AirtableSource",
+    "output_entity_definitions": [
+      "airtable_attachment_entity",
+      "airtable_base_entity",
+      "airtable_comment_entity",
+      "airtable_record_entity",
+      "airtable_table_entity",
+      "airtable_user_entity"
+    ],
+    "labels": ["Database", "Spreadsheet"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "access_token",
+          "title": "Access Token",
+          "description": "The access token for the OAuth2 app. This is obtained through the OAuth flow.",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "refresh_token",
+          "title": "Refresh Token",
+          "description": "The refresh token for the OAuth2 app. This is obtained through the OAuth flow.",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Apollo",
+    "description": "Apollo source connector.\n\nSyncs Contacts, Accounts, Sequences, and Email Activities from your\nteam's Apollo account. Requires an Apollo API key (master key for\nSequences and Email Activities).\n",
+    "auth_methods": ["direct", "auth_provider"],
+    "oauth_type": null,
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "apollo",
+    "class_name": "ApolloSource",
+    "output_entity_definitions": [
+      "apollo_account_entity",
+      "apollo_contact_entity",
+      "apollo_email_activity_entity",
+      "apollo_sequence_entity"
+    ],
+    "labels": ["CRM", "Sales"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": null,
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "api_key",
+          "title": "API Key",
+          "description": "The API key for Apollo. Create in Apollo: Settings > API.",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Asana",
+    "description": "Asana source connector — syncs workspaces, projects, tasks, sections, comments, files.",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "with_refresh",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "asana",
+    "class_name": "AsanaSource",
+    "output_entity_definitions": [
+      "asana_comment_entity",
+      "asana_file_entity",
+      "asana_project_entity",
+      "asana_section_entity",
+      "asana_task_entity",
+      "asana_workspace_entity"
+    ],
+    "labels": ["Project Management"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": { "fields": [] },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Attio",
+    "description": "Attio source connector — syncs objects, lists, records, and notes.",
+    "auth_methods": ["direct", "auth_provider"],
+    "oauth_type": null,
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "attio",
+    "class_name": "AttioSource",
+    "output_entity_definitions": [
+      "attio_list_entity",
+      "attio_note_entity",
+      "attio_object_entity",
+      "attio_record_entity"
+    ],
+    "labels": ["CRM"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "api_key",
+          "title": "API Key",
+          "description": "The API key for Attio. Generate one in Workspace Settings > Developers.",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Bitbucket",
+    "description": "Bitbucket source connector integrates with the Bitbucket REST API to extract data.\n\nConnects to your Bitbucket workspaces and repositories.\n\nIt supports syncing workspaces, repositories, directories,\nand code files with configurable filtering options for branches and file types.\n",
+    "auth_methods": ["direct", "auth_provider"],
+    "oauth_type": null,
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "bitbucket",
+    "class_name": "BitbucketSource",
+    "output_entity_definitions": [
+      "bitbucket_code_file_entity",
+      "bitbucket_directory_entity",
+      "bitbucket_repository_entity",
+      "bitbucket_workspace_entity"
+    ],
+    "labels": ["Code"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": false,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "access_token",
+          "title": "API Token",
+          "description": "Create a Bitbucket API token [here](https://id.atlassian.com/manage-profile/security/api-tokens) with scopes:\n- account\n- read:user:bitbucket\n- read:workspace:bitbucket\n- read:repository:bitbucket\n\nWhen using this, also provide your Atlassian email address.",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "email",
+          "title": "Email",
+          "description": "Your Atlassian email address (required for API token auth, not needed for OAuth)",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "workspace",
+          "title": "Workspace",
+          "description": "Bitbucket workspace slug (e.g., 'my-workspace'). Can also be set in source config.",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "repo_slug",
+          "title": "Repository Slug",
+          "description": "Specific repository to sync (e.g., 'my-repo'). If empty, syncs all repositories in the workspace.",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": {
+      "fields": [
+        {
+          "name": "workspace",
+          "title": "Workspace",
+          "description": "Bitbucket workspace slug (e.g., 'my-workspace'). Required when using OAuth; for API-token auth this can also be set in credentials.",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "repo_slug",
+          "title": "Repository Slug",
+          "description": "Specific repository to sync (e.g., 'my-repo'). If empty, syncs all repositories in the workspace.",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "branch",
+          "title": "Branch name",
+          "description": "Specific branch to sync (e.g., 'main', 'develop'). If empty, uses the default branch.",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "file_extensions",
+          "title": "File Extensions",
+          "description": "List of file extensions to include (e.g., '.py', '.js', '.md'). If empty, includes all text files.",
+          "type": "array",
+          "required": false,
+          "items_type": "string",
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "supported_auth_providers": ["composio"]
+  },
+  {
+    "name": "Box",
+    "description": "Box source connector integrates with the Box API to extract and synchronize data.\n\nConnects to your Box account and syncs folders, files, comments, users, and collaborations.\n",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "with_refresh",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "box",
+    "class_name": "BoxSource",
+    "output_entity_definitions": [
+      "box_collaboration_entity",
+      "box_comment_entity",
+      "box_file_entity",
+      "box_folder_entity",
+      "box_user_entity"
+    ],
+    "labels": ["Storage"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "access_token",
+          "title": "Access Token",
+          "description": "The access token for the OAuth2 app. This is obtained through the OAuth flow.",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "refresh_token",
+          "title": "Refresh Token",
+          "description": "The refresh token for the OAuth2 app. This is obtained through the OAuth flow.",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": {
+      "fields": [
+        {
+          "name": "folder_id",
+          "title": "Folder ID",
+          "description": "Specific Box folder ID to sync. Default is '0' (root folder, syncs all files). To sync a specific folder, enter its folder ID. You can find folder IDs in the Box URL when viewing a folder.",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Cal.com",
+    "description": "Cal.com source connector.\n\nSyncs bookings from the Cal.com API into searchable entities.\n\nThe connector:\n- Uses the Bookings API with `cal-api-version=2024-08-13`\n- Paginates with `take`/`skip`\n- Supports incremental sync via `afterUpdatedAt` cursor watermark\n",
+    "auth_methods": ["direct", "auth_provider"],
+    "oauth_type": "access_only",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "calcom",
+    "class_name": "CalSource",
+    "output_entity_definitions": [
+      "cal_booking_entity",
+      "cal_booking_deletion_entity",
+      "cal_event_type_entity",
+      "cal_schedule_entity"
+    ],
+    "labels": ["Calendar", "Scheduling"],
+    "supports_continuous": true,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "api_key",
+          "title": "API Key",
+          "description": "Cal.com API key. Generate it from your Cal.com Settings → Security page. Test keys start with 'cal_' and live keys with 'cal_live_'.",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": {
+      "fields": [
+        {
+          "name": "host",
+          "title": "Host",
+          "description": "Base URL for your Cal.com instance. Use the default for cal.com cloud (https://api.cal.com). For self-hosted instances, set this to your API host (e.g. https://cal.example.com or https://cal.example.com/api if exposed there).",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "ClickUp",
+    "description": "ClickUp source connector integrates with the ClickUp API to extract and synchronize data.\n\nConnects to your ClickUp workspaces.\n\nIt supports syncing workspaces, spaces, folders, lists, tasks, and comments.\n",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "access_only",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "clickup",
+    "class_name": "ClickUpSource",
+    "output_entity_definitions": [
+      "click_up_comment_entity",
+      "click_up_file_entity",
+      "click_up_folder_entity",
+      "click_up_list_entity",
+      "click_up_space_entity",
+      "click_up_subtask_entity",
+      "click_up_task_entity",
+      "click_up_workspace_entity"
+    ],
+    "labels": ["Project Management"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": false,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "access_token",
+          "title": "Access Token",
+          "description": "The access token for the OAuth2 app. This is obtained through the OAuth flow.",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Coda",
+    "description": "Coda source connector.\n\nSyncs docs, pages (with content), and tables/rows from Coda.\nAuth: Personal API Token or OAuth (via Packs).\n",
+    "auth_methods": ["direct", "auth_provider"],
+    "oauth_type": "access_only",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "coda",
+    "class_name": "CodaSource",
+    "output_entity_definitions": [
+      "coda_doc_entity",
+      "coda_page_entity",
+      "coda_row_entity",
+      "coda_table_entity"
+    ],
+    "labels": ["Knowledge Base", "Productivity"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": null,
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "api_key",
+          "title": "Personal API Token",
+          "description": "Coda Personal API Token from Account settings",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": {
+      "fields": [
+        {
+          "name": "doc_id",
+          "title": "Doc ID",
+          "description": "Sync only this doc (leave empty to sync all docs the token can access).",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "folder_id",
+          "title": "Folder ID",
+          "description": "Limit docs to this folder (optional).",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Confluence",
+    "description": "Confluence source connector integrates with the Confluence REST API to extract content.\n\nConnects to your Confluence instance.\n\nIt supports syncing spaces, pages, blog posts, comments, labels, and other\ncontent types. It converts Confluence pages to HTML format for content extraction and\nextracts embedded files and attachments from page content.\n",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "with_rotating_refresh",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "confluence",
+    "class_name": "ConfluenceSource",
+    "output_entity_definitions": [
+      "confluence_blog_post_entity",
+      "confluence_comment_entity",
+      "confluence_custom_content_entity",
+      "confluence_database_entity",
+      "confluence_folder_entity",
+      "confluence_label_entity",
+      "confluence_page_entity",
+      "confluence_space_entity",
+      "confluence_task_entity",
+      "confluence_whiteboard_entity"
+    ],
+    "labels": ["Knowledge Base", "Documentation"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": { "fields": [] },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio"]
+  },
+  {
+    "name": "CTTI AACT",
+    "description": "CTTI source connector integrates with the AACT PostgreSQL database to extract trials.\n\nConnects to the Aggregate Analysis of ClinicalTrials.gov database.\nCreates web entities that link to ClinicalTrials.gov pages.\n",
+    "auth_methods": ["direct"],
+    "oauth_type": null,
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "ctti",
+    "class_name": "CTTISource",
+    "output_entity_definitions": ["ctti_web_entity"],
+    "labels": ["Clinical Trials", "Database"],
+    "supports_continuous": true,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": null,
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "username",
+          "title": "Username",
+          "description": "Username for the AACT Clinical Trials database",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "password",
+          "title": "Password",
+          "description": "Password for the AACT Clinical Trials database",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": {
+      "fields": [
+        {
+          "name": "limit",
+          "title": "Study Limit",
+          "description": "Maximum number of clinical trial studies to fetch from AACT database",
+          "type": "number",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "skip",
+          "title": "Skip Studies",
+          "description": "Number of clinical trial studies to skip (for pagination). Use with limit to fetch different batches.",
+          "type": "number",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "supported_auth_providers": []
+  },
+  {
+    "name": "Document360",
+    "description": "Document360 source connector.\n\nSyncs project versions, categories, and articles from Document360\nknowledge bases. Uses API token authentication.\n",
+    "auth_methods": ["direct", "auth_provider"],
+    "oauth_type": null,
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "document360",
+    "class_name": "Document360Source",
+    "output_entity_definitions": [
+      "document360_article_entity",
+      "document360_category_entity",
+      "document360_project_version_entity"
+    ],
+    "labels": ["Documentation", "Knowledge Base"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": null,
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "api_token",
+          "title": "API Token",
+          "description": "Document360 API token. Generate from Settings > Knowledge base portal > API tokens.",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": {
+      "fields": [
+        {
+          "name": "base_url",
+          "title": "API Base URL",
+          "description": "Document360 API base URL (e.g. https://apihub.document360.io or https://apihub.us.document360.io for US). Leave empty to use default.",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "lang_code",
+          "title": "Language Code",
+          "description": "Language code for article content (e.g. 'en', 'es'). Default: en.",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "supported_auth_providers": ["pipedream"]
+  },
+  {
+    "name": "Dropbox",
+    "description": "Dropbox source connector integrates with the Dropbox API to extract and synchronize files.\n\nConnects to folder structures from your Dropbox account.\n\nIt supports downloading and processing files.\n",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "with_refresh",
+    "requires_byoc": true,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "dropbox",
+    "class_name": "DropboxSource",
+    "output_entity_definitions": [
+      "dropbox_account_entity",
+      "dropbox_file_entity",
+      "dropbox_folder_entity"
+    ],
+    "labels": ["File Storage"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": { "fields": [] },
+    "config_fields": {
+      "fields": [
+        {
+          "name": "exclude_path",
+          "title": "Exclude Path",
+          "description": "Path prefix to exclude from sync (e.g., '/archive'). If empty, nothing is excluded.",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Fireflies",
+    "description": "Fireflies source connector.\n\nSyncs meeting transcripts from Fireflies.ai. Uses the GraphQL API with\nBearer token (API key) authentication.\n",
+    "auth_methods": ["direct", "auth_provider"],
+    "oauth_type": null,
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "fireflies",
+    "class_name": "FirefliesSource",
+    "output_entity_definitions": ["fireflies_transcript_entity"],
+    "labels": ["Meetings", "Transcription", "Productivity"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": null,
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "api_key",
+          "title": "API Key",
+          "description": "The API key for the API",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Freshdesk",
+    "description": "Freshdesk source connector.\n\nSyncs tickets, conversations, contacts, companies, and solution articles from Freshdesk.\n",
+    "auth_methods": ["direct", "auth_provider"],
+    "oauth_type": null,
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "freshdesk",
+    "class_name": "FreshdeskSource",
+    "output_entity_definitions": [
+      "freshdesk_company_entity",
+      "freshdesk_contact_entity",
+      "freshdesk_conversation_entity",
+      "freshdesk_solution_article_entity",
+      "freshdesk_ticket_entity"
+    ],
+    "labels": ["Customer Support", "CRM"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "api_key",
+          "title": "API Key",
+          "description": "Your Freshdesk API key. Find it in Profile Settings in your Freshdesk portal.",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": {
+      "fields": [
+        {
+          "name": "domain",
+          "title": "Freshdesk Domain",
+          "description": "Your Freshdesk domain only (e.g., 'mycompany' for mycompany.freshdesk.com)",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "GitHub",
+    "description": "GitHub source connector integrates with the GitHub REST API to extract and synchronize data.\n\nConnects to your GitHub repositories.\n\nIt supports syncing repository metadata, directory structures, and code files with\nconfigurable filtering options for branches and file types.\n",
+    "auth_methods": ["direct", "auth_provider"],
+    "oauth_type": null,
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "github",
+    "class_name": "GitHubSource",
+    "output_entity_definitions": [
+      "git_hub_code_file_entity",
+      "github_content_entity",
+      "git_hub_directory_entity",
+      "git_hub_file_deletion_entity",
+      "git_hub_pr_comment_entity",
+      "git_hub_pull_request_entity",
+      "github_repo_entity",
+      "git_hub_repository_entity"
+    ],
+    "labels": ["Code"],
+    "supports_continuous": true,
+    "federated_search": false,
+    "supports_temporal_relevance": false,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "personal_access_token",
+          "title": "Personal Access Token",
+          "description": "GitHub PAT with read rights (code, contents, metadata) to the repository",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": {
+      "fields": [
+        {
+          "name": "repo_name",
+          "title": "Repository Name",
+          "description": "Repository to sync in owner/repo format (e.g., 'airweave-ai/airweave')",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "branch",
+          "title": "Branch name",
+          "description": "Specific branch to sync (e.g., 'main', 'development'). If empty, uses the default branch.",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "sync_pull_requests",
+          "title": "Sync Pull Requests",
+          "description": "Sync merged pull requests and their review comments. Enables searching over PR descriptions, discussions, and code review feedback.",
+          "type": "boolean",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "supported_auth_providers": ["composio"]
+  },
+  {
+    "name": "GitLab",
+    "description": "GitLab source connector integrates with the GitLab REST API to extract data.\n\nConnects to your GitLab projects.\n\nIt supports syncing projects, users, repository files, issues, and merge requests\nwith configurable filtering options for branches and file types.\n",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "with_refresh",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "gitlab",
+    "class_name": "GitLabSource",
+    "output_entity_definitions": [
+      "git_lab_code_file_entity",
+      "git_lab_directory_entity",
+      "git_lab_issue_entity",
+      "git_lab_merge_request_entity",
+      "git_lab_project_entity",
+      "git_lab_user_entity"
+    ],
+    "labels": ["Code"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": false,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "access_token",
+          "title": "Access Token",
+          "description": "The access token for the OAuth2 app. This is obtained through the OAuth flow.",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "refresh_token",
+          "title": "Refresh Token",
+          "description": "The refresh token for the OAuth2 app. This is obtained through the OAuth flow.",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": {
+      "fields": [
+        {
+          "name": "project_id",
+          "title": "Project ID",
+          "description": "Specific project ID to sync (e.g., '12345'). If empty, syncs all accessible projects.",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "branch",
+          "title": "Branch name",
+          "description": "Specific branch to sync (e.g., 'main', 'master'). If empty, uses the default branch.",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Gmail",
+    "description": "Gmail source connector integrates with the Gmail API to extract and synchronize email data.\n\nConnects to your Gmail account.\n\nIt supports syncing email threads, individual messages, and file attachments.\n",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "with_refresh",
+    "requires_byoc": true,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "gmail",
+    "class_name": "GmailSource",
+    "output_entity_definitions": [
+      "gmail_attachment_entity",
+      "gmail_message_deletion_entity",
+      "gmail_message_entity",
+      "gmail_thread_entity"
+    ],
+    "labels": ["Communication", "Email"],
+    "supports_continuous": true,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": { "fields": [] },
+    "config_fields": {
+      "fields": [
+        {
+          "name": "after_date",
+          "title": "After Date",
+          "description": "Sync emails after this date (format: YYYY/MM/DD or YYYY-MM-DD).",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "included_labels",
+          "title": "Included Labels",
+          "description": "Labels to include (e.g., 'inbox', 'sent', 'important'). Defaults to inbox and sent.",
+          "type": "array",
+          "required": false,
+          "items_type": "string",
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "excluded_labels",
+          "title": "Excluded Labels",
+          "description": "Labels to exclude (e.g., 'spam', 'trash', 'promotions', 'social'). Defaults to spam and trash.",
+          "type": "array",
+          "required": false,
+          "items_type": "string",
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "excluded_categories",
+          "title": "Excluded Categories",
+          "description": "Gmail categories to exclude (e.g., 'promotions', 'social', 'updates', 'forums').",
+          "type": "array",
+          "required": false,
+          "items_type": "string",
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "gmail_query",
+          "title": "Custom Gmail Query",
+          "description": "Advanced. Custom Gmail query string (overrides all other filters if provided).",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Google Calendar",
+    "description": "Google Calendar source connector integrates with the Google Calendar API to extract data.\n\nSynchronizes calendars, events, and free/busy information.\n\nIt provides comprehensive access to your\nGoogle Calendar scheduling information for productivity and time management insights.\n",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "with_refresh",
+    "requires_byoc": true,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "google_calendar",
+    "class_name": "GoogleCalendarSource",
+    "output_entity_definitions": [
+      "google_calendar_calendar_entity",
+      "google_calendar_event_entity",
+      "google_calendar_free_busy_entity",
+      "google_calendar_list_entity"
+    ],
+    "labels": ["Productivity", "Calendar"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": { "fields": [] },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Google Docs",
+    "description": "Google Docs source connector integrates with Google Drive API to extract Google Docs.\n\nConnects to your Google Drive account to retrieve Google Docs documents.\nDocuments are exported as DOCX and processed through Airweave's file\nprocessing pipeline to enable full-text semantic search across document content.\n\nThe connector handles:\n- Document listing and filtering\n- Content export and download (DOCX format)\n- Metadata preservation (ownership, sharing, timestamps)\n- Incremental sync via Drive Changes API\n",
+    "auth_methods": [
+      "oauth_browser",
+      "oauth_token",
+      "auth_provider",
+      "oauth_byoc"
+    ],
+    "oauth_type": "with_refresh",
+    "requires_byoc": true,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "google_docs",
+    "class_name": "GoogleDocsSource",
+    "output_entity_definitions": ["google_docs_document_entity"],
+    "labels": ["Document Management", "Productivity"],
+    "supports_continuous": true,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": { "fields": [] },
+    "config_fields": {
+      "fields": [
+        {
+          "name": "include_trashed",
+          "title": "Include Trashed Documents",
+          "description": "Include documents that have been moved to trash. Defaults to False.",
+          "type": "boolean",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "include_shared",
+          "title": "Include Shared Documents",
+          "description": "Include documents shared with you by others. Defaults to True.",
+          "type": "boolean",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Google Drive",
+    "description": "Google Drive source connector integrates with the Google Drive API to extract files.\n\nSupports both personal Google Drive (My Drive) and shared drives.\n\nIt supports downloading and processing files\nwhile maintaining proper organization and access permissions.\n",
+    "auth_methods": [
+      "oauth_browser",
+      "oauth_token",
+      "auth_provider",
+      "oauth_byoc"
+    ],
+    "oauth_type": "with_refresh",
+    "requires_byoc": true,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "google_drive",
+    "class_name": "GoogleDriveSource",
+    "output_entity_definitions": [
+      "google_drive_drive_entity",
+      "google_drive_file_deletion_entity",
+      "google_drive_file_entity"
+    ],
+    "labels": ["File Storage"],
+    "supports_continuous": true,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": { "fields": [] },
+    "config_fields": {
+      "fields": [
+        {
+          "name": "include_patterns",
+          "title": "Include Patterns",
+          "description": "List of file/folder paths to include in synchronization. Examples: 'my_folder/*', 'my_folder/my_file.pdf'. Separate multiple patterns with commas. If empty, all files are included.",
+          "type": "array",
+          "required": false,
+          "items_type": "string",
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Google Slides",
+    "description": "Google Slides source connector integrates with Google Drive API.\n\nConnects to your Google Drive account to retrieve Google Slides presentations.\nPresentations are exported as PDF and processed through Airweave's file\nprocessing pipeline to enable full-text semantic search across presentation content.\n\nMirrors the Google Drive connector approach - treats Google Slides presentations as\nregular files that get processed through the standard file processing pipeline.\n\nThe connector handles:\n- Presentation listing and filtering via Google Drive API\n- Content export and download (PDF format)\n- Metadata preservation (ownership, sharing, timestamps)\n- Incremental sync via Drive Changes API\n",
+    "auth_methods": [
+      "oauth_browser",
+      "oauth_token",
+      "auth_provider",
+      "oauth_byoc"
+    ],
+    "oauth_type": "with_refresh",
+    "requires_byoc": true,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "google_slides",
+    "class_name": "GoogleSlidesSource",
+    "output_entity_definitions": [
+      "google_slides_presentation_entity",
+      "google_slides_slide_entity"
+    ],
+    "labels": ["Productivity", "Presentations"],
+    "supports_continuous": true,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": { "fields": [] },
+    "config_fields": {
+      "fields": [
+        {
+          "name": "include_trashed",
+          "title": "Include Trashed Presentations",
+          "description": "Include presentations that have been moved to trash. Defaults to False.",
+          "type": "boolean",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "include_shared",
+          "title": "Include Shared Presentations",
+          "description": "Include presentations shared with you by others. Defaults to True.",
+          "type": "boolean",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "HubSpot",
+    "description": "HubSpot source connector integrates with the HubSpot CRM API to extract CRM data.\n\nSynchronizes customer relationship management data.\n\nIt provides comprehensive access to contacts, companies, deals, and support tickets.\n",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "with_refresh",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "hubspot",
+    "class_name": "HubspotSource",
+    "output_entity_definitions": [
+      "hubspot_company_entity",
+      "hubspot_contact_entity",
+      "hubspot_deal_entity",
+      "hubspot_ticket_entity"
+    ],
+    "labels": ["CRM", "Marketing"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": { "fields": [] },
+    "config_fields": {
+      "fields": [
+        {
+          "name": "after_date",
+          "title": "After Date",
+          "description": "Only sync records created or modified after this date in UTC (format: YYYY-MM-DD). Useful for large CRM instances where you only need recent data.",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Intercom",
+    "description": "Intercom source connector.\n\nSyncs conversations, conversation messages (parts), and tickets from Intercom\nto enhance support and CX queries.\n",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "access_only",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "intercom",
+    "class_name": "IntercomSource",
+    "output_entity_definitions": [
+      "intercom_conversation_entity",
+      "intercom_conversation_message_entity",
+      "intercom_ticket_entity"
+    ],
+    "labels": ["Customer Support", "CRM"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": { "fields": [] },
+    "config_fields": {
+      "fields": [
+        {
+          "name": "exclude_closed_conversations",
+          "title": "Exclude Closed Conversations",
+          "description": "Skip closed conversations during sync (recommended for faster syncing)",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Jira",
+    "description": "Jira source connector integrates with the Jira REST API to extract project management data.\n\nConnects to your Jira Cloud instance. Optionally integrates with Zephyr Scale\nfor test management entities (test cases, test cycles, test plans) when a\nZephyr Scale API token is provided.\n\nIt provides comprehensive access to projects, issues, and their\nrelationships for agile development and issue tracking workflows.\n",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "with_rotating_refresh",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "jira",
+    "class_name": "JiraSource",
+    "output_entity_definitions": [
+      "jira_issue_entity",
+      "jira_project_entity",
+      "zephyr_test_case_entity",
+      "zephyr_test_cycle_entity",
+      "zephyr_test_plan_entity"
+    ],
+    "labels": ["Project Management", "Issue Tracking", "Test Management"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "access_token",
+          "title": "Access Token",
+          "description": "The access token for the OAuth2 app. This is obtained through the OAuth flow.",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "refresh_token",
+          "title": "Refresh Token",
+          "description": "The refresh token for the OAuth2 app. This is obtained through the OAuth flow.",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": {
+      "fields": [
+        {
+          "name": "project_keys",
+          "title": "Project Keys",
+          "description": "List of Jira project keys to sync (e.g., 'PROJ', 'DEV', 'MARKET'). Only the specified projects will be synced. Hit enter to add new project.  You can find project keys in your Jira project settings.",
+          "type": "array",
+          "required": true,
+          "items_type": "string",
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "supported_auth_providers": ["composio"]
+  },
+  {
+    "name": "Linear",
+    "description": "Linear source connector — syncs teams, projects, users, issues, comments, attachments.",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "access_only",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "linear",
+    "class_name": "LinearSource",
+    "output_entity_definitions": [
+      "linear_attachment_entity",
+      "linear_comment_entity",
+      "linear_issue_entity",
+      "linear_project_entity",
+      "linear_team_entity",
+      "linear_user_entity"
+    ],
+    "labels": ["Project Management"],
+    "supports_continuous": true,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": { "fields": [] },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Monday",
+    "description": "Monday source connector integrates with the Monday.com GraphQL API to extract work data.\n\nConnects to your Monday.com workspace.\n\nIt provides comprehensive access to boards, items, and team\ncollaboration features with full relationship mapping and custom field support.\n",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "access_only",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "monday",
+    "class_name": "MondaySource",
+    "output_entity_definitions": [
+      "monday_board_entity",
+      "monday_column_entity",
+      "monday_group_entity",
+      "monday_item_entity",
+      "monday_subitem_entity",
+      "monday_update_entity"
+    ],
+    "labels": ["Project Management"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": { "fields": [] },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Notion",
+    "description": "Notion source connector integrates with the Notion API to extract and synchronize content.\n\nConnects to your Notion workspace.\n\nIt provides comprehensive access to databases, pages, and content with advanced content\naggregation, lazy loading, and file processing capabilities for optimal performance.\n",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "access_only",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "notion",
+    "class_name": "NotionSource",
+    "output_entity_definitions": [
+      "notion_database_entity",
+      "notion_file_entity",
+      "notion_page_entity",
+      "notion_property_entity"
+    ],
+    "labels": ["Knowledge Base", "Productivity"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "connection",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": { "fields": [] },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "OneDrive",
+    "description": "OneDrive source connector integrates with the Microsoft Graph API to extract files.\n\nSupports OneDrive personal and business accounts.\n\nIt supports various OneDrive scenarios including\npersonal drives, business drives, and app folder access with intelligent fallback handling.\n",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "with_refresh",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "onedrive",
+    "class_name": "OneDriveSource",
+    "output_entity_definitions": [
+      "one_drive_drive_entity",
+      "one_drive_drive_item_entity"
+    ],
+    "labels": ["File Storage"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": { "fields": [] },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "OneNote",
+    "description": "Microsoft OneNote source connector integrates with the Microsoft Graph API.\n\nSynchronizes data from Microsoft OneNote including notebooks, sections, and pages.\n\nIt provides comprehensive access to OneNote resources with proper token refresh\nand rate limiting.\n",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "with_rotating_refresh",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "onenote",
+    "class_name": "OneNoteSource",
+    "output_entity_definitions": [
+      "one_note_notebook_entity",
+      "one_note_page_file_entity",
+      "one_note_section_entity",
+      "one_note_section_group_entity"
+    ],
+    "labels": ["Productivity", "Note Taking", "Collaboration"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": { "fields": [] },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio"]
+  },
+  {
+    "name": "Outlook Calendar",
+    "description": "Outlook Calendar source connector integrates with the Microsoft Graph API to extract data.\n\nSynchronizes data from Outlook calendars.\n\nIt provides comprehensive access to calendars, events, and attachments\nwith proper timezone handling and meeting management features.\n",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "with_refresh",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "outlook_calendar",
+    "class_name": "OutlookCalendarSource",
+    "output_entity_definitions": [
+      "outlook_calendar_attachment_entity",
+      "outlook_calendar_calendar_entity",
+      "outlook_calendar_event_entity"
+    ],
+    "labels": ["Productivity", "Calendar"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": { "fields": [] },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Outlook Mail",
+    "description": "Outlook Mail source connector integrates with the Microsoft Graph API to extract email data.\n\nSynchronizes data from Outlook mailboxes.\n\nIt provides comprehensive access to mail folders, messages, and\nattachments with hierarchical folder organization and content processing capabilities.\n",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "with_refresh",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "outlook_mail",
+    "class_name": "OutlookMailSource",
+    "output_entity_definitions": [
+      "outlook_attachment_entity",
+      "outlook_mail_folder_deletion_entity",
+      "outlook_mail_folder_entity",
+      "outlook_message_deletion_entity",
+      "outlook_message_entity"
+    ],
+    "labels": ["Communication", "Email"],
+    "supports_continuous": true,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": { "fields": [] },
+    "config_fields": {
+      "fields": [
+        {
+          "name": "after_date",
+          "title": "After Date",
+          "description": "Sync emails after this date (format: YYYY/MM/DD or YYYY-MM-DD).",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "included_folders",
+          "title": "Included Folders",
+          "description": "Well-known folder names to include (e.g., 'inbox', 'sentitems', 'drafts'). Defaults to inbox and sent items.",
+          "type": "array",
+          "required": false,
+          "items_type": "string",
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "excluded_folders",
+          "title": "Excluded Folders",
+          "description": "Well-known folder names to exclude (e.g., 'junkemail', 'deleteditems'). Defaults to junk email and deleted items.",
+          "type": "array",
+          "required": false,
+          "items_type": "string",
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Pipedrive",
+    "description": "Pipedrive source connector integrates with the Pipedrive CRM API to extract CRM data.\n\nSynchronizes customer relationship management data including persons, organizations,\ndeals, activities, products, leads, and notes.\n\nUses API token authentication.\n",
+    "auth_methods": ["direct"],
+    "oauth_type": null,
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "pipedrive",
+    "class_name": "PipedriveSource",
+    "output_entity_definitions": [
+      "pipedrive_activity_entity",
+      "pipedrive_deal_entity",
+      "pipedrive_lead_entity",
+      "pipedrive_note_entity",
+      "pipedrive_organization_entity",
+      "pipedrive_person_entity",
+      "pipedrive_product_entity"
+    ],
+    "labels": ["CRM", "Sales"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "api_token",
+          "title": "API Token",
+          "description": "Your Pipedrive API token. Find it in Settings > Personal preferences > API.",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "PowerPoint",
+    "description": "Microsoft PowerPoint source connector integrates with the Microsoft Graph API.\n\nSynchronizes PowerPoint presentations from Microsoft OneDrive and SharePoint.\nPresentations are processed through Airweave's file handling pipeline which:\n- Downloads the .pptx/.ppt/.pptm file\n- Extracts text for indexing\n- Chunks content for vector search\n- Indexes for semantic search\n\nIt provides comprehensive access to PowerPoint presentations with proper token refresh\nand rate limiting.\n",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "with_rotating_refresh",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "powerpoint",
+    "class_name": "PowerPointSource",
+    "output_entity_definitions": ["power_point_presentation_entity"],
+    "labels": ["Productivity", "Presentations"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": { "fields": [] },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Salesforce",
+    "description": "Salesforce source connector integrates with the Salesforce REST API to extract CRM data.\n\nSynchronizes comprehensive data from your Salesforce org including:\n- Accounts (companies, organizations)\n- Contacts (people, leads)\n- Opportunities (deals, sales prospects)\n\nIt provides access to all major Salesforce objects with proper OAuth2 authentication.\n",
+    "auth_methods": ["oauth_browser", "oauth_byoc", "auth_provider"],
+    "oauth_type": "with_refresh",
+    "requires_byoc": true,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "salesforce",
+    "class_name": "SalesforceSource",
+    "output_entity_definitions": [
+      "salesforce_account_entity",
+      "salesforce_contact_entity",
+      "salesforce_opportunity_entity"
+    ],
+    "labels": ["CRM", "Sales"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": { "fields": [] },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "ServiceNow",
+    "description": "ServiceNow source connector.\n\nSyncs Incidents, Knowledge Base Articles, Change Requests, Problem Records,\nand Service Catalog Items from a ServiceNow instance using the Table API\nwith Basic Auth (instance URL, username, password).\n",
+    "auth_methods": ["direct", "auth_provider"],
+    "oauth_type": null,
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "servicenow",
+    "class_name": "ServiceNowSource",
+    "output_entity_definitions": [
+      "service_now_catalog_item_entity",
+      "service_now_change_request_entity",
+      "service_now_incident_entity",
+      "service_now_knowledge_article_entity",
+      "service_now_problem_entity"
+    ],
+    "labels": ["ITSM", "Service Management", "IT Operations"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": null,
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "url",
+          "title": "Instance URL",
+          "description": "Your ServiceNow instance URL (e.g. https://your-instance.service-now.com)",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "subdomain",
+          "title": "Instance subdomain",
+          "description": "Instance subdomain (e.g. your-instance). Used to build URL if url is not set.",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "username",
+          "title": "Username",
+          "description": "ServiceNow username for API access",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "password",
+          "title": "Password",
+          "description": "ServiceNow password for API access",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio"]
+  },
+  {
+    "name": "SharePoint",
+    "description": "SharePoint source connector integrates with the Microsoft Graph API.\n\nSynchronizes data from SharePoint including sites, document libraries,\nfiles, users, and groups.\n\nIt provides comprehensive access to SharePoint resources with intelligent\nerror handling and rate limiting.\n",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "with_rotating_refresh",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "sharepoint",
+    "class_name": "SharePointSource",
+    "output_entity_definitions": [
+      "share_point_drive_entity",
+      "share_point_drive_item_entity",
+      "share_point_group_entity",
+      "share_point_list_entity",
+      "share_point_list_item_entity",
+      "share_point_page_entity",
+      "share_point_site_entity",
+      "share_point_user_entity"
+    ],
+    "labels": ["File Storage", "Collaboration"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": { "fields": [] },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["pipedream"]
+  },
+  {
+    "name": "Shopify",
+    "description": "Shopify source connector integrates with the Shopify Admin API.\n\nUses OAuth 2.0 client credentials grant to exchange client_id/client_secret\nfor an access token, then syncs comprehensive data from your Shopify store:\n- Products and their variants with pricing and inventory\n- Customer profiles and purchase history\n- Orders with line items and fulfillment status\n- Custom and Smart Collections\n- Store locations and inventory levels\n- Fulfillments and shipment tracking\n- Gift cards and discounts/price rules\n- Metaobjects for custom data structures\n- Files/media via GraphQL\n- Themes and templates\n",
+    "auth_methods": ["direct"],
+    "oauth_type": null,
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "shopify",
+    "class_name": "ShopifySource",
+    "output_entity_definitions": [
+      "shopify_collection_entity",
+      "shopify_customer_entity",
+      "shopify_discount_entity",
+      "shopify_draft_order_entity",
+      "shopify_file_entity",
+      "shopify_fulfillment_entity",
+      "shopify_gift_card_entity",
+      "shopify_inventory_item_entity",
+      "shopify_inventory_level_entity",
+      "shopify_location_entity",
+      "shopify_metaobject_entity",
+      "shopify_order_entity",
+      "shopify_product_entity",
+      "shopify_product_variant_entity",
+      "shopify_theme_entity"
+    ],
+    "labels": ["E-commerce", "Retail"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "client_id",
+          "title": "Client ID",
+          "description": "Client ID from your Shopify app in the Dev Dashboard",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "client_secret",
+          "title": "Client Secret",
+          "description": "Client Secret from your Shopify app in the Dev Dashboard",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": {
+      "fields": [
+        {
+          "name": "shop_domain",
+          "title": "Shop Domain",
+          "description": "Your Shopify store domain (e.g., 'my-store.myshopify.com')",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Slab",
+    "description": "Slab source connector integrates with the Slab GraphQL API to extract knowledge base content.\n\nConnects to your Slab workspace and synchronizes topics and posts.\nComments are included via search() results (CommentSearchResult) and synced.\n",
+    "auth_methods": ["direct", "auth_provider"],
+    "oauth_type": null,
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "slab",
+    "class_name": "SlabSource",
+    "output_entity_definitions": [
+      "slab_comment_entity",
+      "slab_post_entity",
+      "slab_topic_entity"
+    ],
+    "labels": ["Knowledge Base", "Documentation"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "api_key",
+          "title": "API Token",
+          "description": "Your Slab API token. Generate one in Settings > Developer Tools > API Tokens.",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": {
+      "fields": [
+        {
+          "name": "host",
+          "title": "Slab host",
+          "description": "Your Slab workspace host (e.g. 'myteam.slab.com'). Find it in your Slab URL when logged in. Required by the Slab API. Default: app.slab.com",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "supported_auth_providers": ["pipedream"]
+  },
+  {
+    "name": "Slite",
+    "description": "Slite source connector.\n\nSyncs notes (documents) from your Slite workspace. Uses a personal API key\n(Settings > API). List notes with optional parent filter, then fetches full\ncontent per note (markdown) for embedding.\n",
+    "auth_methods": ["direct", "auth_provider"],
+    "oauth_type": null,
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "slite",
+    "class_name": "SliteSource",
+    "output_entity_definitions": ["slite_note_entity"],
+    "labels": ["Knowledge Base", "Documentation"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": null,
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "api_key",
+          "title": "API Key",
+          "description": "Slite API key. Generate in your organization: Settings > API > Create a new key.",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": {
+      "fields": [
+        {
+          "name": "include_archived",
+          "title": "Include archived notes",
+          "description": "If enabled, archived notes will be synced. Default: only active notes.",
+          "type": "boolean",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Slack",
+    "description": "Slack source connector using federated search.\n\nInstead of syncing all messages and files, this source searches Slack at query time\nusing the search.all API endpoint. This is necessary because Slack's rate limits\nare too restrictive for full synchronization.\n",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "access_only",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "slack",
+    "class_name": "SlackSource",
+    "output_entity_definitions": ["slack_message_entity"],
+    "labels": ["Communication", "Messaging"],
+    "supports_continuous": false,
+    "federated_search": true,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "access_token",
+          "title": "Access Token",
+          "description": "The access token for the OAuth2 app. This is obtained through the OAuth flow.",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Stripe",
+    "description": "Stripe source connector integrates with the Stripe API to extract payment and financial data.\n\nSynchronizes comprehensive data from your Stripe account.\n\nIt provides access to all major Stripe resources\nincluding transactions, customers, subscriptions, and account analytics.\n",
+    "auth_methods": ["direct", "auth_provider"],
+    "oauth_type": null,
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "stripe",
+    "class_name": "StripeSource",
+    "output_entity_definitions": [
+      "stripe_balance_entity",
+      "stripe_balance_transaction_entity",
+      "stripe_charge_entity",
+      "stripe_customer_entity",
+      "stripe_event_entity",
+      "stripe_invoice_entity",
+      "stripe_payment_intent_entity",
+      "stripe_payment_method_entity",
+      "stripe_payout_entity",
+      "stripe_refund_entity",
+      "stripe_subscription_entity"
+    ],
+    "labels": ["Payment"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "api_key",
+          "title": "API Key",
+          "description": "The API key for the Stripe account. Should start with 'sk_test_' for test mode or 'sk_live_' for live mode.",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Teams",
+    "description": "Microsoft Teams source connector integrates with the Microsoft Graph API.\n\nSynchronizes data from Microsoft Teams including teams, channels, chats, and messages.\n\nIt provides comprehensive access to Teams resources with proper token refresh\nand rate limiting.\n",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "with_rotating_refresh",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "teams",
+    "class_name": "TeamsSource",
+    "output_entity_definitions": [
+      "teams_channel_entity",
+      "teams_chat_entity",
+      "teams_message_entity",
+      "teams_team_entity",
+      "teams_user_entity"
+    ],
+    "labels": ["Communication", "Collaboration"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": { "fields": [] },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Todoist",
+    "description": "Todoist source connector integrates with the Todoist REST API to extract task data.\n\nConnects to your Todoist workspace.\n\nIt provides comprehensive access to projects, tasks, and\ncollaboration features with proper hierarchical organization and productivity insights.\n",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "access_only",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "todoist",
+    "class_name": "TodoistSource",
+    "output_entity_definitions": [
+      "todoist_comment_entity",
+      "todoist_project_entity",
+      "todoist_section_entity",
+      "todoist_task_entity"
+    ],
+    "labels": ["Productivity", "Task Management"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": { "fields": [] },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Trello",
+    "description": "Trello source connector integrates with the Trello API using OAuth1.\n\nConnects to your Trello boards and syncs boards, lists, cards, checklists, and members.\n\nNote: Trello uses OAuth1.0, not OAuth2.\n",
+    "auth_methods": ["oauth_browser", "auth_provider"],
+    "oauth_type": "oauth1",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "trello",
+    "class_name": "TrelloSource",
+    "output_entity_definitions": [
+      "trello_board_entity",
+      "trello_card_entity",
+      "trello_checklist_entity",
+      "trello_list_entity",
+      "trello_member_entity"
+    ],
+    "labels": ["Project Management"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "oauth_token",
+          "title": "OAuth Token",
+          "description": "The OAuth1 access token for Trello",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "oauth_token_secret",
+          "title": "OAuth Token Secret",
+          "description": "The OAuth1 access token secret for Trello",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Word",
+    "description": "Microsoft Word source connector integrates with the Microsoft Graph API.\n\nSynchronizes Word documents from Microsoft OneDrive and SharePoint.\nDocuments are processed through Airweave's file handling pipeline which\ndownloads, converts to markdown, chunks, and indexes for semantic search.\n",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "with_rotating_refresh",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "word",
+    "class_name": "WordSource",
+    "output_entity_definitions": ["word_document_entity"],
+    "labels": ["Productivity", "Document", "Word Processing"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": { "fields": [] },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio"]
+  },
+  {
+    "name": "Zendesk",
+    "description": "Zendesk source connector integrates with the Zendesk API to extract and synchronize data.\n\nConnects to your Zendesk instance to sync tickets, comments, users, orgs, and attachments.\n",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "with_refresh",
+    "requires_byoc": true,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "zendesk",
+    "class_name": "ZendeskSource",
+    "output_entity_definitions": [
+      "zendesk_attachment_entity",
+      "zendesk_comment_entity",
+      "zendesk_organization_entity",
+      "zendesk_ticket_entity",
+      "zendesk_user_entity"
+    ],
+    "labels": ["Customer Support", "CRM"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": { "fields": [] },
+    "config_fields": {
+      "fields": [
+        {
+          "name": "subdomain",
+          "title": "Zendesk Subdomain",
+          "description": "Your Zendesk subdomain only (e.g., 'mycompany' NOT 'mycompany.zendesk.com')",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "exclude_closed_tickets",
+          "title": "Exclude Closed Tickets",
+          "description": "Skip closed tickets during sync (recommended for faster syncing)",
+          "type": "string",
+          "required": false,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Zoom",
+    "description": "Zoom source connector integrates with the Zoom API.\n\nSynchronizes data from Zoom including meetings, participants, recordings,\nand transcripts. Provides comprehensive access to meeting context with\nproper token refresh and rate limiting.\n",
+    "auth_methods": ["oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "with_refresh",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "zoom",
+    "class_name": "ZoomSource",
+    "output_entity_definitions": [
+      "zoom_meeting_entity",
+      "zoom_meeting_participant_entity",
+      "zoom_recording_entity",
+      "zoom_transcript_entity"
+    ],
+    "labels": ["Communication", "Meetings", "Video"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "access_token",
+          "title": "Access Token",
+          "description": "The access token for the OAuth2 app. This is obtained through the OAuth flow.",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "refresh_token",
+          "title": "Refresh Token",
+          "description": "The refresh token for the OAuth2 app. This is obtained through the OAuth flow.",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio", "pipedream"]
+  },
+  {
+    "name": "Zoho CRM",
+    "description": "Zoho CRM source connector integrates with the Zoho CRM REST API to extract CRM data.\n\nSynchronizes comprehensive data from your Zoho CRM org including:\n- Accounts (companies, organizations)\n- Contacts (people)\n- Deals (sales opportunities, pipelines)\n- Leads (pre-qualified prospects)\n- Products (product catalog)\n- Quotes (sales proposals)\n- Sales Orders (confirmed orders)\n- Invoices (billing documents)\n\nIt provides access to all major Zoho CRM modules with proper OAuth2 authentication.\n",
+    "auth_methods": ["direct", "oauth_browser", "oauth_token", "auth_provider"],
+    "oauth_type": "with_refresh",
+    "requires_byoc": false,
+    "auth_config_class": null,
+    "config_class": null,
+    "short_name": "zoho_crm",
+    "class_name": "ZohoCRMSource",
+    "output_entity_definitions": [
+      "zoho_crm_account_entity",
+      "zoho_crm_contact_entity",
+      "zoho_crm_deal_entity",
+      "zoho_crm_invoice_entity",
+      "zoho_crm_lead_entity",
+      "zoho_crm_product_entity",
+      "zoho_crm_quote_entity",
+      "zoho_crm_sales_order_entity"
+    ],
+    "labels": ["CRM", "Sales"],
+    "supports_continuous": false,
+    "federated_search": false,
+    "supports_temporal_relevance": true,
+    "supports_access_control": false,
+    "rate_limit_level": "org",
+    "feature_flag": null,
+    "supports_browse_tree": false,
+    "auth_fields": {
+      "fields": [
+        {
+          "name": "access_token",
+          "title": "Access Token",
+          "description": "The access token for the OAuth2 app. This is obtained through the OAuth flow.",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        },
+        {
+          "name": "refresh_token",
+          "title": "Refresh Token",
+          "description": "The refresh token for the OAuth2 app. This is obtained through the OAuth flow.",
+          "type": "string",
+          "required": true,
+          "items_type": null,
+          "feature_flag": null,
+          "is_secret": false,
+          "enum_values": null
+        }
+      ]
+    },
+    "config_fields": { "fields": [] },
+    "supported_auth_providers": ["composio", "pipedream"]
+  }
+]
