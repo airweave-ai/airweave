@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { useGetSourceQueryOptions } from '../../api';
 import { useSourcePicker } from '../../hooks/use-source-picker';
@@ -14,6 +15,7 @@ import {
   FlowDialogHeader,
   FlowDialogMain,
 } from '@/shared/ui/flow-dialog';
+import { Loader } from '@/shared/components/loader';
 
 interface ConnectSourceDialogScreenProps {
   onClose: () => void;
@@ -27,11 +29,13 @@ export function ConnectSourceDialogScreen({
   step,
 }: ConnectSourceDialogScreenProps) {
   return (
-    <ConnectSourceStep
-      onClose={onClose}
-      onStepChange={onStepChange}
-      step={step}
-    />
+    <React.Suspense fallback={<Loader className="row-span-2 min-h-0" />}>
+      <ConnectSourceStep
+        onClose={onClose}
+        onStepChange={onStepChange}
+        step={step}
+      />
+    </React.Suspense>
   );
 }
 
