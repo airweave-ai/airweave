@@ -235,8 +235,8 @@ export function SourceConnectionForm({
   const availableAuthMethods = getAvailableAuthMethods(source);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-6">
-      <div className="flex justify-between gap-3">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex justify-between gap-3 pb-6">
         <div className="flex gap-3">
           <div className="flex size-10 items-center justify-center rounded-xs border bg-muted">
             <SourceIcon
@@ -247,7 +247,12 @@ export function SourceConnectionForm({
           </div>
           <div>
             <h2 className="font-medium">Connect {source.name}</h2>
-            <a className="font-mono text-sm font-normal text-muted-foreground">
+            <a
+              href={`https://docs.airweave.ai/docs/connectors/${source.short_name.replace(/_/g, '-')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-sm font-normal text-muted-foreground hover:underline"
+            >
               See Docs
             </a>
           </div>
@@ -268,202 +273,207 @@ export function SourceConnectionForm({
         </form.Subscribe>
       </div>
       <form
-        className="space-y-6"
+        className="flex min-h-0 flex-1 flex-col"
         onSubmit={(event) => {
           event.preventDefault();
           void form.handleSubmit();
         }}
       >
-        <FieldGroup>
-          <form.Field name="name">
-            {(field) => {
-              const errors = field.state.meta.errors;
-              const hasErrors = Boolean(errors.length);
-              return (
-                <Field key="name-field" data-invalid={hasErrors}>
-                  <FieldLabel htmlFor={field.name}>
-                    Name your connection
-                  </FieldLabel>
-                  <Input
-                    id={field.name}
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onChange={(e) => field.handleChange(e.target.value)}
-                    aria-invalid={hasErrors}
-                  />
-                  <FieldError errors={field.state.meta.errors} />
-                </Field>
-              );
-            }}
-          </form.Field>
-        </FieldGroup>
-
-        <section className="space-y-3">
-          <div className="space-y-1">
-            <h4 className="text-sm font-medium text-foreground">
-              Authentication
-            </h4>
-            <p className="text-sm text-muted-foreground">
-              Choose how this source connection should authenticate.
-            </p>
-          </div>
-          <form.Field
-            name="authMethod"
-            listeners={{
-              onChange: ({ value }) => {
-                form.setFieldValue(
-                  'authentication',
-                  getDefaultAuthenticationValues(
-                    value,
-                    source.auth_fields?.fields,
-                  ) as Record<string, unknown>,
-                );
-              },
-            }}
-          >
-            {(field) => {
-              return availableAuthMethods.length > 1 ? (
-                <div
-                  key="auth-method-selector"
-                  className="flex flex-wrap gap-2"
-                >
-                  {availableAuthMethods.map((method) => (
-                    <Button
-                      key={method}
-                      type="button"
-                      variant={
-                        field.state.value === method ? 'default' : 'outline'
-                      }
-                      onClick={() => {
-                        field.handleChange(method);
-                      }}
-                    >
-                      {authMethodLabels[method]}
-                    </Button>
-                  ))}
-                </div>
-              ) : null;
-            }}
-          </form.Field>
-
-          <form.Subscribe selector={(state) => state.values.authMethod}>
-            {(selectedAuthMethod) => {
-              if (selectedAuthMethod === 'direct') {
-                const authFields = source.auth_fields?.fields;
+        <div className="mb-6 min-h-0 flex-1 space-y-6 overflow-y-auto">
+          <FieldGroup>
+            <form.Field name="name">
+              {(field) => {
+                const errors = field.state.meta.errors;
+                const hasErrors = Boolean(errors.length);
                 return (
-                  <React.Fragment key="direct-auth-inputs">
-                    {authFields?.map((authField) => (
-                      <form.Field
-                        name={`authentication.credentials.${authField.name}`}
-                      >
-                        {(field) => (
-                          <ConfigFieldInput
-                            name={field.name}
-                            title={authField.title}
-                            description={authField.description ?? undefined}
-                            required={authField.required}
-                            fieldType={
-                              isSupportedConfigFieldType(authField.type)
-                                ? authField.type
-                                : 'string'
-                            }
-                            onChange={field.handleChange}
-                            onBlur={field.handleBlur}
-                            value={(field.state.value ?? '') as any}
-                            errors={field.state.meta.errors}
-                          />
-                        )}
-                      </form.Field>
-                    ))}
-                  </React.Fragment>
+                  <Field key="name-field" data-invalid={hasErrors}>
+                    <FieldLabel htmlFor={field.name}>
+                      Name your connection
+                    </FieldLabel>
+                    <Input
+                      id={field.name}
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      aria-invalid={hasErrors}
+                    />
+                    <FieldError errors={field.state.meta.errors} />
+                  </Field>
                 );
-              }
-              // TODO
-              return <div>WIP</div>;
-            }}
-          </form.Subscribe>
-        </section>
+              }}
+            </form.Field>
+          </FieldGroup>
 
-        {source.config_fields.fields.length > 0 ? (
           <section className="space-y-3">
             <div className="space-y-1">
               <h4 className="text-sm font-medium text-foreground">
-                Configuration
+                Authentication
               </h4>
               <p className="text-sm text-muted-foreground">
-                Source-specific options applied to this connection.
+                Choose how this source connection should authenticate.
               </p>
             </div>
+            <form.Field
+              name="authMethod"
+              listeners={{
+                onChange: ({ value }) => {
+                  form.setFieldValue(
+                    'authentication',
+                    getDefaultAuthenticationValues(
+                      value,
+                      source.auth_fields?.fields,
+                    ) as Record<string, unknown>,
+                  );
+                },
+              }}
+            >
+              {(field) => {
+                return availableAuthMethods.length > 1 ? (
+                  <div
+                    key="auth-method-selector"
+                    className="flex flex-wrap gap-2"
+                  >
+                    {availableAuthMethods.map((method) => (
+                      <Button
+                        key={method}
+                        type="button"
+                        variant={
+                          field.state.value === method ? 'default' : 'outline'
+                        }
+                        onClick={() => {
+                          field.handleChange(method);
+                        }}
+                      >
+                        {authMethodLabels[method]}
+                      </Button>
+                    ))}
+                  </div>
+                ) : null;
+              }}
+            </form.Field>
 
-            {source.config_fields.fields.map((configField) => (
-              <form.Field name={`config.${configField.name}`}>
-                {(field) => (
-                  <ConfigFieldInput
-                    name={field.name}
-                    title={configField.title}
-                    description={configField.description ?? undefined}
-                    required={configField.required}
-                    fieldType={
-                      isSupportedConfigFieldType(configField.type)
-                        ? configField.type
-                        : 'string'
-                    }
-                    onChange={field.handleChange}
-                    onBlur={field.handleBlur}
-                    value={(field.state.value ?? '') as any}
-                    errors={field.state.meta.errors}
-                  />
-                )}
-              </form.Field>
-            ))}
+            <form.Subscribe selector={(state) => state.values.authMethod}>
+              {(selectedAuthMethod) => {
+                if (selectedAuthMethod === 'direct') {
+                  const authFields = source.auth_fields?.fields;
+                  return (
+                    <React.Fragment key="direct-auth-inputs">
+                      {authFields?.map((authField) => (
+                        <form.Field
+                          name={`authentication.credentials.${authField.name}`}
+                        >
+                          {(field) => (
+                            <ConfigFieldInput
+                              name={field.name}
+                              title={authField.title}
+                              description={authField.description ?? undefined}
+                              required={authField.required}
+                              fieldType={
+                                isSupportedConfigFieldType(authField.type)
+                                  ? authField.type
+                                  : 'string'
+                              }
+                              onChange={field.handleChange}
+                              onBlur={field.handleBlur}
+                              value={(field.state.value ?? '') as any}
+                              errors={field.state.meta.errors}
+                            />
+                          )}
+                        </form.Field>
+                      ))}
+                    </React.Fragment>
+                  );
+                }
+                // TODO
+                return <div>WIP</div>;
+              }}
+            </form.Subscribe>
           </section>
-        ) : null}
 
-        {createSourceConnectionMutation.error && (
-          <FieldError>
-            {getSubmitErrorMessage(createSourceConnectionMutation.error)}
-          </FieldError>
-        )}
-
-        <form.Subscribe
-          selector={(state) => ({
-            authMethod: state.values.authMethod,
-            isSubmitting: state.isSubmitting,
-          })}
-        >
-          {({ authMethod, isSubmitting }) => {
-            return (
-              <div
-                className={cn(
-                  'flex flex-col gap-2 sm:flex-row sm:justify-between',
-                )}
-              >
-                <Button
-                  size="lg"
-                  className="max-w-55 flex-1"
-                  disabled={isSubmitting}
-                  variant="ghost"
-                  onClick={onBack}
-                >
-                  Back
-                </Button>
-                <Button
-                  type="submit"
-                  size="lg"
-                  className="max-w-130 flex-1"
-                  disabled={isSubmitting || authMethod !== 'direct'}
-                >
-                  Connect with {source.name}{' '}
-                  {isSubmitting ? (
-                    <Spinner className="size-4" />
-                  ) : (
-                    <IconArrowRight className="size-4" />
-                  )}
-                </Button>
+          {source.config_fields.fields.length > 0 ? (
+            <section className="space-y-3">
+              <div className="space-y-1">
+                <h4 className="text-sm font-medium text-foreground">
+                  Configuration
+                </h4>
+                <p className="text-sm text-muted-foreground">
+                  Source-specific options applied to this connection.
+                </p>
               </div>
-            );
-          }}
-        </form.Subscribe>
+
+              {source.config_fields.fields.map((configField) => (
+                <form.Field name={`config.${configField.name}`}>
+                  {(field) => (
+                    <ConfigFieldInput
+                      name={field.name}
+                      title={configField.title}
+                      description={configField.description ?? undefined}
+                      required={configField.required}
+                      fieldType={
+                        isSupportedConfigFieldType(configField.type)
+                          ? configField.type
+                          : 'string'
+                      }
+                      onChange={field.handleChange}
+                      onBlur={field.handleBlur}
+                      value={(field.state.value ?? '') as any}
+                      errors={field.state.meta.errors}
+                    />
+                  )}
+                </form.Field>
+              ))}
+            </section>
+          ) : null}
+        </div>
+
+        <div className="shrink-0">
+          {createSourceConnectionMutation.error && (
+            <FieldError>
+              {getSubmitErrorMessage(createSourceConnectionMutation.error)}
+            </FieldError>
+          )}
+
+          <form.Subscribe
+            selector={(state) => ({
+              authMethod: state.values.authMethod,
+              isSubmitting: state.isSubmitting,
+            })}
+          >
+            {({ authMethod, isSubmitting }) => {
+              return (
+                <div
+                  className={cn(
+                    'flex flex-col gap-2 sm:flex-row sm:justify-between',
+                  )}
+                >
+                  <Button
+                    type="button"
+                    size="lg"
+                    className="max-w-55 flex-1"
+                    disabled={isSubmitting}
+                    variant="ghost"
+                    onClick={onBack}
+                  >
+                    Back
+                  </Button>
+                  <Button
+                    type="submit"
+                    size="lg"
+                    className="max-w-130 flex-1"
+                    disabled={isSubmitting || authMethod !== 'direct'}
+                  >
+                    Connect with {source.name}{' '}
+                    {isSubmitting ? (
+                      <Spinner className="size-4" />
+                    ) : (
+                      <IconArrowRight className="size-4" />
+                    )}
+                  </Button>
+                </div>
+              );
+            }}
+          </form.Subscribe>
+        </div>
       </form>
     </div>
   );

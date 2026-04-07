@@ -145,7 +145,7 @@ function ConnectSourceConfigStep({
       </FlowDialogHeader>
 
       <FlowDialogBody>
-        <FlowDialogMain>
+        <FlowDialogMain className="overflow-hidden">
           <SourceConnectionForm
             collectionId={collectionId}
             onSourceConnectionCreated={handleSourceConnectionCreated}
