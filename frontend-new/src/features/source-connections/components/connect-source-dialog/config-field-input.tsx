@@ -1,7 +1,6 @@
 import * as React from 'react';
 import {
   Field,
-  FieldContent,
   FieldDescription,
   FieldError,
   FieldLabel,
@@ -15,7 +14,7 @@ type CommonConfigFieldInputProps = {
   name: string;
   title: string;
   required?: boolean;
-  description?: string;
+  description?: React.ReactNode;
   errors?: Errors;
   onBlur?: React.FocusEventHandler;
 };
@@ -61,11 +60,13 @@ export function ConfigFieldInput({
 
   if (fieldType === 'boolean') {
     return (
-      <Field key={name} data-invalid={hasErrors} orientation="responsive">
-        <FieldLabel htmlFor={name}>
-          {title}
-          {required ? <span className="text-destructive">*</span> : null}
-        </FieldLabel>
+      <FormField
+        name={name}
+        title={title}
+        errors={errors}
+        required={required}
+        description={description}
+      >
         <Switch
           checked={value}
           id={name}
@@ -73,21 +74,19 @@ export function ConfigFieldInput({
           onBlur={onBlur}
           aria-invalid={hasErrors}
         />
-        {description ? (
-          <FieldDescription>{description}</FieldDescription>
-        ) : null}
-        <FieldError errors={errors} />
-      </Field>
+      </FormField>
     );
   }
 
   if (fieldType === 'string') {
     return (
-      <Field key={name} data-invalid={hasErrors}>
-        <FieldLabel htmlFor={name}>
-          {title}
-          {required ? <RequiredMark /> : null}
-        </FieldLabel>
+      <FormField
+        name={name}
+        title={title}
+        errors={errors}
+        required={required}
+        description={description}
+      >
         <Input
           id={name}
           type={'text'}
@@ -96,21 +95,19 @@ export function ConfigFieldInput({
           onBlur={onBlur}
           aria-invalid={hasErrors}
         />
-        {description ? (
-          <FieldDescription>{description}</FieldDescription>
-        ) : null}
-        <FieldError errors={errors} />
-      </Field>
+      </FormField>
     );
   }
 
   if (fieldType === 'number') {
     return (
-      <Field key={name} data-invalid={hasErrors}>
-        <FieldLabel htmlFor={name}>
-          {title}
-          {required ? <RequiredMark /> : null}
-        </FieldLabel>
+      <FormField
+        name={name}
+        title={title}
+        errors={errors}
+        required={required}
+        description={description}
+      >
         <Input
           id={name}
           type="number"
@@ -120,20 +117,27 @@ export function ConfigFieldInput({
           onBlur={onBlur}
           aria-invalid={hasErrors}
         />
-        {description ? (
-          <FieldDescription>{description}</FieldDescription>
-        ) : null}
-        <FieldError errors={errors} />
-      </Field>
+      </FormField>
     );
   }
 
   return (
-    <Field key={name} data-invalid={hasErrors}>
-      <FieldLabel htmlFor={name}>
-        {title}
-        {required ? <RequiredMark /> : null}
-      </FieldLabel>
+    <FormField
+      name={name}
+      title={title}
+      errors={errors}
+      required={required}
+      description={
+        <>
+          {description ? (
+            <FieldDescription>{description}</FieldDescription>
+          ) : null}
+          <FieldDescription>
+            Separate values with commas or new lines.
+          </FieldDescription>
+        </>
+      }
+    >
       <Input
         id={name}
         value={value}
@@ -146,14 +150,33 @@ export function ConfigFieldInput({
         onBlur={onBlur}
         aria-invalid={hasErrors}
       />
-      <FieldContent>
-        {description ? (
+    </FormField>
+  );
+}
+
+export function FormField({
+  name,
+  title,
+  errors,
+  required,
+  description,
+  children,
+}: React.PropsWithChildren<Omit<CommonConfigFieldInputProps, 'onBlur'>>) {
+  const hasErrors = Boolean(errors?.length);
+  return (
+    <Field data-invalid={hasErrors}>
+      <FieldLabel htmlFor={name}>
+        {title}
+        {required ? <RequiredMark /> : null}
+      </FieldLabel>
+      {description ? (
+        typeof description === 'string' ? (
           <FieldDescription>{description}</FieldDescription>
-        ) : null}
-        <FieldDescription>
-          Separate values with commas or new lines.
-        </FieldDescription>
-      </FieldContent>
+        ) : (
+          description
+        )
+      ) : null}
+      {children}
       <FieldError errors={errors} />
     </Field>
   );

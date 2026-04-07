@@ -131,7 +131,7 @@ function ConnectSourceConfigStep({
       collectionId: sourceConnection.readable_collection_id,
       source: sourceShortName,
       sourceConnectionId: sourceConnection.id,
-      step: sourceConnection.auth.method === 'oauth_browser' ? 'auth' : 'sync',
+      step: sourceConnection.auth.auth_url ? 'auth' : 'sync',
     });
   };
 
