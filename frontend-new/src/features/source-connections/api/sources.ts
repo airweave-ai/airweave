@@ -1,9 +1,11 @@
 import {
   getSourcesShortNameGetOptions,
   listSourcesGetOptions,
+  queryClient as defaultQueryClient,
   withOrganizationHeaders,
 } from '@/shared/api';
 import { useCurrentOrganizationId } from '@/shared/session';
+import { queryOptions, useQueryClient } from '@tanstack/react-query';
 
 export function listSourcesQueryOptions(organizationId: string) {
   return listSourcesGetOptions(withOrganizationHeaders({ organizationId }));
@@ -26,6 +28,7 @@ type ShortNameParams = {
 export function getSourceQueryOptions(
   organizationId: string,
   { sourceShortName }: ShortNameParams,
+  queryClient = defaultQueryClient,
 ) {
   const params: GetSourceParams = {
     path: {
@@ -33,13 +36,24 @@ export function getSourceQueryOptions(
     },
   };
 
-  return getSourcesShortNameGetOptions(
-    withOrganizationHeaders({ organizationId }, params),
-  );
+  const listQueryOptions = listSourcesQueryOptions(organizationId);
+
+  return queryOptions({
+    ...getSourcesShortNameGetOptions(
+      withOrganizationHeaders({ organizationId }, params),
+    ),
+    initialData: () => {
+      const sources = queryClient.getQueryData(listQueryOptions.queryKey);
+      return sources?.find((source) => source.short_name === sourceShortName);
+    },
+    initialDataUpdatedAt: () =>
+      queryClient.getQueryState(listQueryOptions.queryKey)?.dataUpdatedAt,
+  });
 }
 
 export function useGetSourceQueryOptions(params: ShortNameParams) {
+  const queryClient = useQueryClient();
   const currentOrganizationId = useCurrentOrganizationId();
 
-  return getSourceQueryOptions(currentOrganizationId, params);
+  return getSourceQueryOptions(currentOrganizationId, params, queryClient);
 }

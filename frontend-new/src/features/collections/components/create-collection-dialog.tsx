@@ -23,12 +23,7 @@ import {
 import { Input } from '@/shared/ui/input';
 import { Separator } from '@/shared/ui/separator';
 import { Spinner } from '@/shared/ui/spinner';
-
-const collectionBenefits = [
-  'Search only what you choose',
-  'Keep synced data together',
-  'Control collection access',
-] as const;
+import { IconArrowRight } from '@tabler/icons-react';
 
 const nextSteps = [
   {
@@ -109,7 +104,7 @@ export function CreateCollectionDialogScreen({
       </FlowDialogHeader>
 
       <FlowDialogBody>
-        <FlowDialogAside className="flex flex-col xl:w-[27rem]">
+        <FlowDialogMain className="flex flex-col">
           <form
             className="flex min-h-full flex-col"
             onSubmit={(event) => {
@@ -144,11 +139,9 @@ export function CreateCollectionDialogScreen({
                       aria-invalid={field.state.meta.errors.length > 0}
                     />
                     <FieldDescription>
-                      Used in API and Connect session setup.
-                      <br />
-                      You can rename this later.
+                      Used in API and Connect session setup. You can rename this
+                      later.
                     </FieldDescription>
-                    <FieldError errors={field.state.meta.errors} />
                   </Field>
                 )}
               </form.Field>
@@ -157,30 +150,60 @@ export function CreateCollectionDialogScreen({
             <div className="mt-auto space-y-4 pt-6">
               <FieldError>{submitError}</FieldError>
 
-              <Button className="w-full" disabled={isPending} type="submit">
-                {isPending ? <Spinner className="size-4" /> : null}
-                Create & Continue
-              </Button>
-
-              <Button
-                className="w-full"
-                disabled={isPending}
-                type="button"
-                variant="ghost"
-                onClick={handleClose}
-              >
-                Cancel
-              </Button>
+              <div className="flex min-h-15 items-end justify-between gap-4">
+                <Button
+                  className="max-w-55 flex-1"
+                  disabled={isPending}
+                  size="lg"
+                  type="button"
+                  variant="ghost"
+                  onClick={handleClose}
+                >
+                  Back
+                </Button>
+                <div className="max-w-130 flex-1 space-y-2">
+                  <form.Subscribe
+                    selector={(state) => state.fieldMeta.name?.errors}
+                  >
+                    {(nameErrors) => (
+                      <FieldError className="text-center" errors={nameErrors} />
+                    )}
+                  </form.Subscribe>
+                  <Button
+                    size="lg"
+                    className="w-full"
+                    disabled={isPending}
+                    type="submit"
+                  >
+                    Create & Continue
+                    {isPending ? (
+                      <Spinner className="size-4" />
+                    ) : (
+                      <IconArrowRight className="size-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
             </div>
           </form>
-        </FlowDialogAside>
+        </FlowDialogMain>
 
-        <FlowDialogMain className="space-y-8">
+        <FlowDialogAside className="space-y-8 xl:w-112">
           <section className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="space-y-1">
-                <h2 className="text-lg font-semibold text-foreground">
+                <h2 className="flex items-center justify-between text-lg font-semibold text-foreground">
                   What is a collection?
+                  <Button asChild size="lg" variant="ghost">
+                    <a
+                      href="https://docs.airweave.ai/welcome"
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Documentation
+                      <ArrowUpRight className="size-4" />
+                    </a>
+                  </Button>
                 </h2>
                 <p className="max-w-3xl font-mono text-sm text-muted-foreground">
                   A collection is your agent&apos;s scoped knowledge space. It
@@ -188,33 +211,6 @@ export function CreateCollectionDialogScreen({
                   only against the data you choose.
                 </p>
               </div>
-
-              <Button asChild size="lg" variant="ghost">
-                <a
-                  href="https://docs.airweave.ai/welcome"
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  Documentation
-                  <ArrowUpRight className="size-4" />
-                </a>
-              </Button>
-            </div>
-
-            <Separator />
-
-            <div className="grid gap-3 xl:grid-cols-3">
-              {collectionBenefits.map((benefit) => (
-                <div
-                  key={benefit}
-                  className="flex items-center gap-3 rounded-xl px-1 py-1 text-sm text-foreground"
-                >
-                  <span className="flex size-5 items-center justify-center rounded-sm border border-border bg-foreground/5">
-                    <span className="size-1.5 rounded-full bg-foreground" />
-                  </span>
-                  <span className="font-mono">{benefit}</span>
-                </div>
-              ))}
             </div>
 
             <Separator />
@@ -251,7 +247,7 @@ export function CreateCollectionDialogScreen({
             You can rename this collection, add or remove sources, and pause
             sync at any time.
           </p>
-        </FlowDialogMain>
+        </FlowDialogAside>
       </FlowDialogBody>
     </>
   );
