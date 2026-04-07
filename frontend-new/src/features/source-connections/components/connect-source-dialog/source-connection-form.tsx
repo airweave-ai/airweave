@@ -19,9 +19,16 @@ import type {
 import { parseApiErrorWithDetail } from '@/shared/api';
 import { cn } from '@/shared/tailwind/cn';
 import { Button } from '@/shared/ui/button';
-import { Field, FieldError, FieldGroup, FieldLabel } from '@/shared/ui/field';
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  FieldTitle,
+} from '@/shared/ui/field';
 import { Input } from '@/shared/ui/input';
 import { Spinner } from '@/shared/ui/spinner';
+import { RadioGroup, RadioGroupItem } from '@/shared/ui/radio-group';
 
 interface SourceConnectionFormProps {
   onSourceConnectionCreated: (source: SourceConnection) => Promise<void> | void;
@@ -305,14 +312,6 @@ export function SourceConnectionForm({
           </FieldGroup>
 
           <section className="space-y-3">
-            <div className="space-y-1">
-              <h4 className="text-sm font-medium text-foreground">
-                Authentication
-              </h4>
-              <p className="text-sm text-muted-foreground">
-                Choose how this source connection should authenticate.
-              </p>
-            </div>
             <form.Field
               name="authMethod"
               listeners={{
@@ -329,25 +328,22 @@ export function SourceConnectionForm({
             >
               {(field) => {
                 return availableAuthMethods.length > 1 ? (
-                  <div
+                  <RadioGroup
                     key="auth-method-selector"
-                    className="flex flex-wrap gap-2"
+                    value={field.state.value}
+                    onValueChange={(method: SourceConnectionAuthMethod) =>
+                      field.handleChange(method)
+                    }
                   >
                     {availableAuthMethods.map((method) => (
-                      <Button
-                        key={method}
-                        type="button"
-                        variant={
-                          field.state.value === method ? 'default' : 'outline'
-                        }
-                        onClick={() => {
-                          field.handleChange(method);
-                        }}
-                      >
-                        {authMethodLabels[method]}
-                      </Button>
+                      <FieldLabel key={method}>
+                        <Field orientation="horizontal">
+                          <RadioGroupItem value={method} />
+                          <FieldTitle>{authMethodLabels[method]}</FieldTitle>
+                        </Field>
+                      </FieldLabel>
                     ))}
-                  </div>
+                  </RadioGroup>
                 ) : null;
               }}
             </form.Field>
@@ -538,8 +534,8 @@ function isSupportedConfigFieldType(
 }
 
 const authMethodLabels = {
-  direct: 'Direct',
-  oauth_browser: 'OAuth Browser',
+  direct: 'Direct Credentials',
+  oauth_browser: 'OAuth Connection',
   oauth_token: 'OAuth Token',
   auth_provider: 'Auth Provider',
 } satisfies Record<SourceConnectionAuthMethod, string>;
