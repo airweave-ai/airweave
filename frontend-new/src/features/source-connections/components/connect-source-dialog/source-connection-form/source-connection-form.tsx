@@ -12,6 +12,7 @@ import {
   useSourceConnectionForm,
 } from './source-connection-form-hook';
 import { SourceConnectionTextInput } from './source-connection-text-input';
+import { SourceConnectionProgress } from './source-connection-progress';
 import type { SourceConnectionFormOutput } from './source-connection-form-hook';
 import type {
   Source,
@@ -30,29 +31,6 @@ interface SourceConnectionFormProps {
   source: Source;
   onBack: () => void;
 }
-
-const authMethodStepLabels = {
-  direct: {
-    step: 2,
-    numberOfSteps: 2,
-    label: 'Enter Token',
-  },
-  oauth_browser: {
-    step: 1,
-    numberOfSteps: 2,
-    label: 'Configure',
-  },
-  oauth_token: {
-    step: 2,
-    numberOfSteps: 2,
-    label: 'Enter Token',
-  },
-  auth_provider: {
-    step: 2,
-    numberOfSteps: 2,
-    label: 'Configure',
-  },
-};
 
 export function SourceConnectionForm({
   collectionId,
@@ -111,20 +89,9 @@ export function SourceConnectionForm({
           </div>
         </div>
         <form.Subscribe selector={(state) => state.values.authVariant}>
-          {(selectedAuthVariant) => {
-            const selectedAuthMethod =
-              getAuthMethodForVariant(selectedAuthVariant);
-            const { step, numberOfSteps, label } =
-              authMethodStepLabels[selectedAuthMethod];
-            return (
-              <span className="font-mono text-sm text-foreground/60">
-                Step {step}{' '}
-                <span className="text-foreground/40">
-                  of {numberOfSteps}: {label}
-                </span>
-              </span>
-            );
-          }}
+          {(selectedAuthVariant) => (
+            <SourceConnectionProgress authVariant={selectedAuthVariant} />
+          )}
         </form.Subscribe>
       </div>
       <form

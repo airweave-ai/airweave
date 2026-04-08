@@ -54,9 +54,6 @@ function RouteComponent() {
   );
 
   return (
-    <CollectionsPage
-      search={search}
-      onSearchChange={handleSearchChange}
-    />
+    <CollectionsPage search={search} onSearchChange={handleSearchChange} />
   );
 }

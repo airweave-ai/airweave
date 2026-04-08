@@ -4,9 +4,9 @@ import {
   createFormHookContexts,
   formOptions,
 } from '@tanstack/react-form';
-import type { SourceConnectionAuthMethod } from '../../../types';
 import type {
   AuthProviderAuthentication,
+  AuthenticationMethod,
   ConfigField,
   DirectAuthentication,
   Source,
@@ -31,11 +31,14 @@ export {
 };
 
 const trimmedStringSchema = z.string().trim();
-const optionalTrimmedStringSchema = z.string().optional().transform((value) => {
-  const trimmedValue = value?.trim();
+const optionalTrimmedStringSchema = z
+  .string()
+  .optional()
+  .transform((value) => {
+    const trimmedValue = value?.trim();
 
-  return trimmedValue === '' ? undefined : trimmedValue;
-});
+    return trimmedValue === '' ? undefined : trimmedValue;
+  });
 
 const oauthBrowserBaseAuthenticationSchema = z.object({
   redirect_uri: optionalTrimmedStringSchema,
@@ -61,7 +64,12 @@ const authProviderAuthenticationSchema = z.object({
   provider_config: z.record(z.string(), z.unknown()),
 });
 
-export type AuthVariant =
+export type SourceConnectionAuthMethod = Exclude<
+  AuthenticationMethod,
+  'oauth_byoc'
+>;
+
+export type SourceConnectionAuthVariant =
   | 'direct'
   | 'oauth_browser_managed'
   | 'oauth_browser_custom'
@@ -211,7 +219,7 @@ function getDynamicFieldSchema(field: ConfigField) {
 }
 
 export function getDefaultAuthenticationValues(
-  authVariant: AuthVariant,
+  authVariant: SourceConnectionAuthVariant,
   source: Source,
   authFields: Array<ConfigField> | undefined,
   redirectUri?: string,
@@ -322,7 +330,7 @@ export function getAvailableAuthMethods(source: Source) {
 }
 
 export function getAuthMethodForVariant(
-  authVariant: AuthVariant,
+  authVariant: SourceConnectionAuthVariant,
 ): SourceConnectionAuthMethod {
   if (
     authVariant === 'oauth_browser_managed' ||
@@ -340,14 +348,16 @@ function getDefaultAuthMethod(source: Source): SourceConnectionAuthMethod {
   return methods[0] ?? 'direct';
 }
 
-export function getDefaultAuthVariant(source: Source): AuthVariant {
+export function getDefaultAuthVariant(
+  source: Source,
+): SourceConnectionAuthVariant {
   return getDefaultAuthVariantForMethod(getDefaultAuthMethod(source), source);
 }
 
 export function getDefaultAuthVariantForMethod(
   authMethod: SourceConnectionAuthMethod,
   source: Source,
-): AuthVariant {
+): SourceConnectionAuthVariant {
   if (authMethod !== 'oauth_browser') {
     return authMethod;
   }
