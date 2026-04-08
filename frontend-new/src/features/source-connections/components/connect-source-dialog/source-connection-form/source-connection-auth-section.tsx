@@ -7,9 +7,11 @@ import {
   getDefaultAuthenticationValues,
   withSourceConnectionForm,
 } from './source-connection-form-hook';
-import type { SourceConnectionAuthMethod } from '../../../types';
 import type { Source } from '@/shared/api';
-import type { SourceConnectionFormInput } from './source-connection-form-hook';
+import type {
+  SourceConnectionAuthMethod,
+  SourceConnectionFormInput,
+} from './source-connection-form-hook';
 import { Field, FieldTitle } from '@/shared/ui/field';
 import { RadioGroup, RadioGroupItem } from '@/shared/ui/radio-group';
 
