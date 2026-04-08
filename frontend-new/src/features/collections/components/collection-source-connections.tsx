@@ -23,8 +23,8 @@ export function CollectionSourceConnections({
     <Tooltip>
       <TooltipTrigger
         className={cn(
-          'flex w-26 items-center gap-1.5',
-          size === 'sm' && 'w-20',
+          'flex w-26 items-center gap-1.5 -space-x-4.5',
+          size === 'sm' && 'w-20 -space-x-4',
         )}
       >
         {sourceConnections
@@ -34,7 +34,6 @@ export function CollectionSourceConnections({
               key={`${source.name}:${index}`}
               shortName={source.short_name}
               size={size}
-              overlap={index > 0}
               style={{ zIndex: sourceConnectionCount - index }}
             />
           ))}
@@ -61,25 +60,17 @@ export function CollectionSourceConnections({
 type CollectionSourceConnectionIconProps = React.ComponentProps<'div'> & {
   size?: 'default' | 'sm';
   shortName: string;
-  overlap: boolean;
 };
 
 function CollectionSourceConnectionIcon({
   size = 'default',
   shortName,
-  overlap,
   ...props
 }: CollectionSourceConnectionIconProps) {
   const sourceIconSrc = getAppIconUrl(shortName);
 
   return (
-    <div
-      className={cn(
-        'relative',
-        overlap && (size === 'sm' ? '-ml-4' : '-ml-4.5'),
-      )}
-      {...props}
-    >
+    <div className={cn('relative')} {...props}>
       <div
         className={cn(
           'flex size-8 items-center justify-center rounded-md border border-[#1f1f1f] bg-[#353535] p-1.5',
