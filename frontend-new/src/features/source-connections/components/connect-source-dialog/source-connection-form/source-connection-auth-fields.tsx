@@ -1,5 +1,8 @@
 import * as React from 'react';
+import { IconInfoCircle } from '@tabler/icons-react';
 import { ConfigFieldInput } from './config-field-input';
+import { SelectionCard } from './selection-card';
+import { getSourceDocsUrl } from './source-docs-url';
 import { SourceConnectionTextInput } from './source-connection-text-input';
 import {
   getAuthMethodForVariant,
@@ -11,10 +14,14 @@ import {
 } from './source-connection-form-hook';
 import type { SourceConnectionFormInput } from './source-connection-form-hook';
 import type { Source } from '@/shared/api';
-import { Field, FieldDescription, FieldLabel } from '@/shared/ui/field';
+import { Button } from '@/shared/ui/button';
+import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
+import { FieldDescription, FieldTitle } from '@/shared/ui/field';
 import { Switch } from '@/shared/ui/switch';
 
-function getRedirectUri(authentication: SourceConnectionFormInput['authentication']) {
+function getRedirectUri(
+  authentication: SourceConnectionFormInput['authentication'],
+) {
   return 'redirect_uri' in authentication
     ? authentication.redirect_uri
     : undefined;
@@ -78,6 +85,51 @@ export const SourceConnectionAuthFields = withSourceConnectionForm({
                   key: 'Client ID',
                   secret: 'Client Secret',
                 };
+            const sourceDocsUrl = getSourceDocsUrl(source.short_name);
+            const customOAuthCredentialFields = (
+              <div className="grid grid-cols-2 gap-3">
+                <form.Field
+                  name={
+                    isOAuth1Source(source)
+                      ? 'authentication.consumer_key'
+                      : 'authentication.client_id'
+                  }
+                >
+                  {(field) => (
+                    <SourceConnectionTextInput
+                      errors={field.state.meta.errors}
+                      id={field.name}
+                      onBlur={field.handleBlur}
+                      onChange={field.handleChange}
+                      required
+                      title={oauthCredentialTitles.key}
+                      value={field.state.value}
+                    />
+                  )}
+                </form.Field>
+
+                <form.Field
+                  name={
+                    isOAuth1Source(source)
+                      ? 'authentication.consumer_secret'
+                      : 'authentication.client_secret'
+                  }
+                >
+                  {(field) => (
+                    <SourceConnectionTextInput
+                      errors={field.state.meta.errors}
+                      id={field.name}
+                      onBlur={field.handleBlur}
+                      onChange={field.handleChange}
+                      required
+                      title={oauthCredentialTitles.secret}
+                      type="password"
+                      value={field.state.value}
+                    />
+                  )}
+                </form.Field>
+              </div>
+            );
 
             return (
               <React.Fragment>
@@ -96,94 +148,78 @@ export const SourceConnectionAuthFields = withSourceConnectionForm({
                 </form.Field>
 
                 {source.requires_byoc ? (
-                  <div className="space-y-1 rounded-lg border border-border bg-muted/30 p-3">
-                    <p className="text-sm font-medium text-foreground">
-                      Custom OAuth credentials required
-                    </p>
-                    <FieldDescription>
-                      {source.name} requires your own OAuth application credentials
-                      for browser auth.
-                    </FieldDescription>
-                  </div>
+                  <Alert className="gap-y-3 p-4">
+                    <IconInfoCircle className="size-4" />
+                    <div className="col-start-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="space-y-0.5">
+                        <AlertTitle>OAuth Needed</AlertTitle>
+                        <AlertDescription>
+                          {source.name} requires you to provide your own OAuth
+                          application credentials. You'll need to create an
+                          OAuth app in {source.name}'s developer console.
+                        </AlertDescription>
+                      </div>
+                      <Button
+                        asChild
+                        className="shrink-0"
+                        size="sm"
+                        variant="outline"
+                      >
+                        <a
+                          href={sourceDocsUrl}
+                          rel="noopener noreferrer"
+                          target="_blank"
+                        >
+                          See Documentation
+                        </a>
+                      </Button>
+                    </div>
+                    <div className="col-span-full">
+                      {customOAuthCredentialFields}
+                    </div>
+                  </Alert>
                 ) : (
-                  <Field orientation="responsive">
-                    <FieldLabel htmlFor="use-custom-oauth-credentials">
-                      Use custom OAuth credentials
-                    </FieldLabel>
-                    <Switch
-                      checked={authVariant === 'oauth_browser_custom'}
-                      id="use-custom-oauth-credentials"
-                      onCheckedChange={(checked) => {
-                        const nextAuthVariant = checked
-                          ? 'oauth_browser_custom'
-                          : 'oauth_browser_managed';
+                  <SelectionCard
+                    header={
+                      <React.Fragment>
+                        <div className="space-y-1">
+                          <FieldTitle>Use custom OAuth credentials</FieldTitle>
+                          <FieldDescription className="text-balance">
+                            By default, Airweave handles OAuth for you.
+                            <br />
+                            Enable this to use your own OAuth app, with your own
+                            name and logo.
+                          </FieldDescription>
+                        </div>
+                        <Switch
+                          checked={authVariant === 'oauth_browser_custom'}
+                          id="use-custom-oauth-credentials"
+                          onCheckedChange={(checked) => {
+                            const nextAuthVariant = checked
+                              ? 'oauth_browser_custom'
+                              : 'oauth_browser_managed';
 
-                        form.setFieldValue('authVariant', nextAuthVariant);
-                        form.setFieldValue(
-                          'authentication',
-                          getDefaultAuthenticationValues(
-                            nextAuthVariant,
-                            source,
-                            source.auth_fields?.fields,
-                            getRedirectUri(authentication),
-                          ),
-                        );
-                      }}
-                    />
-                    <FieldDescription>
-                      By default Airweave uses its managed OAuth app. Enable this
-                      to use your own {oauthCredentialTitles.key.toLowerCase()} and{' '}
-                      {oauthCredentialTitles.secret.toLowerCase()}.
-                    </FieldDescription>
-                  </Field>
+                            form.setFieldValue('authVariant', nextAuthVariant);
+                            form.setFieldValue(
+                              'authentication',
+                              getDefaultAuthenticationValues(
+                                nextAuthVariant,
+                                source,
+                                source.auth_fields?.fields,
+                                getRedirectUri(authentication),
+                              ),
+                            );
+                          }}
+                        />
+                      </React.Fragment>
+                    }
+                    headerClassName="items-start justify-between"
+                    htmlFor="use-custom-oauth-credentials"
+                    selected={authVariant === 'oauth_browser_custom'}
+                  >
+                    {customOAuthCredentialFields}
+                  </SelectionCard>
                 )}
-
-                {authVariant === 'oauth_browser_custom' ? (
-                  <React.Fragment>
-                    <form.Field
-                      name={
-                        isOAuth1Source(source)
-                          ? 'authentication.consumer_key'
-                          : 'authentication.client_id'
-                      }
-                    >
-                      {(field) => (
-                        <SourceConnectionTextInput
-                          description={`OAuth ${oauthCredentialTitles.key.toLowerCase()} for your application.`}
-                          errors={field.state.meta.errors}
-                          id={field.name}
-                          onBlur={field.handleBlur}
-                          onChange={field.handleChange}
-                          required
-                          title={oauthCredentialTitles.key}
-                          value={field.state.value}
-                        />
-                      )}
-                    </form.Field>
-
-                    <form.Field
-                      name={
-                        isOAuth1Source(source)
-                          ? 'authentication.consumer_secret'
-                          : 'authentication.client_secret'
-                      }
-                    >
-                      {(field) => (
-                        <SourceConnectionTextInput
-                          description={`OAuth ${oauthCredentialTitles.secret.toLowerCase()} for your application.`}
-                          errors={field.state.meta.errors}
-                          id={field.name}
-                          onBlur={field.handleBlur}
-                          onChange={field.handleChange}
-                          required
-                          title={oauthCredentialTitles.secret}
-                          type="password"
-                          value={field.state.value}
-                        />
-                      )}
-                    </form.Field>
-                  </React.Fragment>
-                ) : null}
               </React.Fragment>
             );
           }
