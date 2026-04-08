@@ -1,15 +1,20 @@
 import {
   AppWindow,
   ChevronDown,
+  CreditCard,
   EllipsisVertical,
   Home,
+  LineChart,
+  LogOut,
   Plus,
   Settings,
+  Users,
 } from 'lucide-react';
 import { Link, useMatchRoute } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { CreateCollectionButton } from '@/app/components/create-collection-button';
+import { useAuth } from '@/shared/auth';
 import { UserAvatar } from '@/shared/components/user-avatar';
 import { useAppSession } from '@/shared/session';
 import {
@@ -17,6 +22,13 @@ import {
   OrganizationSwitcherMenu,
   OrganizationSwitcherTrigger,
 } from '@/features/organizations';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/shared/ui/dropdown-menu';
 import { LogoMark } from '@/shared/ui/logo-mark';
 import {
   Sidebar,
@@ -52,6 +64,7 @@ function SidebarIconFrame({ children }: { children: ReactNode }) {
 }
 
 export function AppSidebar() {
+  const auth = useAuth();
   const matchRoute = useMatchRoute();
   const {
     currentOrganization,
@@ -60,6 +73,7 @@ export function AppSidebar() {
     setCurrentOrganizationId,
     viewer,
   } = useAppSession();
+  const viewerLabel = viewer.name ?? viewer.email;
 
   return (
     <Sidebar variant="inset">
@@ -146,17 +160,68 @@ export function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton className="gap-3" size="lg" type="button">
-              <UserAvatar
-                email={viewer.email}
-                name={viewer.name}
-                picture={viewer.picture}
-              />
-              <span className="truncate font-semibold">
-                {viewer.name ?? viewer.email}
-              </span>
-              <EllipsisVertical className="ml-auto size-4 text-sidebar-foreground/70" />
-            </SidebarMenuButton>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuButton
+                  className="gap-3 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                  size="lg"
+                  type="button"
+                >
+                  <UserAvatar
+                    email={viewer.email}
+                    name={viewer.name}
+                    picture={viewer.picture}
+                  />
+                  <span className="truncate font-semibold">{viewerLabel}</span>
+                  <EllipsisVertical className="ml-auto size-4" />
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+
+              <DropdownMenuContent
+                align="end"
+                className="min-w-56"
+                side="right"
+                sideOffset={8}
+              >
+                <div className="flex items-center gap-2 rounded-md px-1 py-1.5">
+                  <UserAvatar
+                    email={viewer.email}
+                    name={viewer.name}
+                    picture={viewer.picture}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm leading-none font-semibold">
+                      {viewerLabel}
+                    </p>
+                    <p className="truncate font-mono text-xs text-muted-foreground">
+                      {viewer.email}
+                    </p>
+                  </div>
+                </div>
+
+                <DropdownMenuSeparator />
+
+                <DropdownMenuItem>
+                  <Users />
+                  People
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <LineChart />
+                  Usage
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <CreditCard />
+                  Access & Billing
+                </DropdownMenuItem>
+
+                <DropdownMenuSeparator />
+
+                <DropdownMenuItem onSelect={() => auth.logout()}>
+                  <LogOut />
+                  Log out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
