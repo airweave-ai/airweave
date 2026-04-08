@@ -1,5 +1,6 @@
 export { CollectionsSummaryCard } from './components/collections-summary-card';
 export { CollectionFilterButtonGroup } from './components/collection-filter-button-group';
+export { CollectionsSearchEmptyState } from './components/collections-search-empty-state';
 export { CollectionsTable } from './components/collections-table';
 export { CollectionCountBadge } from './components/collection-count-badge';
 export { CollectionSourceConnections } from './components/collection-source-connections';

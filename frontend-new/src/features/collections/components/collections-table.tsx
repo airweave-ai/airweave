@@ -12,6 +12,7 @@ import { CollectionSourceConnections } from './collection-source-connections';
 import { CollectionTooltipContent } from './collection-tooltip-content';
 import type { ColumnDef, RowSelectionState } from '@tanstack/react-table';
 import type { Collection } from '@/shared/api';
+import type { ReactNode } from 'react';
 import { cn } from '@/shared/tailwind/cn';
 import { Button } from '@/shared/ui/button';
 import { Checkbox } from '@/shared/ui/checkbox';
@@ -99,13 +100,13 @@ export const collectionsTableColumns: Array<ColumnDef<Collection>> = [
 type CollectionsTableProps = {
   collections: Array<Collection>;
   className?: string;
-  emptyMessage?: string;
+  emptyState?: ReactNode;
 };
 
 export function CollectionsTable({
   collections,
   className,
-  emptyMessage = 'No collections found.',
+  emptyState,
 }: CollectionsTableProps) {
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({});
 
@@ -125,6 +126,7 @@ export function CollectionsTable({
   const selectedCollectionIds = selectedRows.map((row) => row.id);
   const selectedCollectionsCount = selectedRows.length;
   const hasSelectedCollections = selectedCollectionsCount > 0;
+  const hasRows = table.getRowModel().rows.length > 0;
 
   return (
     <div className={cn('relative', className)}>
@@ -174,7 +176,7 @@ export function CollectionsTable({
           ))}
         </TableHeader>
         <TableBody>
-          {table.getRowModel().rows.length ? (
+          {hasRows ? (
             table.getRowModel().rows.map((row) => (
               <TableRow
                 key={row.id}
@@ -202,7 +204,7 @@ export function CollectionsTable({
                 colSpan={collectionsTableColumns.length}
                 className="h-24 px-4 py-3 text-center text-muted-foreground"
               >
-                {emptyMessage}
+                {emptyState}
               </TableCell>
             </TableRow>
           )}
