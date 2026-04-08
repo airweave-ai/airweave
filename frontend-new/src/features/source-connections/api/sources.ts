@@ -1,11 +1,11 @@
+import { queryOptions, useQueryClient } from '@tanstack/react-query';
 import {
+  queryClient as defaultQueryClient,
   getSourcesShortNameGetOptions,
   listSourcesGetOptions,
-  queryClient as defaultQueryClient,
   withOrganizationHeaders,
 } from '@/shared/api';
 import { useCurrentOrganizationId } from '@/shared/session';
-import { queryOptions, useQueryClient } from '@tanstack/react-query';
 
 export function listSourcesQueryOptions(organizationId: string) {
   return listSourcesGetOptions(withOrganizationHeaders({ organizationId }));

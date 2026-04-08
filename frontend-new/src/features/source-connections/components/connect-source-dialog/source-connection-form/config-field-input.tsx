@@ -61,18 +61,18 @@ export function ConfigFieldInput({
   if (fieldType === 'boolean') {
     return (
       <FormField
-        name={name}
-        title={title}
-        errors={errors}
-        required={required}
         description={description}
+        errors={errors}
+        name={name}
+        required={required}
+        title={title}
       >
         <Switch
+          aria-invalid={hasErrors}
           checked={value}
           id={name}
-          onCheckedChange={(checked) => onChange(checked)}
           onBlur={onBlur}
-          aria-invalid={hasErrors}
+          onCheckedChange={(checked) => onChange(checked)}
         />
       </FormField>
     );
@@ -81,19 +81,19 @@ export function ConfigFieldInput({
   if (fieldType === 'string') {
     return (
       <FormField
-        name={name}
-        title={title}
-        errors={errors}
-        required={required}
         description={description}
+        errors={errors}
+        name={name}
+        required={required}
+        title={title}
       >
         <Input
-          id={name}
-          type={'text'}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={onBlur}
           aria-invalid={hasErrors}
+          id={name}
+          onBlur={onBlur}
+          onChange={(e) => onChange(e.target.value)}
+          type="text"
+          value={value}
         />
       </FormField>
     );
@@ -102,20 +102,20 @@ export function ConfigFieldInput({
   if (fieldType === 'number') {
     return (
       <FormField
-        name={name}
-        title={title}
-        errors={errors}
-        required={required}
         description={description}
+        errors={errors}
+        name={name}
+        required={required}
+        title={title}
       >
         <Input
-          id={name}
-          type="number"
-          inputMode="decimal"
-          value={value}
-          onChange={(e) => onChange(e.target.valueAsNumber)}
-          onBlur={onBlur}
           aria-invalid={hasErrors}
+          id={name}
+          inputMode="decimal"
+          onBlur={onBlur}
+          onChange={(e) => onChange(e.target.valueAsNumber)}
+          type="number"
+          value={value}
         />
       </FormField>
     );
@@ -123,32 +123,28 @@ export function ConfigFieldInput({
 
   return (
     <FormField
-      name={name}
-      title={title}
-      errors={errors}
-      required={required}
       description={
         <>
-          {description ? (
-            <FieldDescription>{description}</FieldDescription>
-          ) : null}
+          {description ? <FieldDescription>{description}</FieldDescription> : null}
           <FieldDescription>
             Separate values with commas or new lines.
           </FieldDescription>
         </>
       }
+      errors={errors}
+      name={name}
+      required={required}
+      title={title}
     >
       <Input
+        aria-invalid={hasErrors}
         id={name}
-        value={value}
+        onBlur={onBlur}
         onChange={(e) => {
-          const nextValue = e.target.value
-            .split(',')
-            .map((chunk) => chunk.trim());
+          const nextValue = e.target.value.split(',').map((chunk) => chunk.trim());
           return onChange(nextValue);
         }}
-        onBlur={onBlur}
-        aria-invalid={hasErrors}
+        value={value}
       />
     </FormField>
   );
@@ -169,13 +165,11 @@ export function FormField({
         {title}
         {required ? <RequiredMark /> : null}
       </FieldLabel>
-      {description ? (
-        typeof description === 'string' ? (
-          <FieldDescription>{description}</FieldDescription>
-        ) : (
-          description
-        )
-      ) : null}
+      {description
+        ? typeof description === 'string'
+          ? <FieldDescription>{description}</FieldDescription>
+          : description
+        : null}
       {children}
       <FieldError errors={errors} />
     </Field>
