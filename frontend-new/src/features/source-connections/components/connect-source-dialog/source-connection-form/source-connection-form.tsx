@@ -2,14 +2,13 @@ import * as React from 'react';
 import { IconArrowRight } from '@tabler/icons-react';
 import { useCreateSourceConnectionMutation } from '../../../api';
 import { SourceIcon } from '../../source-icon';
-import { ConfigFieldInput } from './config-field-input';
 import { SourceConnectionAuthSection } from './source-connection-auth-section';
+import { SourceConnectionConfigSection } from './source-connection-config-section';
 import { getSourceDocsUrl } from './source-docs-url';
 import {
   getAuthMethodForVariant,
   getSourceConnectionFormOptions,
   getSourceConnectionFormSchema,
-  isSupportedConfigFieldType,
   useSourceConnectionForm,
 } from './source-connection-form-hook';
 import { SourceConnectionTextInput } from './source-connection-text-input';
@@ -151,46 +150,8 @@ export function SourceConnectionForm({
               )}
             </form.Field>
           </FieldGroup>
-
-          {source.config_fields.fields.length > 0 ? (
-            <section className="space-y-6">
-              <div className="space-y-1">
-                <h4 className="text-sm font-medium text-foreground">
-                  Configuration
-                </h4>
-                <p className="text-sm text-muted-foreground">
-                  Source-specific options applied to this connection.
-                </p>
-              </div>
-
-              {source.config_fields.fields.map((configField) => (
-                <form.Field
-                  key={configField.name}
-                  name={`config.${configField.name}`}
-                >
-                  {(field) => (
-                    <ConfigFieldInput
-                      description={configField.description ?? undefined}
-                      errors={field.state.meta.errors}
-                      fieldType={
-                        isSupportedConfigFieldType(configField.type)
-                          ? configField.type
-                          : 'string'
-                      }
-                      name={field.name}
-                      onBlur={field.handleBlur}
-                      onChange={field.handleChange}
-                      required={configField.required}
-                      title={configField.title}
-                      value={(field.state.value ?? '') as any}
-                    />
-                  )}
-                </form.Field>
-              ))}
-            </section>
-          ) : null}
-
           <SourceConnectionAuthSection form={form} source={source} />
+          <SourceConnectionConfigSection form={form} source={source} />
         </div>
 
         <div className="shrink-0">
