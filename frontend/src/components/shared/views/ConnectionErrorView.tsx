@@ -70,17 +70,6 @@ export const ConnectionErrorView: React.FC<ConnectionErrorViewProps> = ({
         canRetry
     } = viewData || {};
 
-    // Log when this component is rendered with data
-    useEffect(() => {
-        console.log("🔔 [ConnectionErrorView] Rendered with data:", {
-            serviceName,
-            sourceShortName,
-            errorMessage: errorMessage?.substring(0, 100), // Truncate for logging
-            hasErrorDetails: !!errorDetails,
-            errorDetailsLength: errorDetails?.length,
-            hasRetryAction: !!retryAction
-        });
-    }, [serviceName, sourceShortName, errorMessage, errorDetails, retryAction]);
 
     // Format error details section to handle nested JSON strings
     let displayedDetails = errorDetails;
@@ -236,7 +225,7 @@ export const ConnectionErrorView: React.FC<ConnectionErrorViewProps> = ({
 
                     {(retryAction || canRetry === true) && (
                         <Button
-                            onClick={retryAction || (() => console.log("No retry action defined"))}
+                            onClick={retryAction || (() => {})}
                             className="bg-blue-600 hover:bg-blue-700 text-white"
                             disabled={!retryAction && canRetry}
                         >

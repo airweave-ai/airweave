@@ -47,17 +47,14 @@ export const useSourcesStore = create<SourcesState>((set, get) => ({
     // If sources are already loaded and no force refresh requested, return existing data
     const { sources, isLoading } = get();
     if (sources.length > 0 && !forceRefresh) {
-      console.log("🔍 [SourcesStore] Using cached sources list, skipping API call");
       return sources;
     }
 
     // If we're already loading, don't start another request
     if (isLoading && !forceRefresh) {
-      console.log("🔍 [SourcesStore] Sources already loading, skipping duplicate request");
       return sources;
     }
 
-    console.log("🔍 [SourcesStore] Fetching sources from API");
     set({ isLoading: true, error: null });
 
     try {
@@ -85,13 +82,11 @@ export const useSourcesStore = create<SourcesState>((set, get) => ({
   getSourceDetails: async (shortName: string) => {
     // Return cached details if available
     if (get().sourceDetails[shortName]) {
-      console.log(`🔍 [SourcesStore] Using cached details for ${shortName}`);
       return get().sourceDetails[shortName];
     }
 
     // Check if already loading this source
     if (get().sourceDetailsLoading[shortName]) {
-      console.log(`🔍 [SourcesStore] Details for ${shortName} already loading, waiting for completion`);
       // Wait for the existing request to complete
       let attempts = 0;
       while (get().sourceDetailsLoading[shortName] && attempts < 20) {
@@ -105,7 +100,6 @@ export const useSourcesStore = create<SourcesState>((set, get) => ({
     }
 
     // Set loading state for this specific source
-    console.log(`🔍 [SourcesStore] Fetching details for ${shortName}`);
     set(state => ({
       sourceDetailsLoading: { ...state.sourceDetailsLoading, [shortName]: true },
       sourceDetailsError: { ...state.sourceDetailsError, [shortName]: null }

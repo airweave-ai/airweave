@@ -52,9 +52,7 @@ const Callback = () => {
 
           const response = await apiClient.post('/users/create_or_update', userData);
 
-          if (response.ok) {
-            console.log("✅ User created/updated in backend");
-          } else {
+          if (!response.ok) {
             console.error("❌ Failed to create/update user:", response.status);
           }
 

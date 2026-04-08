@@ -81,18 +81,6 @@ export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps>
     const navigate = useNavigate();
     const { fetchAuthProviderConnections } = useAuthProvidersStore();
 
-    // Log component lifecycle
-    useEffect(() => {
-        console.log('🌟 [ConfigureAuthProviderView] Component mounted:', {
-            authProviderName,
-            authProviderShortName,
-            viewData
-        });
-
-        return () => {
-            console.log('💥 [ConfigureAuthProviderView] Component unmounting');
-        };
-    }, []);
 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -105,10 +93,6 @@ export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps>
     const [airweaveImageError, setAirweaveImageError] = useState(false);
     const [authProviderImageError, setAuthProviderImageError] = useState(false);
 
-    // Log loading state changes
-    useEffect(() => {
-        console.log('⏳ [ConfigureAuthProviderView] Loading state:', loading);
-    }, [loading]);
 
     // Default name for the connection
     const defaultConnectionName = authProviderName ? `My ${authProviderName} Connection` : "My Connection";
@@ -157,30 +141,17 @@ export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps>
 
     // Fetch auth provider details
     useEffect(() => {
-        console.log('🔍 [ConfigureAuthProviderView] Auth provider details effect triggered:', {
-            authProviderShortName,
-            currentLoading: loading
-        });
-
         if (!authProviderShortName) {
-            console.log('⚠️ [ConfigureAuthProviderView] No authProviderShortName, skipping fetch');
             setLoading(false);
             return;
         }
 
         const fetchDetails = async () => {
-            console.log('🚀 [ConfigureAuthProviderView] Starting to fetch auth provider details');
             setLoading(true);
             try {
                 const response = await apiClient.get(`/auth-providers/detail/${authProviderShortName}`);
-                console.log('📡 [ConfigureAuthProviderView] Auth provider details response:', response.ok);
-
                 if (response.ok) {
                     const data = await response.json();
-                    console.log('✅ [ConfigureAuthProviderView] Auth provider details loaded:', {
-                        hasAuthFields: !!data.auth_fields,
-                        fieldsCount: data.auth_fields?.fields?.length || 0
-                    });
                     setAuthProviderDetails(data);
 
                     // Initialize auth field values
@@ -204,7 +175,6 @@ export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps>
                     onError(error instanceof Error ? error : new Error(String(error)), authProviderName);
                 }
             } finally {
-                console.log('🏁 [ConfigureAuthProviderView] Setting loading to false');
                 setLoading(false);
             }
         };
@@ -391,16 +361,7 @@ export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps>
                 duration: 5000,
             });
 
-            // Navigate to detail view BEFORE refreshing connections
-            console.log('🎯 [ConfigureAuthProviderView] Connection created successfully:', {
-                connectionId: connection.id,
-                readableId: connection.readable_id,
-                name: connection.name,
-                shortName: connection.short_name
-            });
-
             if (onNext) {
-                console.log('🚀 [ConfigureAuthProviderView] Calling onNext to navigate to detail view');
                 onNext({
                     authProviderConnectionId: connection.readable_id,
                     authProviderName: authProviderName,  // Use the original auth provider name, not connection name
@@ -408,8 +369,6 @@ export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps>
                     isNewConnection: true  // Flag to indicate this is a new connection
                 });
 
-                // Refresh connections after navigation - testing without delay
-                console.log('📡 [ConfigureAuthProviderView] Refreshing auth provider connections after navigation');
                 fetchAuthProviderConnections();
             } else {
                 console.warn('⚠️ [ConfigureAuthProviderView] onNext is not defined!');

@@ -74,7 +74,6 @@ const Dashboard = () => {
     if (connectionStatus === 'error') {
       const errorDetails = getStoredErrorDetails();
       if (errorDetails) {
-        console.log("🔔 [Dashboard] Found stored error details:", errorDetails);
         // TODO: Handle error display in new modal system
 
         // Clean up URL
@@ -90,20 +89,15 @@ const Dashboard = () => {
     const unsubscribeCollections = useCollectionsStore.getState().subscribeToEvents();
 
     // Initial fetch - use console logging to track API calls
-    console.log("🔄 [Dashboard] Initializing collections and sources");
 
     // Load collections (will use cache if available)
-    fetchCollections().then(collections => {
-      console.log(`🔄 [Dashboard] Collections loaded: ${collections.length} collections available`);
-    });
+    fetchCollections();
 
     // Load collections count
     fetchCollectionsCount();
 
     // Load sources - will use cached data if available
-    fetchSources().then(sources => {
-      console.log(`🔄 [Dashboard] Sources loaded: ${sources.length} sources available`);
-    });
+    fetchSources();
 
     return () => {
       unsubscribeCollections();

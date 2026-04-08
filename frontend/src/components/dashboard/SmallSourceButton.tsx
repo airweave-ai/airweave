@@ -37,7 +37,6 @@ export const SmallSourceButton = ({ id, name, shortName, connected = false, onCl
                 )
             )}
             onClick={() => {
-                console.log('🔲 [SmallSourceButton] Button clicked:', { id, name, shortName, connected });
                 onClick?.();
             }}
             title={connected ? `${name} (Connected)` : name}

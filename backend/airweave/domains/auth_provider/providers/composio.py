@@ -551,9 +551,9 @@ class ComposioAuthProvider(BaseAuthProvider):
                 raise AuthProviderAuthError(error_msg, provider_name="composio") from e
 
             try:
-                detail = e.response.json().get("message", e.response.text)
+                detail = e.response.json().get("message", f"HTTP {status}")
             except Exception:
-                detail = e.response.text
+                detail = e.response.text or f"HTTP {status}"
 
             error_msg = f"Composio API key validation failed: {status} - {detail}"
             self.logger.error(f"❌ [Composio] {error_msg}")

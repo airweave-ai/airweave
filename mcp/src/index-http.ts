@@ -72,6 +72,13 @@ function extractApiKey(req: express.Request): string | undefined {
         undefined;
 }
 
+/** Strip control characters to prevent log injection. */
+function sanitizeForLog(value: string): string {
+    return value
+        .replace(/\n|\r/g, "")
+        .replace(/[\x00-\x1F\x7F]/g, "");
+}
+
 /**
  * Per-request auth resolution middleware.
  *
@@ -243,9 +250,9 @@ app.post('/mcp', resolveAuth, async (req: ReqWithAuth, res) => {
         if (isOAuth) {
             try {
                 organizationId = await resolveOrganizationForCollection(credential, baseUrl, collection);
-                console.log(`[${new Date().toISOString()}] Resolved org=${organizationId} for collection=${collection}`);
+                console.log(`[${new Date().toISOString()}] Resolved org=${organizationId} for collection=${sanitizeForLog(collection)}`);
             } catch (err) {
-                console.error(`[${new Date().toISOString()}] Org resolution failed:`, err);
+                console.error(`[${new Date().toISOString()}] Org resolution failed:`, err instanceof Error ? sanitizeForLog(err.message) : 'unknown error');
                 res.status(400).json({
                     jsonrpc: '2.0',
                     error: {
@@ -279,12 +286,12 @@ app.post('/mcp', resolveAuth, async (req: ReqWithAuth, res) => {
                 await transport.close();
                 await server.close();
             } catch (err) {
-                console.error(`[${new Date().toISOString()}] Error during cleanup:`, err);
+                console.error(`[${new Date().toISOString()}] Error during cleanup:`, err instanceof Error ? sanitizeForLog(err.message) : 'unknown error');
             }
         });
 
     } catch (error) {
-        console.error(`[${new Date().toISOString()}] Error handling MCP request:`, error);
+        console.error(`[${new Date().toISOString()}] Error handling MCP request:`, error instanceof Error ? sanitizeForLog(error.message) : 'unknown error');
         trackMcpError(extractApiKey(req), {
             errorCode: -32603,
             errorMessage: error instanceof Error ? error.message : 'Internal server error'
@@ -313,7 +320,7 @@ app.delete('/mcp', (req, res) => {
 
 // Error handling middleware
 app.use((error: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    console.error(`[${new Date().toISOString()}] Unhandled error:`, error);
+    console.error(`[${new Date().toISOString()}] Unhandled error:`, error instanceof Error ? sanitizeForLog(error.message) : 'unknown error');
     if (!res.headersSent) {
         res.status(500).json({
             jsonrpc: '2.0',

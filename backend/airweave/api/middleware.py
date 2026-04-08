@@ -67,7 +67,7 @@ async def log_requests(request: Request, call_next: callable) -> Response:
     duration = time.time() - start_time
     logger.info(
         (
-            f"Handled request {request.method} {request.url} in {duration:.2f} seconds."
+            f"Handled request {request.method} {request.url.path} in {duration:.2f} seconds."
             f"Response code: {response.status_code}"
         )
     )
@@ -91,18 +91,14 @@ async def exception_logging_middleware(request: Request, call_next: callable) ->
         response = await call_next(request)
         return response
     except Exception as exc:
-        # Always log the full exception details
-        logger.error(f"Unhandled exception: {exc}\n{traceback.format_exc()}")
+        logger.error("Unhandled exception", exc_info=True)
 
-        # Create error message with actual exception details
-        error_message = f"Internal Server Error: {exc.__class__.__name__}: {str(exc)}"
-
-        # Build response content
-        response_content = {"detail": error_message}
-
-        # Include stack trace only in development mode
         if settings.LOCAL_CURSOR_DEVELOPMENT or settings.DEBUG:
+            error_message = f"Internal Server Error: {exc.__class__.__name__}: {str(exc)}"
+            response_content: dict = {"detail": error_message}
             response_content["trace"] = traceback.format_exc()
+        else:
+            response_content = {"detail": "Internal Server Error"}
 
         return JSONResponse(status_code=500, content=response_content)
 
@@ -143,7 +139,7 @@ async def request_timeout_middleware(request: Request, call_next: callable) -> R
     except asyncio.TimeoutError:
         logger.warning(
             f"Request timeout after {settings.API_REQUEST_TIMEOUT_SECONDS}s: "
-            f"{request.method} {request.url}"
+            f"{request.method} {request.url.path}"
         )
         return JSONResponse(
             status_code=504,
@@ -179,7 +175,7 @@ async def request_body_size_middleware(request: Request, call_next: callable) ->
                 actual_size_mb = content_length_bytes / (1024 * 1024)
                 logger.warning(
                     f"Request body too large: {actual_size_mb:.2f}MB exceeds limit "
-                    f"of {max_size_mb:.2f}MB for {request.method} {request.url}"
+                    f"of {max_size_mb:.2f}MB for {request.method} {request.url.path}"
                 )
                 return JSONResponse(
                     status_code=413,

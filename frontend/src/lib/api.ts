@@ -16,9 +16,7 @@ interface TokenProvider {
 // Default implementation that uses env variable
 const defaultTokenProvider: TokenProvider = {
   getToken: async () => env.VITE_ACCESS_TOKEN || null,
-  clearToken: () => {
-    console.log('Default clearToken called - no effect in default provider');
-  },
+  clearToken: () => {},
   isReady: () => true,
 };
 
@@ -71,7 +69,8 @@ const processQueue = async () => {
 
   isProcessingQueue = true;
 
-  console.log(`Processing request queue: ${requestQueue.length} requests`);
+  // eslint-disable-next-line no-console
+  if (import.meta.env.DEV) console.log(`Processing request queue: ${requestQueue.length} requests`);
 
   while (requestQueue.length > 0) {
     const request = requestQueue.shift();
@@ -97,8 +96,9 @@ const queueOrExecute = async (requestFn: () => Promise<Response>): Promise<Respo
   }
 
   // Queue the request
+  // eslint-disable-next-line no-console
+  if (import.meta.env.DEV) console.log('Queueing request until auth is ready');
   return new Promise((resolve, reject) => {
-    console.log('Queueing request until auth is ready');
     requestQueue.push({
       execute: requestFn,
       resolve,
@@ -123,8 +123,8 @@ const getPostHogSessionId = (): string | undefined => {
     if (posthog && typeof posthog.get_session_id === 'function') {
       return posthog.get_session_id();
     }
-  } catch (error) {
-    console.debug('PostHog session ID error:', error);
+  } catch {
+    // ignore PostHog session ID errors
   }
   return undefined;
 };
@@ -155,8 +155,6 @@ const getHeaders = async (): Promise<Record<string, string>> => {
 
 // Helper function to clear organization-specific state when auto-switching
 const clearOrganizationSpecificState = () => {
-  console.log("🧹 [AutoSwitch] Clearing organization-specific state");
-
   // Clear collections store
   useCollectionsStore.getState().clearCollections();
 
@@ -217,7 +215,6 @@ const handleOrganizationMismatch = async (responseData: any, method: HttpMethod)
   clearOrganizationSpecificState();
 
   // Switch to the target organization
-  console.log(`🔄 Auto-switching from ${currentOrganization.name} to ${targetOrg.name} for this resource`);
   switchOrganization(responseOrgId);
 
   // Show user feedback
@@ -264,14 +261,16 @@ const makeRequest = async <T>(
 
     // Handle 401/403 by attempting token refresh once
     if ((response.status === 401 || response.status === 403) && tokenProvider.clearToken) {
-      console.log(`Got ${response.status} error, attempting token refresh`);
+      // eslint-disable-next-line no-console
+      if (import.meta.env.DEV) console.log(`Got ${response.status} error, attempting token refresh`);
       tokenProvider.clearToken(); // Clear the cached token
 
       // Get fresh headers with new token
       headers = await getHeaders();
 
       if (headers.Authorization) {
-        console.log('Retrying request with fresh token');
+        // eslint-disable-next-line no-console
+        if (import.meta.env.DEV) console.log('Retrying request with fresh token');
         // Retry with new token
         fetchOptions.headers = headers;
         const retryResponse = await fetch(url.toString(), fetchOptions);
@@ -302,8 +301,6 @@ const makeRequest = async <T>(
         const didSwitch = await handleOrganizationMismatch(responseData, method);
 
         if (didSwitch) {
-          // Retry the request with the new organization context
-          console.log('🔄 Retrying request with new organization context');
           return await makeRequest(method, endpoint, options, true); // Mark as retry to prevent infinite loops
         }
       } catch (error) {

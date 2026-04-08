@@ -74,14 +74,12 @@ export const redirectWithError = (
     // Store in localStorage with more reliable stringify
     try {
         localStorage.setItem(CONNECTION_ERROR_STORAGE_KEY, JSON.stringify(errorData));
-        console.log(`🔔 [ErrorUtils] Stored error details in localStorage`);
     } catch (e) {
         console.error("Failed to store error details:", e);
     }
 
     // Create URL with just the error flag (no sensitive data)
     const targetUrl = `${protectedPaths.dashboard}?connected=error`;
-    console.log(`🧭 [ErrorUtils] Redirecting to error page: ${targetUrl}`);
 
     // Use appropriate navigation method based on type
     if (typeof navigateOrLocation === 'function') {
@@ -114,7 +112,6 @@ export const redirectWithError = (
  */
 export const storeErrorDetails = (error: ErrorDetails) => {
     try {
-        console.log('🔔 [ErrorUtils] Storing error details in localStorage');
         localStorage.setItem(CONNECTION_ERROR_STORAGE_KEY, JSON.stringify({
             ...error,
             timestamp: Date.now()
@@ -132,15 +129,12 @@ export const storeErrorDetails = (error: ErrorDetails) => {
 export const getStoredErrorDetails = (): ErrorDetails | null => {
     try {
         const rawData = localStorage.getItem(CONNECTION_ERROR_STORAGE_KEY);
-        console.log('📋 Raw error data from localStorage:', rawData);
 
         if (!rawData) {
-            console.log('❌ [ErrorUtils] No error data found in localStorage');
             return null;
         }
 
         const data = JSON.parse(rawData);
-        console.log('✅ [ErrorUtils] Retrieved error data:', data);
         return data;
     } catch (e) {
         console.error('❌ [ErrorUtils] Error retrieving stored error details:', e);
@@ -154,7 +148,6 @@ export const getStoredErrorDetails = (): ErrorDetails | null => {
 export const clearStoredErrorDetails = () => {
     try {
         localStorage.removeItem(CONNECTION_ERROR_STORAGE_KEY);
-        console.log('🧹 [ErrorUtils] Cleared error details from localStorage');
     } catch (e) {
         console.error('❌ [ErrorUtils] Error clearing stored error details:', e);
     }

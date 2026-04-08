@@ -67,8 +67,7 @@ export function getAuthProviderIconUrl(shortName: string, theme?: string): strin
     } else {
       return new URL(`/src/components/icons/auth_providers/${shortName}-dark.svg`, import.meta.url).href;
     }
-  } catch (e) {
-    console.log(`Error loading auth provider icon: ${e}`);
+  } catch {
     // Fallback to regular icon without theme suffix
     try {
       return new URL(`/src/components/icons/auth_providers/${shortName}.svg`, import.meta.url).href;

@@ -25,17 +25,10 @@ export const AuthProviderButton = ({
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === 'dark';
 
-    // Log when button is clicked
     const handleClick = () => {
         // Don't handle clicks for coming soon providers
         if (isComingSoon) return;
 
-        console.log('🔘 [AuthProviderButton] Button clicked:', {
-            id,
-            name,
-            shortName,
-            isConnected
-        });
         if (onClick) {
             onClick();
         }

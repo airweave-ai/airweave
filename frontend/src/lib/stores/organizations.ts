@@ -159,7 +159,6 @@ export const useOrganizationStore = create<OrganizationState>()(
         const org = organizations.find(o => o.id === orgId);
         if (org) {
           set({ currentOrganization: org, billingInfo: null }); // Clear billing info on switch
-          console.log(`🔄 [OrganizationStore] Switched to organization: ${org.name} (${org.id})`);
 
           // Clear usage cache when switching organizations
           useUsageStore.getState().clearCache();
@@ -204,13 +203,11 @@ export const useOrganizationStore = create<OrganizationState>()(
         const { lastOrgFetch, organizations, inflightOrgRequest } = get();
 
         if (lastOrgFetch && (now - lastOrgFetch) < 5000 && organizations.length > 0) {
-          console.log('Using cached organizations (fetched', Math.round((now - lastOrgFetch) / 1000), 'seconds ago)');
           return organizations;
         }
 
         // If there's already a request in flight, return it
         if (inflightOrgRequest) {
-          console.log('Returning existing organization request');
           return inflightOrgRequest;
         }
 
@@ -238,13 +235,6 @@ export const useOrganizationStore = create<OrganizationState>()(
               isLoading: false,
               inflightOrgRequest: null,
               lastOrgFetch: Date.now()
-            });
-
-            console.log('Organizations initialized:', {
-              total: organizations.length,
-              selected: currentOrg?.name,
-              isPrimary: currentOrg?.is_primary,
-              wasFromPersistence: !!currentOrgId && currentOrgId === currentOrg?.id
             });
 
             return organizations;
@@ -298,13 +288,11 @@ export const useOrganizationStore = create<OrganizationState>()(
         const { lastBillingFetch, billingInfo, inflightBillingRequest } = get();
 
         if (lastBillingFetch && (now - lastBillingFetch) < 10000 && billingInfo) {
-          console.log('Using cached billing info (fetched', Math.round((now - lastBillingFetch) / 1000), 'seconds ago)');
           return billingInfo;
         }
 
         // If there's already a request in flight, return it
         if (inflightBillingRequest) {
-          console.log('Returning existing billing request');
           return inflightBillingRequest;
         }
 

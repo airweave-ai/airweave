@@ -29,7 +29,6 @@ export const useSidePanelStore = create<SidePanelState>((set, get) => ({
     currentView: null,
     context: {},
     openPanel: (flowType, initialContext = {}) => {
-        console.log(`[SidePanelStore] Opening panel for flow: ${flowType}`, initialContext);
         set({
             isOpen: true,
             flowType,
@@ -38,7 +37,6 @@ export const useSidePanelStore = create<SidePanelState>((set, get) => ({
         });
     },
     closePanel: () => {
-        console.log('[SidePanelStore] Closing panel');
         set({
             isOpen: false,
             flowType: null,
@@ -47,7 +45,6 @@ export const useSidePanelStore = create<SidePanelState>((set, get) => ({
         });
     },
     setView: (view, newContext = {}) => {
-        console.log(`[SidePanelStore] Setting view to: ${view}`, newContext);
         set(state => ({
             currentView: view,
             context: { ...state.context, ...newContext },

@@ -36,7 +36,8 @@ if (typeof window !== 'undefined') {
         // Respect user privacy
         opt_out_capturing_by_default: false,
         loaded: (posthog) => {
-            console.log('✅ PostHog initialized successfully');
+            // eslint-disable-next-line no-console
+            if (import.meta.env.DEV) console.log('PostHog initialized successfully');
             // Capture initial pageview to ensure session is created
             posthog.capture('$pageview');
         },

@@ -142,7 +142,10 @@ class OAuth1Service(OAuth1ServiceProtocol):
             response_params = dict(parse_qsl(response.text))
 
             if "oauth_token" not in response_params or "oauth_token_secret" not in response_params:
-                logger.error(f"Invalid response from OAuth1 provider: {response.text}")
+                logger.error(
+                    f"Invalid response from OAuth1 provider: "
+                    f"missing required fields ({len(response.text)} bytes)"
+                )
                 raise HTTPException(status_code=400, detail="Invalid response from OAuth1 provider")
 
             logger.info("Successfully obtained OAuth1 temporary credentials")
@@ -159,18 +162,15 @@ class OAuth1Service(OAuth1ServiceProtocol):
 
         except httpx.HTTPStatusError as e:
             logger.error(
-                f"HTTP error obtaining request token: {e.response.status_code} - {e.response.text}"
+                f"HTTP error obtaining request token: "
+                f"{e.response.status_code} {e.response.reason_phrase}"
             )
-            raise HTTPException(
-                status_code=400, detail=f"Failed to obtain request token: {e.response.text}"
-            ) from e
+            raise HTTPException(status_code=400, detail="Failed to obtain request token") from e
         except Exception as e:
             if isinstance(e, HTTPException):
                 raise
             logger.error(f"Unexpected error obtaining request token: {str(e)}")
-            raise HTTPException(
-                status_code=400, detail=f"Failed to obtain request token: {str(e)}"
-            ) from e
+            raise HTTPException(status_code=400, detail="Failed to obtain request token") from e
 
     async def exchange_token(
         self,
@@ -235,7 +235,10 @@ class OAuth1Service(OAuth1ServiceProtocol):
             response_params = dict(parse_qsl(response.text))
 
             if "oauth_token" not in response_params or "oauth_token_secret" not in response_params:
-                logger.error(f"Invalid access token response: {response.text}")
+                logger.error(
+                    f"Invalid access token response: "
+                    f"missing required fields ({len(response.text)} bytes)"
+                )
                 raise HTTPException(status_code=400, detail="Invalid access token response")
 
             logger.info("Successfully obtained OAuth1 access token")
@@ -252,18 +255,14 @@ class OAuth1Service(OAuth1ServiceProtocol):
 
         except httpx.HTTPStatusError as e:
             logger.error(
-                f"HTTP error exchanging token: {e.response.status_code} - {e.response.text}"
+                f"HTTP error exchanging token: {e.response.status_code} {e.response.reason_phrase}"
             )
-            raise HTTPException(
-                status_code=400, detail=f"Failed to exchange OAuth1 token: {e.response.text}"
-            ) from e
+            raise HTTPException(status_code=400, detail="Failed to exchange OAuth1 token") from e
         except Exception as e:
             if isinstance(e, HTTPException):
                 raise
             logger.error(f"Unexpected error exchanging token: {str(e)}")
-            raise HTTPException(
-                status_code=400, detail=f"Failed to exchange OAuth1 token: {str(e)}"
-            ) from e
+            raise HTTPException(status_code=400, detail="Failed to exchange OAuth1 token") from e
 
     def build_authorization_url(
         self,

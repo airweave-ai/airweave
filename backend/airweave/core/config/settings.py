@@ -581,3 +581,19 @@ class Settings(BaseSettings):
         return frozenset(
             name.strip() for name in self.HEALTH_CRITICAL_PROBES.split(",") if name.strip()
         )
+
+    _SENSITIVE_PATTERNS: frozenset[str] = frozenset(
+        {"password", "secret", "key", "token", "encryption"}
+    )
+
+    def __repr__(self) -> str:
+        """Redact sensitive fields to prevent accidental credential exposure."""
+        pairs = []
+        for name in self.model_fields:
+            if any(p in name.lower() for p in self._SENSITIVE_PATTERNS):
+                pairs.append(f"{name}=<redacted>")
+            else:
+                pairs.append(f"{name}={getattr(self, name)!r}")
+        return f"Settings({', '.join(pairs)})"
+
+    __str__ = __repr__

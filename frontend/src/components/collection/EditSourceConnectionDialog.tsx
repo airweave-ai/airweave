@@ -56,28 +56,6 @@ export const EditSourceConnectionDialog: React.FC<EditSourceConnectionDialogProp
         sourceDetails.auth_fields.fields.length > 0 &&
         !sourceDetails.auth_fields.fields.some((field: any) => isTokenField(field.name));
 
-    // Log field details when dialog opens or sourceDetails changes
-    useEffect(() => {
-        if (open && sourceDetails && sourceConnection) {
-            console.log('📋 Source Details for Edit Dialog:', {
-                shortName: sourceConnection.short_name,
-                configFields: sourceDetails.config_fields?.fields || [],
-                authFields: sourceDetails.auth_fields?.fields || [],
-                showAuthFields,
-                hasOAuthTokens: sourceDetails.auth_fields?.fields?.some((field: any) => isTokenField(field.name)),
-                usingAuthProvider: !!sourceConnection.auth_provider,
-                authProvider: sourceConnection.auth_provider || 'none'
-            });
-        }
-        if (open && sourceConnection?.auth_provider) {
-            console.log('🔌 Auth Provider Details for Edit Dialog:', {
-                authProvider: sourceConnection.auth_provider,
-                authProviderDetails: authProviderDetails,
-                configFields: authProviderDetails?.config_fields?.fields || [],
-                authProviderConfig: editFormData.auth_provider_config
-            });
-        }
-    }, [open, sourceDetails, authProviderDetails, sourceConnection, showAuthFields, editFormData.auth_provider_config]);
 
     if (!sourceConnection) return null;
 

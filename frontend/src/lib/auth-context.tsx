@@ -5,7 +5,6 @@ import { apiClient } from './api';
 
 // Dev mode admin flag - defaults to true for local development convenience
 const DEV_IS_ADMIN = import.meta.env.VITE_DEV_IS_ADMIN !== 'false';
-console.log('[Auth] DEV_IS_ADMIN:', DEV_IS_ADMIN, 'env value:', import.meta.env.VITE_DEV_IS_ADMIN);
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -56,9 +55,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isLoading = authConfig.authEnabled ? (auth0IsLoading || !tokenInitialized || userProfileLoading) : false;
   const user = authConfig.authEnabled ? (enrichedUser || auth0User) : (enrichedUser || { name: 'Developer', email: 'dev@example.com', is_admin: DEV_IS_ADMIN });
 
-  // Debug logging
-  console.log('[Auth] authEnabled:', authConfig.authEnabled, 'enrichedUser:', enrichedUser, 'user.is_admin:', user?.is_admin);
-
   // Get the token when authenticated
   useEffect(() => {
     const getAccessToken = async () => {
@@ -67,27 +63,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const accessToken = await getAccessTokenSilently();
           setToken(accessToken);
           setTokenInitialized(true);
-          console.log('Auth initialization complete');
-
-          // Log token acquisition for debugging (without exposing token content)
-          console.log('🔑 Access token acquired successfully, length:', accessToken.length);
         } catch (error) {
           console.error('Error getting access token', error);
           setToken(null);
-          setTokenInitialized(true); // Mark as initialized even on error
-          console.log('Auth initialization complete (with error)');
+          setTokenInitialized(true);
         }
       } else if (authConfig.authEnabled && auth0IsLoading) {
         // Auth is enabled but Auth0 is still loading - do nothing, wait for it to finish
-        console.log('Waiting for Auth0 to finish loading...');
       } else if (authConfig.authEnabled && !auth0IsAuthenticated && !auth0IsLoading) {
         // Auth is enabled, Auth0 has finished loading, but user is not authenticated
         setTokenInitialized(true);
-        console.log('Auth initialization complete (user not authenticated)');
       } else if (!authConfig.authEnabled) {
         // For non-auth cases, mark as initialized immediately
         setTokenInitialized(true);
-        console.log('Auth initialization complete (non-auth mode)');
       }
     };
 
@@ -111,7 +99,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               id: backendUser.id,
               // Add any other backend fields you want to include
             });
-            console.log('User profile enriched with backend data', { is_admin: backendUser.is_admin });
           } else {
             console.error('Failed to fetch user profile from backend:', response.status);
             // Fallback to Auth0 user without backend data
@@ -163,7 +150,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Clear token function
   const clearToken = () => {
-    console.log('Clearing token in auth context');
     setToken(null);
   };
 

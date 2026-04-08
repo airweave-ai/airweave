@@ -259,10 +259,8 @@ class GmailSource(BaseSource):
             response = await self.http_client.get(url, headers=headers, params=params)
 
         if response.status_code == 429:
-            self.logger.warning(
-                f"Got 429 Rate Limited from Gmail API. Headers: {response.headers}. "
-                f"Body: {response.text}."
-            )
+            retry_after = response.headers.get("Retry-After", "unknown")
+            self.logger.warning(f"Got 429 Rate Limited from Gmail API. Retry-After: {retry_after}")
 
         raise_for_status(
             response,

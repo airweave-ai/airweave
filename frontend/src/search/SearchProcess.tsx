@@ -33,9 +33,6 @@ export const SearchProcess: React.FC<SearchProcessProps> = ({ requestId, events,
     useEffect(() => {
         localStorage.setItem('searchProcess-expanded', JSON.stringify(isExpanded));
     }, [isExpanded]);
-    useEffect(() => {
-        console.log('[SearchProcess] Theme changed', { resolvedTheme, isDark });
-    }, [resolvedTheme, isDark]);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const lastEventCountRef = useRef(0);
     const [copied, setCopied] = useState(false);
@@ -82,13 +79,6 @@ export const SearchProcess: React.FC<SearchProcessProps> = ({ requestId, events,
         useEffect(() => {
             const preview = value?.slice(0, 120) || '';
             const bg = isDark ? 'rgba(17, 24, 39, 0.8)' : 'rgba(249, 250, 251, 0.95)';
-            // DEBUG: Verify theme-driven styling for JSON blocks
-            console.log('[SearchProcess][JsonBlock] render', {
-                isDark,
-                length: value?.length,
-                preview,
-                background: bg
-            });
         }, [isDark, value]);
 
         return (
@@ -223,10 +213,6 @@ export const SearchProcess: React.FC<SearchProcessProps> = ({ requestId, events,
 
         for (let i = 0; i < src.length; i++) {
             const event = src[i];
-            if (i === 0) {
-                console.log('[SearchProcess] Rendering events', { count: src.length, firstType: (event as any)?.type });
-            }
-
             // ─── Agentic search events ───────────────────────────────────
             if (event.type === 'thinking') {
                 const e = event as any;

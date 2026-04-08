@@ -70,14 +70,16 @@ export const EditAuthProviderView: React.FC<EditAuthProviderViewProps> = ({
         }
 
         const fetchDetails = async () => {
-            console.log('🔍 [EditAuthProviderView] Fetching connection details for:', authProviderConnectionId);
+            // eslint-disable-next-line no-console
+            if (import.meta.env.DEV) console.log('[EditAuthProviderView] Fetching connection details for:', authProviderConnectionId);
             setLoading(true);
             try {
                 // Fetch connection details
                 const connResponse = await apiClient.get(`/auth-providers/connections/${authProviderConnectionId}`);
                 if (connResponse.ok) {
                     const connData = await connResponse.json();
-                    console.log('✅ [EditAuthProviderView] Connection details loaded:', connData);
+                    // eslint-disable-next-line no-console
+                    if (import.meta.env.DEV) console.log('[EditAuthProviderView] Connection details loaded');
                     setConnectionDetails(connData);
                     setNameValue(connData.name);
                     form.setValue("name", connData.name);
@@ -90,7 +92,8 @@ export const EditAuthProviderView: React.FC<EditAuthProviderViewProps> = ({
                     const providerResponse = await apiClient.get(`/auth-providers/detail/${authProviderShortName}`);
                     if (providerResponse.ok) {
                         const providerData = await providerResponse.json();
-                        console.log('✅ [EditAuthProviderView] Auth provider details loaded:', providerData);
+                        // eslint-disable-next-line no-console
+                        if (import.meta.env.DEV) console.log('[EditAuthProviderView] Auth provider details loaded');
                         setAuthProviderDetails(providerData);
 
                         // Initialize auth field values as empty (user will fill only what they want to update)
@@ -185,8 +188,6 @@ export const EditAuthProviderView: React.FC<EditAuthProviderViewProps> = ({
                 return;
             }
 
-            console.log('🚀 [EditAuthProviderView] Updating with data:', updateData);
-
             // Update auth provider connection
             const response = await apiClient.put(`/auth-providers/${authProviderConnectionId}`, undefined, updateData);
 
@@ -205,7 +206,6 @@ export const EditAuthProviderView: React.FC<EditAuthProviderViewProps> = ({
 
             // Complete the edit flow and return to auth provider list
             if (onComplete) {
-                console.log('🚀 [EditAuthProviderView] Edit complete, closing dialog');
                 onComplete({
                     success: true,
                     action: 'updated',

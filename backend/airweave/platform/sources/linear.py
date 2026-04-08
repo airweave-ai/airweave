@@ -181,7 +181,9 @@ class LinearSource(BaseSource):
             collection_key = next(iter(data.keys()), None)
 
             if not collection_key:
-                self.logger.warning(f"Unexpected response structure: {response}")
+                self.logger.warning(
+                    "Unexpected response structure: missing expected collection key"
+                )
                 break
 
             collection_data = data[collection_key]

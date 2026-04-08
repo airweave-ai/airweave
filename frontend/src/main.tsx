@@ -25,24 +25,10 @@ function ApiAuthConnector({ children }: { children: React.ReactNode }) {
   const auth = useAuth();
 
   useEffect(() => {
-    console.log("Setting up token provider with auth context");
-
-    // Set the token provider to use auth context
     setTokenProvider({
       getToken: async () => await auth.getToken(),
-      clearToken: () => {
-        // Use auth context's clearToken
-        auth.clearToken();
-        console.log("Token cleared via auth context");
-      },
+      clearToken: () => auth.clearToken(),
       isReady: () => auth.isReady()
-    });
-
-    // Log the auth state for debugging
-    console.log("Auth state:", {
-      isLoading: auth.isLoading,
-      isAuthenticated: auth.isAuthenticated,
-      tokenInitialized: auth.tokenInitialized
     });
   }, [auth]);
 

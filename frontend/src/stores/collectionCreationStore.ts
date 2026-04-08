@@ -200,9 +200,6 @@ export const useCollectionCreationStore = create<CollectionCreationState>()(
             // Import apiClient dynamically to avoid circular dependency
             const { apiClient } = await import('@/lib/api');
             const response = await apiClient.delete(`/collections/${state.collectionId}`);
-            if (response.ok) {
-              console.log('Deleted temporary collection:', state.collectionId);
-            }
           } catch (error) {
             console.error('Failed to delete collection on back navigation:', error);
           }

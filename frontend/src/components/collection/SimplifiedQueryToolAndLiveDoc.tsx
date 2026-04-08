@@ -56,10 +56,8 @@ export const QueryToolAndLiveDoc = ({ collectionReadableId }: QueryToolAndLiveDo
     useEffect(() => {
         const sessionApiKey = sessionStorage.getItem('semantic_mcp_api_key');
         if (sessionApiKey) {
-            console.log('🔑 [QueryToolAndLiveDoc] Using API key from session');
             setApiKey(sessionApiKey);
         } else {
-            console.log('🔑 [QueryToolAndLiveDoc] No API key in session, using default');
             setApiKey("YOUR_API_KEY");
         }
     }, []);
