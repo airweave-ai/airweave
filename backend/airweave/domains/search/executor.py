@@ -15,6 +15,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
+from airweave.core.exceptions import NotFoundException
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.search.adapters.vector_db.protocol import VectorDBProtocol
 from airweave.domains.search.builders.search_plan import SearchPlanBuilder
@@ -35,6 +36,7 @@ from airweave.domains.search.types.results import (
     SearchSystemMetadata,
 )
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
+from airweave.domains.sources.exceptions import SourceAuthError, SourceCreationError
 from airweave.domains.sources.protocols import (
     SourceLifecycleServiceProtocol,
     SourceRegistryProtocol,
@@ -214,6 +216,11 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
                     ctx=ctx,
                 )
                 federated_sources.append(source_instance)
+            except (SourceAuthError, SourceCreationError, NotFoundException):
+                # Auth/config errors are user errors — let them propagate
+                # directly so the service layer can handle them without
+                # emitting SearchFailedEvent.
+                raise
             except Exception as e:
                 raise FederatedSearchError([(sc.short_name, e)]) from e
 

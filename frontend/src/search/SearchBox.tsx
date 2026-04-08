@@ -361,17 +361,21 @@ export const SearchBox: React.FC<SearchBoxProps> = ({
                     return;
                 }
 
-                // Try to extract a meaningful error message from the response
-                let errorMessage = `Request failed: ${response.status} ${response.statusText}`;
-                try {
-                    const parsed = JSON.parse(errorText);
-                    if (parsed.detail) errorMessage = String(parsed.detail);
-                    else if (parsed.message) errorMessage = String(parsed.message);
-                } catch {
-                    if (errorText) errorMessage = errorText;
-                }
                 const endTime = performance.now();
-                onSearch({ error: errorMessage, errorIsTransient: false, status: response.status }, currentResponseType, Math.round(endTime - startTime));
+
+                if (response.status >= 400 && response.status < 500) {
+                    // 4xx — user error, show the API detail so they can fix it
+                    let detail = `Request failed: ${response.status} ${response.statusText}`;
+                    try {
+                        const parsed = JSON.parse(errorText);
+                        if (parsed.detail) detail = String(parsed.detail);
+                        else if (parsed.message) detail = String(parsed.message);
+                    } catch { /* use default */ }
+                    onSearch({ error: detail, errorIsTransient: false, status: response.status }, currentResponseType, Math.round(endTime - startTime));
+                } else {
+                    // 5xx — our fault, show generic message
+                    onSearch({ error: "Something went wrong, please try again.", errorIsTransient: true, status: response.status }, currentResponseType, Math.round(endTime - startTime));
+                }
                 return;
             }
 

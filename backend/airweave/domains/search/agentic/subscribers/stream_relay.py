@@ -104,7 +104,7 @@ class SearchStreamRelay(EventSubscriber):
                 payload["diagnostics"] = event.diagnostics.model_dump()
 
         elif isinstance(event, SearchFailedEvent):
-            payload["message"] = event.message
+            payload["message"] = "An internal error occurred during search."
             payload["duration_ms"] = event.duration_ms
             if event.diagnostics:
                 payload["diagnostics"] = event.diagnostics.model_dump()
