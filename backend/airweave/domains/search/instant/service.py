@@ -16,6 +16,7 @@ from airweave.api.context import ApiContext
 from airweave.core.events.search import SearchCompletedEvent, SearchFailedEvent, SearchTier
 from airweave.core.protocols.event_bus import EventBus
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
+from airweave.domains.search.persistence import persist_v2_search_query
 from airweave.domains.search.protocols import (
     InstantSearchServiceProtocol,
     SearchPlanExecutorProtocol,
@@ -119,6 +120,20 @@ class InstantSearchService(InstantSearchServiceProtocol):
                 results=[r.model_dump(mode="json") for r in results.results],
                 duration_ms=duration_ms,
             )
+        )
+
+        await persist_v2_search_query(
+            db,
+            ctx,
+            collection_id=collection.id,
+            query_text=request.query,
+            retrieval_strategy=request.retrieval_strategy.value,
+            is_streaming=False,
+            limit=request.limit,
+            offset=request.offset,
+            duration_ms=duration_ms,
+            results_count=len(results.results),
+            filter_groups=[f.model_dump() for f in request.filter] if request.filter else None,
         )
 
         return results
