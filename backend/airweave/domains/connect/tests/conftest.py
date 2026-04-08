@@ -63,8 +63,8 @@ def org_repo():
 
 
 @pytest.fixture
-def sc_service(fake_sync_lifecycle):
-    return FakeSourceConnectionService(sync_lifecycle=fake_sync_lifecycle)
+def sc_service(fake_sync_service):
+    return FakeSourceConnectionService(sync_service=fake_sync_service)
 
 
 @pytest.fixture

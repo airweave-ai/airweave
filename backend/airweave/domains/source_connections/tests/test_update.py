@@ -18,7 +18,7 @@ from airweave.adapters.encryption.fake import FakeCredentialEncryptor
 from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import logger
-from airweave.core.shared_models import AuthMethod, SyncStatus
+from airweave.core.shared_models import AuthMethod
 from airweave.domains.syncs.types import InvalidSyncTransitionError
 from airweave.domains.collections.fakes.repository import FakeCollectionRepository
 from airweave.domains.connections.fakes.repository import FakeConnectionRepository
@@ -30,10 +30,13 @@ from airweave.domains.source_connections.fakes.repository import (
 )
 from airweave.domains.source_connections.fakes.response import FakeResponseBuilder
 from airweave.domains.source_connections.update import SourceConnectionUpdateService
+from airweave.domains.sources.fakes.registry import FakeSourceRegistry
 from airweave.domains.sources.fakes.service import FakeSourceService
 from airweave.domains.sources.fakes.validation import FakeSourceValidationService
-from airweave.domains.syncs.fakes.record_service import FakeSyncRecordService
+from airweave.domains.sources.types import SourceRegistryEntry
+from airweave.domains.syncs.fakes.service import FakeSyncService
 from airweave.domains.syncs.fakes.repository import FakeSyncRepository
+from airweave.domains.syncs.types import SyncProvisionResult
 from airweave.domains.temporal.fakes.schedule_service import FakeTemporalScheduleService
 from airweave.models.collection import Collection
 from airweave.models.connection import Connection
@@ -105,13 +108,13 @@ def _build_service(
     connection_repo=None,
     cred_repo=None,
     sync_repo=None,
-    sync_record_service=None,
+    sync_service=None,
     source_service=None,
+    source_registry=None,
     source_validation=None,
     credential_encryptor=None,
     response_builder=None,
     temporal_schedule_service=None,
-    sync_state_machine=None,
 ):
     return SourceConnectionUpdateService(
         sc_repo=sc_repo or FakeSourceConnectionRepository(),
@@ -119,13 +122,13 @@ def _build_service(
         connection_repo=connection_repo or FakeConnectionRepository(),
         cred_repo=cred_repo or FakeIntegrationCredentialRepository(),
         sync_repo=sync_repo or FakeSyncRepository(),
-        sync_record_service=sync_record_service or FakeSyncRecordService(),
+        sync_service=sync_service or FakeSyncService(),
         source_service=source_service or FakeSourceService(),
+        source_registry=source_registry or FakeSourceRegistry(),
         source_validation=source_validation or FakeSourceValidationService(),
         credential_encryptor=credential_encryptor or FakeCredentialEncryptor(),
         response_builder=response_builder or FakeResponseBuilder(),
         temporal_schedule_service=temporal_schedule_service or FakeTemporalScheduleService(),
-        sync_state_machine=sync_state_machine or AsyncMock(),
     )
 
 
@@ -211,7 +214,7 @@ class ScheduleCase:
 SCHEDULE_CASES = [
     ScheduleCase("update_existing", has_sync=True, new_cron="0 * * * *", expect_temporal_create=True, expect_temporal_delete=False),
     ScheduleCase("remove_schedule", has_sync=True, new_cron=None, expect_temporal_create=False, expect_temporal_delete=True),
-    ScheduleCase("add_no_sync", has_sync=False, new_cron="0 * * * *", expect_temporal_create=True, expect_temporal_delete=False, expect_sync_record_create=True),
+    ScheduleCase("add_no_sync", has_sync=False, new_cron="0 * * * *", expect_temporal_create=False, expect_temporal_delete=False, expect_sync_record_create=True),
     ScheduleCase("no_connection_id_warning", has_sync=False, new_cron="0 * * * *", has_connection_id=False, expect_temporal_create=False, expect_temporal_delete=False),
 ]
 
@@ -235,17 +238,38 @@ async def test_schedule_update(case: ScheduleCase):
         source_svc.seed(_make_source_schema(short_name="github"))
 
     temporal = FakeTemporalScheduleService()
+    sync_svc = FakeSyncService()
 
-    sync_record_svc = FakeSyncRecordService()
+    source_registry = FakeSourceRegistry()
+    source_entry = MagicMock(spec=SourceRegistryEntry)
+    source_entry.short_name = "github"
+    source_entry.federated_search = False
+    source_registry.seed(source_entry)
+
     if case.expect_sync_record_create:
-        mock_sync = MagicMock(spec=schemas.Sync)
-        mock_sync.id = uuid4()
-        sync_record_svc.set_create_result(mock_sync)
+        created_sync_id = uuid4()
+        mock_sync_schema = MagicMock(spec=schemas.Sync)
+        mock_sync_schema.id = created_sync_id
+        sync_svc.set_create_result(
+            SyncProvisionResult(
+                sync_id=created_sync_id,
+                sync=mock_sync_schema,
+                sync_job=None,
+                cron_schedule=case.new_cron,
+            )
+        )
 
         col = MagicMock(spec=Collection)
         col.id = uuid4()
         col.readable_id = "test-col"
+        col.name = "Test Collection"
         col.organization_id = ORG_ID
+        col.vector_db_deployment_metadata_id = uuid4()
+        col.sync_config = None
+        col.created_at = NOW
+        col.modified_at = NOW
+        col.created_by_email = None
+        col.modified_by_email = None
         col_repo = FakeCollectionRepository()
         col_repo.seed_readable("test-col", col)
     else:
@@ -257,9 +281,10 @@ async def test_schedule_update(case: ScheduleCase):
     svc = _build_service(
         sc_repo=sc_repo,
         sync_repo=sync_repo,
+        sync_service=sync_svc,
         source_service=source_svc,
+        source_registry=source_registry,
         temporal_schedule_service=temporal,
-        sync_record_service=sync_record_svc,
         collection_repo=col_repo,
     )
 
@@ -271,7 +296,7 @@ async def test_schedule_update(case: ScheduleCase):
     if case.expect_temporal_delete:
         assert any(c[0] == "delete_all_schedules_for_sync" for c in temporal._calls)
     if case.expect_sync_record_create:
-        assert any(c[0] == "create_sync" for c in sync_record_svc._calls)
+        assert any(c[0] == "create" for c in sync_svc._calls)
 
 
 async def test_schedule_add_collection_not_found():
@@ -287,6 +312,45 @@ async def test_schedule_add_collection_not_found():
 
     with pytest.raises(NotFoundException, match="Collection not found"):
         await svc.update(AsyncMock(), id=sc.id, obj_in=obj_in, ctx=_make_ctx())
+
+
+async def test_schedule_add_rejects_federated_source():
+    """Adding a schedule to a federated search source is rejected with 400."""
+    sc = _make_sc(sync_id=None)
+    sc_repo = FakeSourceConnectionRepository()
+    sc_repo.seed(sc.id, sc)
+
+    col = MagicMock(spec=Collection)
+    col.id = uuid4()
+    col.readable_id = "test-col"
+    col.name = "Test Collection"
+    col.organization_id = ORG_ID
+    col.vector_db_deployment_metadata_id = uuid4()
+    col.sync_config = None
+    col.created_at = NOW
+    col.modified_at = NOW
+    col.created_by_email = None
+    col.modified_by_email = None
+    col_repo = FakeCollectionRepository()
+    col_repo.seed_readable("test-col", col)
+
+    federated_entry = MagicMock(spec=SourceRegistryEntry)
+    federated_entry.short_name = "github"
+    federated_entry.federated_search = True
+    source_registry = FakeSourceRegistry()
+    source_registry.seed(federated_entry)
+
+    svc = _build_service(
+        sc_repo=sc_repo,
+        collection_repo=col_repo,
+        source_registry=source_registry,
+    )
+    obj_in = SourceConnectionUpdate(schedule={"cron": "0 * * * *"})
+
+    with pytest.raises(HTTPException) as exc_info:
+        await svc.update(AsyncMock(), id=sc.id, obj_in=obj_in, ctx=_make_ctx())
+    assert exc_info.value.status_code == 400
+    assert "federated search" in str(exc_info.value.detail)
 
 
 # ---------------------------------------------------------------------------
@@ -480,7 +544,7 @@ def test_cron_validation(case: CronCase):
 
 @pytest.mark.asyncio
 async def test_credential_update_triggers_unpause():
-    """Successful direct auth credential update calls sync_state_machine.transition → ACTIVE."""
+    """Successful direct auth credential update calls sync_service.resume."""
     conn_id = uuid4()
     cred_id = uuid4()
     sync_id = uuid4()
@@ -503,7 +567,7 @@ async def test_credential_update_triggers_unpause():
     validation = FakeSourceValidationService()
     validation.seed_auth_result("github", _AuthPayload(token="secret"))
 
-    state_machine = AsyncMock()
+    sync_svc = FakeSyncService()
 
     svc = _build_service(
         sc_repo=sc_repo,
@@ -511,24 +575,18 @@ async def test_credential_update_triggers_unpause():
         cred_repo=cred_repo,
         source_validation=validation,
         credential_encryptor=FakeCredentialEncryptor(),
-        sync_state_machine=state_machine,
+        sync_service=sync_svc,
     )
 
     obj_in = SourceConnectionUpdate(authentication={"credentials": {"token": "new_secret"}})
     await svc.update(AsyncMock(), id=sc.id, obj_in=obj_in, ctx=_make_ctx())
 
-    state_machine.transition.assert_called_once()
-    call_kwargs = state_machine.transition.call_args
-    from airweave.core.shared_models import SyncStatus
-
-    assert call_kwargs.kwargs.get("target") == SyncStatus.ACTIVE or (
-        len(call_kwargs.args) >= 2 and call_kwargs.args[1] == SyncStatus.ACTIVE
-    )
+    assert any(c[0] == "resume" for c in sync_svc._calls)
 
 
 @pytest.mark.asyncio
 async def test_credential_update_unpause_failure_is_nonfatal():
-    """If sync_state_machine.transition raises, the update still succeeds."""
+    """If sync_service.resume raises, the update still succeeds."""
     conn_id = uuid4()
     cred_id = uuid4()
     sync_id = uuid4()
@@ -551,10 +609,8 @@ async def test_credential_update_unpause_failure_is_nonfatal():
     validation = FakeSourceValidationService()
     validation.seed_auth_result("github", _AuthPayload(token="secret"))
 
-    state_machine = AsyncMock()
-    state_machine.transition.side_effect = InvalidSyncTransitionError(
-        SyncStatus.ACTIVE, SyncStatus.ACTIVE
-    )
+    sync_svc = FakeSyncService()
+    sync_svc.set_error(ValueError("sync not active"))
 
     svc = _build_service(
         sc_repo=sc_repo,
@@ -562,7 +618,7 @@ async def test_credential_update_unpause_failure_is_nonfatal():
         cred_repo=cred_repo,
         source_validation=validation,
         credential_encryptor=FakeCredentialEncryptor(),
-        sync_state_machine=state_machine,
+        sync_service=sync_svc,
     )
 
     obj_in = SourceConnectionUpdate(authentication={"credentials": {"token": "new_secret"}})

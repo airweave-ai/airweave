@@ -17,7 +17,7 @@ from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.domains.syncs.types import SyncProvisionResult, SyncTransitionResult
 from airweave.models.sync import Sync
 from airweave.models.sync_cursor import SyncCursor
-from airweave.schemas.source_connection import ScheduleConfig, SourceConnectionJob
+from airweave.schemas.source_connection import ScheduleConfig
 from airweave.schemas.sync import SyncCreate, SyncUpdate
 
 
@@ -79,45 +79,6 @@ class SyncCursorRepositoryProtocol(Protocol):
         ...
 
 
-class SyncRecordServiceProtocol(Protocol):
-    """Sync record management: create syncs and trigger runs."""
-
-    async def resolve_destination_ids(self, db: AsyncSession, ctx: ApiContext) -> List[UUID]:
-        """Resolve destination connection IDs based on feature flags."""
-        ...
-
-    async def create_sync(
-        self,
-        db: AsyncSession,
-        *,
-        name: str,
-        source_connection_id: UUID,
-        destination_connection_ids: List[UUID],
-        cron_schedule: Optional[str],
-        run_immediately: bool,
-        ctx: ApiContext,
-        uow: UnitOfWork,
-    ) -> Tuple[schemas.Sync, Optional[schemas.SyncJob]]:
-        """Create a Sync record and optionally a PENDING SyncJob.
-
-        All writes happen inside the caller's UoW (no commit).
-        """
-        ...
-
-    async def trigger_sync_run(
-        self,
-        db: AsyncSession,
-        sync_id: UUID,
-        ctx: ApiContext,
-    ) -> Tuple[schemas.Sync, schemas.SyncJob]:
-        """Trigger a manual sync run.
-
-        Returns (sync_schema, sync_job_schema).
-        Raises HTTPException if a job is already active.
-        """
-        ...
-
-
 class SyncStateMachineProtocol(Protocol):
     """Validated, idempotent sync status transitions with schedule side effects."""
 
@@ -137,40 +98,17 @@ class SyncStateMachineProtocol(Protocol):
 
 
 class SyncServiceProtocol(Protocol):
-    """Sync execution: build orchestrator and run."""
+    """Unified sync service — the public interface for the syncs domain.
 
-    async def run(
-        self,
-        sync: schemas.Sync,
-        sync_job: schemas.SyncJob,
-        collection: schemas.CollectionRecord,
-        source_connection: schemas.Connection,
-        ctx: BaseContext,
-        force_full_sync: bool = False,
-        execution_config: Optional[SyncConfig] = None,
-        access_token: Optional[str] = None,
-    ) -> schemas.Sync:
-        """Run a sync via SyncFactory + SyncOrchestrator."""
-        ...
+    Provides lifecycle (create, get, pause, resume, delete), job management
+    (trigger_run, get_jobs, cancel_job), and execution (run) operations.
+    All methods speak the sync domain language; no source_connection types
+    cross this boundary.
+    """
 
+    # -- Lifecycle --
 
-class SyncLifecycleServiceProtocol(Protocol):
-    """Sync lifecycle: provision, run, get jobs, cancel, teardown."""
-
-    async def teardown_syncs_for_collection(
-        self,
-        db: AsyncSession,
-        *,
-        sync_ids: List[UUID],
-        collection_id: UUID,
-        organization_id: UUID,
-        ctx: ApiContext,
-        cancel_timeout_seconds: int = 15,
-    ) -> None:
-        """Cancel running workflows and schedule async cleanup for a collection's syncs."""
-        ...
-
-    async def provision_sync(
+    async def create(
         self,
         db: AsyncSession,
         *,
@@ -184,42 +122,105 @@ class SyncLifecycleServiceProtocol(Protocol):
         run_immediately: bool,
         ctx: ApiContext,
         uow: UnitOfWork,
-    ) -> Optional[SyncProvisionResult]:
-        """Create sync + job + Temporal schedule atomically.
-
-        Returns None for federated search sources (no sync needed).
-        """
+    ) -> SyncProvisionResult:
+        """Create sync + optional job + Temporal schedule atomically."""
         ...
 
-    async def run(
+    async def get(self, db: AsyncSession, *, sync_id: UUID, ctx: BaseContext) -> schemas.Sync:
+        """Get a sync by ID."""
+        ...
+
+    async def pause(
+        self,
+        sync_id: UUID,
+        ctx: BaseContext,
+        *,
+        reason: str = "",
+    ) -> SyncTransitionResult:
+        """Pause a sync."""
+        ...
+
+    async def resume(
+        self,
+        sync_id: UUID,
+        ctx: BaseContext,
+        *,
+        reason: str = "",
+    ) -> SyncTransitionResult:
+        """Resume a paused sync."""
+        ...
+
+    async def delete(
         self,
         db: AsyncSession,
         *,
-        id: UUID,
+        sync_id: UUID,
+        collection_id: UUID,
+        organization_id: UUID,
+        ctx: ApiContext,
+        cancel_timeout_seconds: int = 15,
+    ) -> None:
+        """Cancel active workflows and schedule async cleanup."""
+        ...
+
+    # -- Jobs --
+
+    async def resolve_destination_ids(self, db: AsyncSession, ctx: ApiContext) -> List[UUID]:
+        """Resolve destination connection IDs (interim — will move to a registry)."""
+        ...
+
+    async def trigger_run(
+        self,
+        db: AsyncSession,
+        *,
+        sync_id: UUID,
+        collection: schemas.CollectionRecord,
+        connection: schemas.Connection,
         ctx: ApiContext,
         force_full_sync: bool = False,
-    ) -> SourceConnectionJob:
-        """Trigger a sync run for a source connection."""
+    ) -> Tuple[schemas.Sync, schemas.SyncJob]:
+        """Create a PENDING job and start the Temporal workflow."""
         ...
 
     async def get_jobs(
         self,
         db: AsyncSession,
         *,
-        id: UUID,
+        sync_id: UUID,
         ctx: ApiContext,
         limit: int = 100,
-    ) -> List[SourceConnectionJob]:
-        """Get sync jobs for a source connection."""
+    ) -> List[schemas.SyncJob]:
+        """List jobs for a sync."""
         ...
 
     async def cancel_job(
         self,
         db: AsyncSession,
         *,
-        source_connection_id: UUID,
         job_id: UUID,
         ctx: ApiContext,
-    ) -> SourceConnectionJob:
-        """Cancel a running sync job for a source connection."""
+    ) -> schemas.SyncJob:
+        """Cancel a running sync job."""
+        ...
+
+    async def validate_force_full_sync(
+        self, db: AsyncSession, sync_id: UUID, ctx: ApiContext
+    ) -> None:
+        """Validate and log force_full_sync intent."""
+        ...
+
+    # -- Execution --
+
+    async def run(
+        self,
+        sync: schemas.Sync,
+        sync_job: schemas.SyncJob,
+        collection: schemas.CollectionRecord,
+        source_connection: schemas.Connection,
+        ctx: BaseContext,
+        force_full_sync: bool = False,
+        execution_config: Optional[SyncConfig] = None,
+        access_token: Optional[str] = None,
+    ) -> schemas.Sync:
+        """Run a sync via SyncFactory + SyncOrchestrator."""
         ...
