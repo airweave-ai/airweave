@@ -188,36 +188,36 @@ export function CreateCollectionDialogScreen({
           </form>
         </FlowDialogMain>
 
-        <FlowDialogAside className="space-y-8 xl:w-112">
+        <FlowDialogAside className="flex min-h-full flex-col gap-4 p-4 xl:w-112">
           <section className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="space-y-1">
-                <h2 className="flex items-center justify-between text-lg font-semibold text-foreground">
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold text-foreground">
                   What is a collection?
-                  <Button asChild size="lg" variant="ghost">
-                    <a
-                      href="https://docs.airweave.ai/welcome"
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      Documentation
-                      <ArrowUpRight className="size-4" />
-                    </a>
-                  </Button>
                 </h2>
-                <p className="max-w-3xl font-mono text-sm text-muted-foreground">
-                  A collection is your agent&apos;s scoped knowledge space. It
-                  groups selected sources and indexed entities, so queries run
-                  only against the data you choose.
-                </p>
+                <Button asChild size="lg" variant="ghost" className="shrink-0">
+                  <a
+                    href="https://docs.airweave.ai/welcome"
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    Documentation
+                    <ArrowUpRight className="size-4" />
+                  </a>
+                </Button>
               </div>
+              <p className="font-mono text-sm leading-5 text-muted-foreground">
+                A collection is your agent&apos;s scoped knowledge space. It
+                groups selected sources and indexed entities, so queries run
+                only against the data you choose.
+              </p>
             </div>
 
             <Separator />
           </section>
 
           <section className="space-y-2">
-            <h3 className="text-base font-semibold text-foreground">
+            <h3 className="text-base leading-none font-semibold text-foreground">
               What happens next:
             </h3>
 
@@ -226,26 +226,28 @@ export function CreateCollectionDialogScreen({
                 <React.Fragment key={step.title}>
                   <div className="space-y-2 py-3">
                     <div className="flex items-center gap-2">
-                      <span className="flex size-6 items-center justify-center rounded-sm border border-border font-mono text-sm text-muted-foreground">
+                      <span className="flex size-6 shrink-0 items-center justify-center rounded-sm border text-sm font-medium text-muted-foreground">
                         {index + 1}
                       </span>
                       <p className="text-sm font-extrabold text-foreground">
                         {step.title}
                       </p>
                     </div>
-                    <p className="font-mono text-sm text-muted-foreground">
+                    <p className="font-mono text-sm leading-5 text-muted-foreground">
                       {step.description}
                     </p>
                   </div>
-                  {index < nextSteps.length - 1 ? <Separator /> : null}
+                  {index < nextSteps.length - 1 ? (
+                    <Separator className="my-2" />
+                  ) : null}
                 </React.Fragment>
               ))}
             </div>
           </section>
 
-          <p className="pt-4 font-mono text-sm text-muted-foreground">
-            You can rename this collection, add or remove sources, and pause
-            sync at any time.
+          <p className="mt-auto pt-4 font-mono text-sm leading-5 text-muted-foreground">
+            You can rename this collection, add/remove sources, and pause sync
+            at any time.
           </p>
         </FlowDialogAside>
       </FlowDialogBody>
