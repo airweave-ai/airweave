@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useForm } from '@tanstack/react-form';
 import { ArrowUpRight } from 'lucide-react';
 import * as z from 'zod';
+import { IconArrowRight } from '@tabler/icons-react';
 import { useCreateCollectionMutation } from '../api';
 import type { Collection, CreateCollectionsPostError } from '@/shared/api';
 import { Button } from '@/shared/ui/button';
@@ -23,7 +24,6 @@ import {
 import { Input } from '@/shared/ui/input';
 import { Separator } from '@/shared/ui/separator';
 import { Spinner } from '@/shared/ui/spinner';
-import { IconArrowRight } from '@tabler/icons-react';
 
 const nextSteps = [
   {
