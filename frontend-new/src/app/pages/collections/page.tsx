@@ -5,6 +5,7 @@ import { CreateCollectionButton } from '@/app/components/create-collection-butto
 import {
   CollectionCountBadge,
   CollectionFilterButtonGroup,
+  CollectionsSearchEmptyState,
   CollectionsTable,
   normalizeCollectionSearch,
   useListCollectionsQueryOptions,
@@ -45,11 +46,16 @@ export function CollectionsPage({
     placeholderData: keepPreviousData,
   });
 
-  const emptyMessage = error
-    ? 'Failed to load collections.'
-    : normalizedSearch
-      ? `No collections found matching "${normalizedSearch}".`
-      : 'No collections found.';
+  const emptyState = error ? (
+    'Failed to load collections.'
+  ) : normalizedSearch && collections !== undefined ? (
+    <CollectionsSearchEmptyState
+      search={normalizedSearch}
+      onClearSearch={() => onSearchChange(undefined)}
+    />
+  ) : (
+    'No collections found.'
+  );
 
   return (
     <section className="space-y-5 px-13 py-1">
@@ -100,7 +106,7 @@ export function CollectionsPage({
 
         <CollectionsTable
           collections={collections ?? []}
-          emptyMessage={emptyMessage}
+          emptyState={emptyState}
         />
       </div>
     </section>

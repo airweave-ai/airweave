@@ -17,6 +17,7 @@ import {
 } from './collection-source-connections';
 import { CollectionStatusBadge } from './collection-status-badge';
 import { CollectionCountBadge } from './collection-count-badge';
+import { CollectionsSearchEmptyState } from './collections-search-empty-state';
 import type { Collection } from '@/shared/api';
 import type { ReactNode } from 'react';
 import { Badge } from '@/shared/ui/badge';
@@ -83,7 +84,10 @@ export function CollectionsSummaryCard({
           <DemoCollectionContent />
         ) : (
           <React.Suspense fallback={<CollectionsSummaryCardContentSkeleton />}>
-            <CollectionsSummaryCardListContent search={deferredSearch} />
+            <CollectionsSummaryCardListContent
+              search={normalizedSearch}
+              onClearSearch={() => setSearch(undefined)}
+            />
           </React.Suspense>
         )}
       </CardContent>
@@ -91,22 +95,25 @@ export function CollectionsSummaryCard({
   );
 }
 
-function NoCollectionsSearchResults({ search }: { search: string }) {
-  return (
-    <div className="rounded-sm border border-dashed border-border/70 bg-background/30 px-3 py-3 text-sm text-muted-foreground">
-      No collections found matching "{search}"
-    </div>
-  );
-}
-
-function CollectionsSummaryCardListContent({ search }: { search?: string }) {
+function CollectionsSummaryCardListContent({
+  search,
+  onClearSearch,
+}: {
+  search?: string;
+  onClearSearch: () => void;
+}) {
   const collectionsQueryOptions = useListCollectionsQueryOptions({ search });
   const { data: collections } = useSuspenseQuery({
     ...collectionsQueryOptions,
   });
 
   if (search && collections.length === 0) {
-    return <NoCollectionsSearchResults search={search} />;
+    return (
+      <CollectionsSearchEmptyState
+        search={search}
+        onClearSearch={onClearSearch}
+      />
+    );
   }
 
   return (
