@@ -1,9 +1,11 @@
 import * as React from 'react';
 import {
   Field,
+  FieldContent,
   FieldDescription,
   FieldError,
   FieldLabel,
+  FieldTitle,
 } from '@/shared/ui/field';
 import { Input } from '@/shared/ui/input';
 import { Switch } from '@/shared/ui/switch';
@@ -60,21 +62,25 @@ export function ConfigFieldInput({
 
   if (fieldType === 'boolean') {
     return (
-      <FormField
-        description={description}
-        errors={errors}
-        name={name}
-        required={required}
-        title={title}
-      >
-        <Switch
-          aria-invalid={hasErrors}
-          checked={value}
-          id={name}
-          onBlur={onBlur}
-          onCheckedChange={(checked) => onChange(checked)}
-        />
-      </FormField>
+      <FieldLabel>
+        <Field data-invalid={hasErrors} orientation="horizontal">
+          <FieldContent>
+            <FieldTitle>{title}</FieldTitle>
+            {description ? (
+              <FieldDescription className="text-balance">
+                {description}
+              </FieldDescription>
+            ) : null}
+          </FieldContent>
+          <Switch
+            aria-invalid={hasErrors}
+            checked={value}
+            id={name}
+            onBlur={onBlur}
+            onCheckedChange={(checked) => onChange(checked)}
+          />
+        </Field>
+      </FieldLabel>
     );
   }
 
@@ -94,6 +100,7 @@ export function ConfigFieldInput({
           onChange={(e) => onChange(e.target.value)}
           type="text"
           value={value}
+          placeholder={`Type ${title} here...`}
         />
       </FormField>
     );
@@ -125,7 +132,11 @@ export function ConfigFieldInput({
     <FormField
       description={
         <>
-          {description ? <FieldDescription>{description}</FieldDescription> : null}
+          {description ? (
+            <FieldDescription className="text-balance">
+              {description}
+            </FieldDescription>
+          ) : null}
           <FieldDescription>
             Separate values with commas or new lines.
           </FieldDescription>
@@ -141,10 +152,13 @@ export function ConfigFieldInput({
         id={name}
         onBlur={onBlur}
         onChange={(e) => {
-          const nextValue = e.target.value.split(',').map((chunk) => chunk.trim());
+          const nextValue = e.target.value
+            .split(',')
+            .map((chunk) => chunk.trim());
           return onChange(nextValue);
         }}
         value={value}
+        placeholder={`Type ${title} here...`}
       />
     </FormField>
   );
@@ -165,11 +179,15 @@ export function FormField({
         {title}
         {required ? <RequiredMark /> : null}
       </FieldLabel>
-      {description
-        ? typeof description === 'string'
-          ? <FieldDescription>{description}</FieldDescription>
-          : description
-        : null}
+      {description ? (
+        typeof description === 'string' ? (
+          <FieldDescription className="text-balance">
+            {description}
+          </FieldDescription>
+        ) : (
+          description
+        )
+      ) : null}
       {children}
       <FieldError errors={errors} />
     </Field>

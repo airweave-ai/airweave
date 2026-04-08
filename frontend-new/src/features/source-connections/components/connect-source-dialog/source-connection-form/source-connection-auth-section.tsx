@@ -1,4 +1,5 @@
 import { SourceConnectionAuthFields } from './source-connection-auth-fields';
+import { SelectionCard } from './selection-card';
 import {
   getAuthMethodForVariant,
   getAvailableAuthMethods,
@@ -9,10 +10,8 @@ import {
 import type { SourceConnectionAuthMethod } from '../../../types';
 import type { Source } from '@/shared/api';
 import type { SourceConnectionFormInput } from './source-connection-form-hook';
-import { cn } from '@/shared/tailwind/cn';
 import { Field, FieldTitle } from '@/shared/ui/field';
 import { RadioGroup, RadioGroupItem } from '@/shared/ui/radio-group';
-import { Label } from '@/shared/ui/label';
 
 const authMethodLabels = {
   direct: 'Direct Credentials',
@@ -30,11 +29,7 @@ export const SourceConnectionAuthSection = withSourceConnectionForm({
     const availableAuthMethods = getAvailableAuthMethods(source);
 
     if (availableAuthMethods.length === 1) {
-      return (
-        <section className="space-y-3">
-          <SourceConnectionAuthFields form={form} source={source} />
-        </section>
-      );
+      return <SourceConnectionAuthFields form={form} source={source} />;
     }
 
     return (
@@ -44,71 +39,56 @@ export const SourceConnectionAuthSection = withSourceConnectionForm({
             getAuthMethodForVariant(selectedAuthVariant);
 
           return (
-            <section className="space-y-3">
-              <form.Field name="authVariant">
-                {(field) => (
-                  <RadioGroup
-                    className="space-y-3"
-                    key="auth-method-selector"
-                    value={selectedAuthMethod}
-                    onValueChange={(method: SourceConnectionAuthMethod) => {
-                      const nextAuthVariant = getDefaultAuthVariantForMethod(
-                        method,
+            <form.Field name="authVariant">
+              {(field) => (
+                <RadioGroup
+                  className="gap-3"
+                  key="auth-method-selector"
+                  value={selectedAuthMethod}
+                  onValueChange={(method: SourceConnectionAuthMethod) => {
+                    const nextAuthVariant = getDefaultAuthVariantForMethod(
+                      method,
+                      source,
+                    );
+
+                    field.handleChange(nextAuthVariant);
+                    form.setFieldValue(
+                      'authentication',
+                      getDefaultAuthenticationValues(
+                        nextAuthVariant,
                         source,
-                      );
+                        source.auth_fields?.fields,
+                      ),
+                    );
+                  }}
+                >
+                  {availableAuthMethods.map((method) => {
+                    const selected = selectedAuthMethod === method;
+                    const radioId = `auth-method-${method}`;
 
-                      field.handleChange(nextAuthVariant);
-                      form.setFieldValue(
-                        'authentication',
-                        getDefaultAuthenticationValues(
-                          nextAuthVariant,
-                          source,
-                          source.auth_fields?.fields,
-                        ),
-                      );
-                    }}
-                  >
-                    {availableAuthMethods.map((method) => {
-                      const selected = selectedAuthMethod === method;
-                      const radioId = `auth-method-${method}`;
-
-                      return (
-                        <div
-                          key={method}
-                          className={cn(
-                            'rounded-lg border transition-colors',
-                            selected
-                              ? 'border-foreground/30 bg-muted/40'
-                              : 'border-border',
-                          )}
-                        >
-                          <Label
-                            className="flex cursor-pointer items-center gap-3 p-4"
-                            htmlFor={radioId}
-                          >
-                            <Field orientation="horizontal">
-                              <RadioGroupItem id={radioId} value={method} />
-                              <FieldTitle>
-                                {authMethodLabels[method]}
-                              </FieldTitle>
-                            </Field>
-                          </Label>
-
-                          {selected ? (
-                            <div className="mt-4 space-y-3 px-4 pb-4">
-                              <SourceConnectionAuthFields
-                                form={form}
-                                source={source}
-                              />
-                            </div>
-                          ) : null}
-                        </div>
-                      );
-                    })}
-                  </RadioGroup>
-                )}
-              </form.Field>
-            </section>
+                    return (
+                      <SelectionCard
+                        key={method}
+                        header={
+                          <Field orientation="horizontal">
+                            <RadioGroupItem id={radioId} value={method} />
+                            <FieldTitle>{authMethodLabels[method]}</FieldTitle>
+                          </Field>
+                        }
+                        headerClassName="items-center"
+                        htmlFor={radioId}
+                        selected={selected}
+                      >
+                        <SourceConnectionAuthFields
+                          form={form}
+                          source={source}
+                        />
+                      </SelectionCard>
+                    );
+                  })}
+                </RadioGroup>
+              )}
+            </form.Field>
           );
         }}
       </form.Subscribe>

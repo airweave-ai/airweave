@@ -40,6 +40,7 @@ export function SourceConnectionTextInput({
         onChange={(event) => onChange(event.target.value)}
         type={type}
         value={value}
+        placeholder={`Type ${title} here...`}
       />
     </FormField>
   );

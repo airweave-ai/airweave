@@ -4,6 +4,7 @@ import { useCreateSourceConnectionMutation } from '../../../api';
 import { SourceIcon } from '../../source-icon';
 import { ConfigFieldInput } from './config-field-input';
 import { SourceConnectionAuthSection } from './source-connection-auth-section';
+import { getSourceDocsUrl } from './source-docs-url';
 import {
   getAuthMethodForVariant,
   getSourceConnectionFormOptions,
@@ -13,7 +14,11 @@ import {
 } from './source-connection-form-hook';
 import { SourceConnectionTextInput } from './source-connection-text-input';
 import type { SourceConnectionFormOutput } from './source-connection-form-hook';
-import type { Source, SourceConnection, SourceConnectionCreate } from '@/shared/api';
+import type {
+  Source,
+  SourceConnection,
+  SourceConnectionCreate,
+} from '@/shared/api';
 import { parseApiErrorWithDetail } from '@/shared/api';
 import { cn } from '@/shared/tailwind/cn';
 import { Button } from '@/shared/ui/button';
@@ -70,13 +75,15 @@ export function SourceConnectionForm({
     ...sourceConnectionFormOptions,
     onSubmit: async ({ value }) => {
       const parsedValue = formSchema.parse(value);
-      const sourceConnection = await createSourceConnectionMutation.mutateAsync({
-        body: buildSourceConnectionPayload({
-          source,
-          readableCollectionId: collectionId,
-          values: parsedValue,
-        }),
-      });
+      const sourceConnection = await createSourceConnectionMutation.mutateAsync(
+        {
+          body: buildSourceConnectionPayload({
+            source,
+            readableCollectionId: collectionId,
+            values: parsedValue,
+          }),
+        },
+      );
       return onSourceConnectionCreated(sourceConnection);
     },
   });
@@ -95,7 +102,7 @@ export function SourceConnectionForm({
           <div>
             <h2 className="font-medium">Connect {source.name}</h2>
             <a
-              href={`https://docs.airweave.ai/docs/connectors/${source.short_name.replace(/_/g, '-')}`}
+              href={getSourceDocsUrl(source.short_name)}
               target="_blank"
               rel="noopener noreferrer"
               className="font-mono text-sm font-normal text-muted-foreground hover:underline"
@@ -106,7 +113,8 @@ export function SourceConnectionForm({
         </div>
         <form.Subscribe selector={(state) => state.values.authVariant}>
           {(selectedAuthVariant) => {
-            const selectedAuthMethod = getAuthMethodForVariant(selectedAuthVariant);
+            const selectedAuthMethod =
+              getAuthMethodForVariant(selectedAuthVariant);
             const { step, numberOfSteps, label } =
               authMethodStepLabels[selectedAuthMethod];
             return (
@@ -145,7 +153,7 @@ export function SourceConnectionForm({
           </FieldGroup>
 
           {source.config_fields.fields.length > 0 ? (
-            <section className="space-y-3">
+            <section className="space-y-6">
               <div className="space-y-1">
                 <h4 className="text-sm font-medium text-foreground">
                   Configuration
@@ -156,7 +164,10 @@ export function SourceConnectionForm({
               </div>
 
               {source.config_fields.fields.map((configField) => (
-                <form.Field key={configField.name} name={`config.${configField.name}`}>
+                <form.Field
+                  key={configField.name}
+                  name={`config.${configField.name}`}
+                >
                   {(field) => (
                     <ConfigFieldInput
                       description={configField.description ?? undefined}
@@ -260,7 +271,8 @@ function buildSourceConnectionPayload({
   source: Source;
   values: SourceConnectionFormOutput;
 }): SourceConnectionCreate {
-  const syncImmediately = getAuthMethodForVariant(values.authVariant) !== 'oauth_browser';
+  const syncImmediately =
+    getAuthMethodForVariant(values.authVariant) !== 'oauth_browser';
 
   return {
     config: values.config,
