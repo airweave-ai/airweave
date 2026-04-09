@@ -54,16 +54,7 @@ export function CollectionDetailPage({
               <Button asChild variant="outline">
                 <Link
                   params={{ collectionId: collection.readable_id }}
-                  to="/collections/$collectionId"
-                  search={{
-                    dialog: {
-                      state: {
-                        collectionId: collection.readable_id,
-                        step: 'source',
-                      },
-                      type: 'connect-source',
-                    },
-                  }}
+                  to="/collections/$collectionId/connect-source"
                 >
                   Add Source
                 </Link>
@@ -80,16 +71,7 @@ export function CollectionDetailPage({
               <Button asChild>
                 <Link
                   params={{ collectionId: collection.readable_id }}
-                  to="/collections/$collectionId"
-                  search={{
-                    dialog: {
-                      state: {
-                        collectionId: collection.readable_id,
-                        step: 'source',
-                      },
-                      type: 'connect-source',
-                    },
-                  }}
+                  to="/collections/$collectionId/connect-source"
                 >
                   Connect Source
                 </Link>

@@ -1,5 +1,5 @@
 import type { PropsWithChildren } from 'react';
-import { router } from '@/app/router';
+import { router } from '@/app/router/router';
 import { QueryClientProvider } from '@/shared/api';
 import { AuthProvider } from '@/shared/auth';
 import { TooltipProvider } from '@/shared/ui/tooltip';

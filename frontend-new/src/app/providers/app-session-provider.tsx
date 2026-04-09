@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useSuspenseQueries } from '@tanstack/react-query';
 import type { AppSessionValue, AppSessionViewer } from '@/shared/session';
-import { router } from '@/app/router';
+import { router } from '@/app/router/router';
 import {
   currentOrganizationsQueryOptions,
   currentUserQueryOptions,

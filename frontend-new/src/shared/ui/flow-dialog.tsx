@@ -17,7 +17,7 @@ function FlowDialogContent({
     <DialogContent
       showCloseButton={false}
       className={cn(
-        'h-[min(54rem,calc(100vh-1rem))] max-w-[min(84rem,calc(100vw-1rem))] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden border-border bg-background p-0 text-foreground sm:max-w-[min(84rem,calc(100vw-2rem))]',
+        'h-[min(54rem,calc(100vh-1rem))] max-w-[min(84rem,calc(100vw-1rem))] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden border-border bg-background p-0 text-foreground [view-transition-name:app-dialog-transition] sm:max-w-[min(84rem,calc(100vw-2rem))]',
         className,
       )}
       {...props}

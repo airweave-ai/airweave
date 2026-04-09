@@ -5,6 +5,7 @@ import * as z from 'zod';
 import { IconArrowRight } from '@tabler/icons-react';
 import { useCreateCollectionMutation } from '../api';
 import type { Collection, CreateCollectionsPostError } from '@/shared/api';
+import { getApiErrorMessage } from '@/shared/api';
 import { Button } from '@/shared/ui/button';
 import { DialogDescription, DialogTitle } from '@/shared/ui/dialog';
 import {
@@ -256,17 +257,5 @@ export function CreateCollectionDialogScreen({
 }
 
 function getSubmitErrorMessage(error: CreateCollectionsPostError | null) {
-  if (!error) {
-    return undefined;
-  }
-
-  if (typeof error.detail === 'string') {
-    return error.detail;
-  }
-
-  if (Array.isArray(error.detail) && error.detail.length > 0) {
-    return error.detail.map((detail) => detail.msg).join(', ');
-  }
-
-  return 'Could not create collection.';
+  return getApiErrorMessage(error, 'Could not create collection.');
 }

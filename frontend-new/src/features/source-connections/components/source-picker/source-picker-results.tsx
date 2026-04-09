@@ -1,4 +1,4 @@
-import { SourceCard } from './source-card';
+import { SourceCard } from '../source-card';
 import type { Source } from '@/shared/api';
 import { Button } from '@/shared/ui/button';
 import { Spinner } from '@/shared/ui/spinner';

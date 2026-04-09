@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { IconArrowRight } from '@tabler/icons-react';
-import { useCreateSourceConnectionMutation } from '../../../api';
-import { SourceIcon } from '../../source-icon';
+import { SourceIcon } from '../source-icon';
 import { SourceConnectionAuthSection } from './source-connection-auth-section';
 import { SourceConnectionConfigSection } from './source-connection-config-section';
 import { getSourceDocsUrl } from './source-docs-url';
@@ -14,31 +13,25 @@ import {
 import { SourceConnectionTextInput } from './source-connection-text-input';
 import { SourceConnectionProgress } from './source-connection-progress';
 import type { SourceConnectionFormOutput } from './source-connection-form-hook';
-import type {
-  Source,
-  SourceConnection,
-  SourceConnectionCreate,
-} from '@/shared/api';
-import { parseApiErrorWithDetail } from '@/shared/api';
+import type { Source } from '@/shared/api';
 import { cn } from '@/shared/tailwind/cn';
 import { Button } from '@/shared/ui/button';
 import { FieldError, FieldGroup } from '@/shared/ui/field';
 import { Spinner } from '@/shared/ui/spinner';
 
-interface SourceConnectionFormProps {
-  onSourceConnectionCreated: (source: SourceConnection) => Promise<void> | void;
-  collectionId: string;
-  source: Source;
+interface SourceConnectionConfigFormProps {
   onBack: () => void;
+  onSubmit: (values: SourceConnectionFormOutput) => Promise<void> | void;
+  source: Source;
+  submitError?: string;
 }
 
-export function SourceConnectionForm({
-  collectionId,
-  onSourceConnectionCreated,
-  source,
+export function SourceConnectionConfigForm({
   onBack,
-}: SourceConnectionFormProps) {
-  const createSourceConnectionMutation = useCreateSourceConnectionMutation();
+  onSubmit,
+  source,
+  submitError,
+}: SourceConnectionConfigFormProps) {
   const formSchema = React.useMemo(
     () => getSourceConnectionFormSchema({ source }),
     [source],
@@ -51,17 +44,7 @@ export function SourceConnectionForm({
   const form = useSourceConnectionForm({
     ...sourceConnectionFormOptions,
     onSubmit: async ({ value }) => {
-      const parsedValue = formSchema.parse(value);
-      const sourceConnection = await createSourceConnectionMutation.mutateAsync(
-        {
-          body: buildSourceConnectionPayload({
-            source,
-            readableCollectionId: collectionId,
-            values: parsedValue,
-          }),
-        },
-      );
-      return onSourceConnectionCreated(sourceConnection);
+      return onSubmit(formSchema.parse(value));
     },
   });
 
@@ -122,11 +105,7 @@ export function SourceConnectionForm({
         </div>
 
         <div className="shrink-0">
-          {createSourceConnectionMutation.error ? (
-            <FieldError>
-              {getSubmitErrorMessage(createSourceConnectionMutation.error)}
-            </FieldError>
-          ) : null}
+          {submitError ? <FieldError>{submitError}</FieldError> : null}
 
           <form.Subscribe
             selector={(state) => ({
@@ -174,40 +153,4 @@ export function SourceConnectionForm({
       </form>
     </div>
   );
-}
-
-function getSubmitErrorMessage(error: unknown) {
-  const parsedError = parseApiErrorWithDetail(error);
-
-  if (parsedError?.detail) {
-    return parsedError.detail;
-  }
-
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  return 'Could not create source connection.';
-}
-
-function buildSourceConnectionPayload({
-  readableCollectionId,
-  source,
-  values,
-}: {
-  readableCollectionId: string;
-  source: Source;
-  values: SourceConnectionFormOutput;
-}): SourceConnectionCreate {
-  const syncImmediately =
-    getAuthMethodForVariant(values.authVariant) !== 'oauth_browser';
-
-  return {
-    config: values.config,
-    name: values.name,
-    readable_collection_id: readableCollectionId,
-    short_name: source.short_name,
-    sync_immediately: source.supports_browse_tree ? false : syncImmediately,
-    authentication: values.authentication,
-  };
 }
