@@ -34,10 +34,7 @@ export function hasApiErrorDetail(error: unknown, detail: string) {
   return parsedError?.detail === detail;
 }
 
-export function getApiErrorMessage(
-  error: unknown,
-  fallbackMessage: string,
-) {
+export function getApiErrorMessage(error: unknown, fallbackMessage: string) {
   if (!error) {
     return undefined;
   }
@@ -50,8 +47,13 @@ export function getApiErrorMessage(
 
   const parsedValidationError = apiValidationErrorSchema.safeParse(error);
 
-  if (parsedValidationError.success && parsedValidationError.data.detail.length > 0) {
-    return parsedValidationError.data.detail.map((detail) => detail.msg).join(', ');
+  if (
+    parsedValidationError.success &&
+    parsedValidationError.data.detail.length > 0
+  ) {
+    return parsedValidationError.data.detail
+      .map((detail) => detail.msg)
+      .join(', ');
   }
 
   if (error instanceof Error && error.message) {

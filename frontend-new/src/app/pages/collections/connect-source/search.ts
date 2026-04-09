@@ -2,7 +2,7 @@ import * as z from 'zod';
 
 export const connectSourceAuthSearchSchema = z.object({
   source_connection_id: z.string().optional(),
-  status: z.string().optional(),
+  status: z.literal('success').optional(),
 });
 
 export type ConnectSourceAuthSearch = z.infer<

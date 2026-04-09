@@ -25,7 +25,7 @@ type SourceConnectionIdParams = {
   sourceConnectionId: string;
 };
 
-export function getSourceConnectionQueryOptions(
+function getSourceConnectionQueryOptions(
   organizationId: string,
   { sourceConnectionId }: SourceConnectionIdParams,
 ) {
@@ -51,7 +51,7 @@ export function useGetSourceConnectionQueryOptions(
   );
 }
 
-export function prefetchSourceConnection({
+export function ensureSourceConnection({
   queryClient,
   organizationId,
   sourceConnectionId,
@@ -60,7 +60,7 @@ export function prefetchSourceConnection({
   organizationId: string;
   sourceConnectionId: string;
 }) {
-  return queryClient.prefetchQuery(
+  return queryClient.ensureQueryData(
     getSourceConnectionQueryOptions(organizationId, { sourceConnectionId }),
   );
 }

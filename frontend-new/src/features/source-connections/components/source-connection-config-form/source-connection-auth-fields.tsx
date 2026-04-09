@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { IconInfoCircle } from '@tabler/icons-react';
+import { getSourceDocsUrl } from '../../lib/source-docs-url';
 import { ConfigFieldInput } from './config-field-input';
 import { SelectionCard } from './selection-card';
-import { getSourceDocsUrl } from './source-docs-url';
 import { SourceConnectionTextInput } from './source-connection-text-input';
 import {
   getAuthMethodForVariant,

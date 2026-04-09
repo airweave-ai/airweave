@@ -1,17 +1,22 @@
-import { getRouteApi } from '@tanstack/react-router';
-import { useSuspenseQuery } from '@tanstack/react-query';
+import * as React from 'react';
+import { useQuery, useSuspenseQueries } from '@tanstack/react-query';
+import { SearchParamError, getRouteApi } from '@tanstack/react-router';
+import type { ErrorComponentProps } from '@tanstack/react-router';
+import type { SourceConnection } from '@/shared/api';
 import {
-  ConnectSourceAuth,
-  useConnectSourceAuthController,
+  ConnectSourceAuthCallback,
+  ConnectSourceAuthError,
+  ConnectSourceAuthorize,
+  ConnectSourceStepDialogHeader,
+  ConnectSourceStepLayoutAside,
+  ConnectSourceStepLayoutMain,
+  SourceConnectionHeader,
+  SourceConnectionStepLabel,
+  useGetSourceConnectionQueryOptions,
   useGetSourceQueryOptions,
 } from '@/features/source-connections';
-import { DialogDescription, DialogTitle } from '@/shared/ui/dialog';
-import {
-  FlowDialogAside,
-  FlowDialogBody,
-  FlowDialogHeader,
-  FlowDialogMain,
-} from '@/shared/ui/flow-dialog';
+import { getApiErrorMessage } from '@/shared/api';
+import { FlowDialogBody } from '@/shared/ui/flow-dialog';
 
 const routeApi = getRouteApi(
   '/_authenticated/_app/collections/$collectionId/connect-source/$source/auth',
@@ -19,22 +24,30 @@ const routeApi = getRouteApi(
 
 export function ConnectSourceAuthPage() {
   const navigate = routeApi.useNavigate();
+  const { sourceConnectionId } = routeApi.useLoaderData();
   const { collectionId, source: sourceShortName } = routeApi.useParams();
   const search = routeApi.useSearch();
   const getSourceQueryOptions = useGetSourceQueryOptions({
     sourceShortName,
   });
-  const { data: source } = useSuspenseQuery(getSourceQueryOptions);
-  const controller = useConnectSourceAuthController({
-    callbackStatus: search.status,
-    expectedCollectionId: collectionId,
-    expectedSource: sourceShortName,
-    onClose: () =>
+  const sourceConnectionQueryOptions = useGetSourceConnectionQueryOptions({
+    sourceConnectionId,
+  });
+  const [{ data: source }, { data: sourceConnection }] = useSuspenseQueries({
+    queries: [getSourceQueryOptions, sourceConnectionQueryOptions],
+  });
+
+  const handleClose = React.useCallback(
+    () =>
       void navigate({
         params: { collectionId },
         to: '/collections/$collectionId',
       }),
-    onVerified: (sourceConnection) =>
+    [collectionId, navigate],
+  );
+
+  const handleVerified = React.useCallback(
+    (verifiedSourceConnection: Pick<SourceConnection, 'id'>) =>
       void navigate({
         params: {
           collectionId,
@@ -42,84 +55,172 @@ export function ConnectSourceAuthPage() {
         },
         replace: true,
         search: {
-          source_connection_id: sourceConnection.id,
+          source_connection_id: verifiedSourceConnection.id,
         },
         to: '/collections/$collectionId/connect-source/$source/sync',
       }),
-    sourceConnectionId: search.source_connection_id,
-  });
+    [collectionId, navigate, sourceShortName],
+  );
+  const handleBack = React.useCallback(
+    () =>
+      void navigate({
+        params: {
+          collectionId,
+          source: sourceShortName,
+        },
+        to: '/collections/$collectionId/connect-source/$source/config',
+      }),
+    [collectionId, navigate, sourceShortName],
+  );
+
+  const isCallbackReturn = search.status === 'success';
 
   return (
     <>
-      <FlowDialogHeader onClose={controller.close}>
-        <div className="min-w-0 space-y-1">
-          <p className="font-mono text-xs tracking-[0.18em] text-muted-foreground uppercase">
-            Step 2 of 2: Authorize
-          </p>
-          <DialogTitle className="text-xl font-semibold text-foreground">
-            Authorize {source.name}
-          </DialogTitle>
-          <DialogDescription className="font-mono text-sm text-muted-foreground">
-            Finish the browser OAuth flow, then Airweave will verify this window
-            and continue setup.
-          </DialogDescription>
-        </div>
-      </FlowDialogHeader>
+      <ConnectSourceStepDialogHeader
+        onClose={handleClose}
+        sourceName={source.name}
+      />
 
       <FlowDialogBody>
-        <FlowDialogMain className="flex items-center justify-center">
-          <div className="w-full max-w-2xl py-8">
-            <ConnectSourceAuth
-              onClose={controller.close}
-              onConnectNow={controller.connectNow}
-              onReauthorize={controller.reauthorize}
-              sourceName={source.name}
-              state={controller.state}
+        <ConnectSourceStepLayoutMain>
+          <SourceConnectionHeader
+            source={source}
+            aside={
+              <SourceConnectionStepLabel
+                label="Authorize"
+                numberOfSteps={2}
+                step={2}
+              />
+            }
+          />
+          {isCallbackReturn ? (
+            <ConnectSourceAuthCallback
+              onClose={handleClose}
+              onVerified={handleVerified}
+              sourceConnection={sourceConnection}
+              sourceConnectionId={sourceConnectionId}
             />
-          </div>
-        </FlowDialogMain>
+          ) : (
+            <ConnectSourceAuthorize
+              onBack={handleBack}
+              sourceConnection={sourceConnection}
+              sourceConnectionId={sourceConnectionId}
+              sourceName={source.name}
+              sourceShortName={source.short_name}
+            />
+          )}
+        </ConnectSourceStepLayoutMain>
 
-        <FlowDialogAside className="bg-foreground/[0.02] xl:w-96">
-          <div className="space-y-6">
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-foreground">
-                What happens next
-              </p>
-              <p className="text-sm text-muted-foreground">
-                OAuth finishes in two steps: the provider authorizes access,
-                then Airweave verifies the original browser session and starts
-                the sync flow.
-              </p>
-            </div>
-
-            <div className="space-y-4 text-sm text-muted-foreground">
-              <div className="space-y-1">
-                <p className="text-foreground">Keep this window open</p>
-                <p>
-                  The copied link can finish provider auth, but this browser
-                  still needs to complete the Airweave verification step.
-                </p>
-              </div>
-
-              <div className="space-y-1">
-                <p className="text-foreground">Auth links can expire</p>
-                <p>
-                  If the authorization URL is already consumed or missing, use a
-                  fresh re-authorization link from this screen.
-                </p>
-              </div>
-
-              <div className="space-y-1">
-                <p className="text-foreground">Callback resumes setup</p>
-                <p>
-                  After provider auth, Airweave returns to this auth route,
-                  verifies the initiating session, then continues into sync.
-                </p>
-              </div>
-            </div>
-          </div>
-        </FlowDialogAside>
+        <ConnectSourceStepLayoutAside>
+          <pre className="text-wrap">
+            # Initialize the Airweave client client = AirweaveSDK(
+            api_key="YOUR_API_KEY", ) # Create connection — returns auth_url for
+            OAuth flows response = client.source_connections.create(
+            short_name="notion", readable_collection_id="your-collection-id",
+            name="Notion Connection", )
+          </pre>
+        </ConnectSourceStepLayoutAside>
       </FlowDialogBody>
     </>
   );
+}
+
+export function ConnectSourceAuthErrorPage({ error }: ErrorComponentProps) {
+  const navigate = routeApi.useNavigate();
+  const { collectionId, source: sourceShortName } = routeApi.useParams();
+  const { source_connection_id: sourceConnectionId } = routeApi.useSearch();
+  const sourceQueryOptions = useGetSourceQueryOptions({
+    sourceShortName,
+  });
+  const { data: source } = useQuery(sourceQueryOptions);
+  const handleClose = React.useCallback(
+    () =>
+      void navigate({
+        params: { collectionId },
+        to: '/collections/$collectionId',
+      }),
+    [collectionId, navigate],
+  );
+  const sourceForLayout = source ?? {
+    name: getFallbackSourceName(sourceShortName),
+    short_name: sourceShortName,
+  };
+
+  const content =
+    error instanceof SearchParamError
+      ? {
+          description:
+            'The OAuth callback URL is incomplete or no longer valid for this source connection. Start again from the auth link shown in this step.',
+          title: 'Could not resume the OAuth callback',
+          hints: [
+            'You reopened an old authorization callback link',
+            'The provider redirected back after the authorization window expired',
+            'The callback URL was opened without the original callback parameters',
+          ],
+        }
+      : {
+          description:
+            getApiErrorMessage(
+              error,
+              'Could not load the source connection details.',
+            ) ?? 'Could not load the source connection details.',
+          title: 'Could not load authorization state',
+          hints: [
+            'The source connection no longer exists',
+            'Your access to this collection changed',
+            'The authorization state could not be loaded from the API',
+          ],
+        };
+
+  return (
+    <>
+      <ConnectSourceStepDialogHeader
+        onClose={handleClose}
+        sourceName={sourceForLayout.name}
+      />
+
+      <FlowDialogBody>
+        <ConnectSourceStepLayoutMain>
+          <SourceConnectionHeader
+            source={sourceForLayout}
+            aside={
+              <SourceConnectionStepLabel
+                label="Authorize"
+                numberOfSteps={2}
+                step={2}
+              />
+            }
+          />
+          <ConnectSourceAuthError
+            backLabel="Close"
+            description={<p>{content.description}</p>}
+            sourceConnectionId={sourceConnectionId}
+            hints={content.hints}
+            onBack={handleClose}
+            sourceName={sourceForLayout.name}
+            title={content.title}
+          />
+        </ConnectSourceStepLayoutMain>
+
+        <ConnectSourceStepLayoutAside>
+          <pre className="text-wrap">
+            # Initialize the Airweave client client = AirweaveSDK(
+            api_key="YOUR_API_KEY", ) # Create connection — returns auth_url for
+            OAuth flows response = client.source_connections.create(
+            short_name="notion", readable_collection_id="your-collection-id",
+            name="Notion Connection", )
+          </pre>
+        </ConnectSourceStepLayoutAside>
+      </FlowDialogBody>
+    </>
+  );
+}
+
+function getFallbackSourceName(sourceShortName: string) {
+  return sourceShortName
+    .split(/[_-]/g)
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
 }

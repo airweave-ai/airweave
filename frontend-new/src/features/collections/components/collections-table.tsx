@@ -13,6 +13,7 @@ import { CollectionTooltipContent } from './collection-tooltip-content';
 import type { ColumnDef, RowSelectionState } from '@tanstack/react-table';
 import type { Collection } from '@/shared/api';
 import type { ReactNode } from 'react';
+import { useCopyToClipboard } from '@/shared/hooks/use-copy-to-clipboard';
 import { cn } from '@/shared/tailwind/cn';
 import { Button } from '@/shared/ui/button';
 import { Checkbox } from '@/shared/ui/checkbox';
@@ -292,19 +293,13 @@ function CollectionNameCell({ collection }: { collection: Collection }) {
 }
 
 function CopyIdentifierButton({ value }: { value: string }) {
-  const [copied, setCopied] = React.useState(false);
-
-  const handleClick = React.useCallback(async () => {
-    await navigator.clipboard.writeText(value);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1500);
-  }, [value]);
+  const { copied, copy } = useCopyToClipboard();
 
   return (
     <Button
       aria-label={`Copy ${value}`}
       className="size-5 text-muted-foreground hover:text-foreground"
-      onClick={() => void handleClick()}
+      onClick={() => void copy(value)}
       size="icon-xs"
       type="button"
       variant="ghost"

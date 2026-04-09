@@ -1,8 +1,5 @@
-import {
-  queryOptions,
-  useQueryClient,
-  type QueryClient,
-} from '@tanstack/react-query';
+import { queryOptions, useQueryClient } from '@tanstack/react-query';
+import type { QueryClient } from '@tanstack/react-query';
 import {
   queryClient as defaultQueryClient,
   getSourcesShortNameGetOptions,

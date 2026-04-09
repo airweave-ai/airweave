@@ -1,8 +1,7 @@
 export {
   createSourceConnectionMutationOptions,
-  getSourceConnectionQueryOptions,
+  ensureSourceConnection,
   invalidateSourceConnectionQueries,
-  prefetchSourceConnection,
   reinitiateSourceConnectionOAuthMutationOptions,
   useCreateSourceConnectionMutation,
   useCreateSourceConnectionMutationOptions,

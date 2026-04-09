@@ -2,18 +2,15 @@ import { getRouteApi } from '@tanstack/react-router';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { router } from '@/app/router/router';
 import {
+  ConnectSourceStepDialogHeader,
+  ConnectSourceStepLayoutAside,
+  ConnectSourceStepLayoutMain,
   SourceConnectionConfigForm,
   isBrowserOAuthMethod,
   useGetSourceQueryOptions,
   useSourceConnectionConfigSubmission,
 } from '@/features/source-connections';
-import { DialogDescription, DialogTitle } from '@/shared/ui/dialog';
-import {
-  FlowDialogAside,
-  FlowDialogBody,
-  FlowDialogHeader,
-  FlowDialogMain,
-} from '@/shared/ui/flow-dialog';
+import { FlowDialogBody } from '@/shared/ui/flow-dialog';
 
 const routeApi = getRouteApi(
   '/_authenticated/_app/collections/$collectionId/connect-source/$source/config',
@@ -37,26 +34,18 @@ export function ConnectSourceConfigPage() {
 
   return (
     <>
-      <FlowDialogHeader
+      <ConnectSourceStepDialogHeader
         onClose={() =>
           void navigate({
             params: { collectionId },
             to: '/collections/$collectionId',
           })
         }
-      >
-        <div className="min-w-0 space-y-1">
-          <DialogTitle className="text-xl font-semibold text-foreground">
-            Create Source Connection
-          </DialogTitle>
-          <DialogDescription className="font-mono text-sm text-muted-foreground">
-            Make your {source.name} content searchable for your agent.
-          </DialogDescription>
-        </div>
-      </FlowDialogHeader>
+        sourceName={source.name}
+      />
 
       <FlowDialogBody>
-        <FlowDialogMain className="overflow-hidden">
+        <ConnectSourceStepLayoutMain>
           <SourceConnectionConfigForm
             onBack={() =>
               void navigate({
@@ -83,9 +72,9 @@ export function ConnectSourceConfigPage() {
             source={source}
             submitError={submitError}
           />
-        </FlowDialogMain>
+        </ConnectSourceStepLayoutMain>
 
-        <FlowDialogAside className="xl:w-112">
+        <ConnectSourceStepLayoutAside>
           <pre className="text-wrap">
             # Initialize the Airweave client client = AirweaveSDK(
             api_key="YOUR_API_KEY", ) # Create connection — returns auth_url for
@@ -93,7 +82,7 @@ export function ConnectSourceConfigPage() {
             short_name="notion", readable_collection_id="your-collection-id",
             name="Notion Connection", )
           </pre>
-        </FlowDialogAside>
+        </ConnectSourceStepLayoutAside>
       </FlowDialogBody>
     </>
   );
