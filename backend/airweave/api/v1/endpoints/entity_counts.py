@@ -3,7 +3,7 @@
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud
@@ -25,18 +25,11 @@ async def get_entity_counts_for_sync(
     This endpoint returns the count of entities grouped by entity type,
     along with details about each entity definition.
     """
-    # Verify the sync belongs to the organization
-    sync = await crud.sync.get(db, id=sync_id, ctx=ctx)
-    if not sync:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Sync {sync_id} not found",
-        )
+    # Verify the sync belongs to the organization (raises NotFoundException if missing)
+    await crud.sync.get(db, id=sync_id, ctx=ctx)
 
     # Get the counts with definition details
-    counts = await crud.entity_count.get_counts_per_sync_and_type(db, sync_id)
-
-    return counts
+    return await crud.entity_count.get_counts_per_sync_and_type(db, sync_id)
 
 
 @router.get("/syncs/{sync_id}/total-count", response_model=int)
@@ -46,15 +39,8 @@ async def get_total_entity_count_for_sync(
     ctx: ApiContext = Depends(deps.get_context),
 ) -> int:
     """Get total entity count across all types for a sync."""
-    # Verify the sync belongs to the organization
-    sync = await crud.sync.get(db, id=sync_id, ctx=ctx)
-    if not sync:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Sync {sync_id} not found",
-        )
+    # Verify the sync belongs to the organization (raises NotFoundException if missing)
+    await crud.sync.get(db, id=sync_id, ctx=ctx)
 
     # Get the total count
-    total = await crud.entity_count.get_total_count_by_sync(db, sync_id)
-
-    return total
+    return await crud.entity_count.get_total_count_by_sync(db, sync_id)

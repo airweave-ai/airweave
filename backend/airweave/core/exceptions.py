@@ -44,10 +44,32 @@ class NotFoundException(AirweaveException):
         super().__init__(self.message)
 
 
+class ConflictException(AirweaveException):
+    """Exception raised when a conflicting operation is attempted (maps to 409)."""
+
+    def __init__(self, message: Optional[str] = "Conflict"):
+        """Create a new ConflictException instance.
+
+        Args:
+        ----
+            message (str, optional): The error message. Has default message.
+
+        """
+        self.message = message
+        super().__init__(self.message)
+
+
 class InvalidInputError(AirweaveException):
     """Exception raised when user-supplied input fails validation (maps to 422)."""
 
     def __init__(self, message: Optional[str] = "Invalid input"):
+        """Create a new InvalidInputError instance.
+
+        Args:
+        ----
+            message (str, optional): The error message. Has default message.
+
+        """
         self.message = message
         super().__init__(self.message)
 

@@ -35,6 +35,13 @@ class ContextCache(Protocol):
         """Return cached org ID for an API key or None on miss."""
         ...
 
+    async def get_api_key_auth(self, api_key: str) -> Optional[dict]:
+        """Return cached auth metadata for an API key or None on miss.
+
+        The dict contains: org_id, key_id, exp, status.
+        """
+        ...
+
     # --- Write ---
 
     async def set_organization(self, organization: schemas.Organization) -> None:
@@ -47,6 +54,10 @@ class ContextCache(Protocol):
 
     async def set_api_key_org_id(self, api_key: str, org_id: UUID) -> None:
         """Cache an API key → org ID mapping."""
+        ...
+
+    async def set_api_key_auth(self, api_key: str, auth_data: dict) -> None:
+        """Cache rich auth metadata for an API key."""
         ...
 
     # --- Invalidation ---

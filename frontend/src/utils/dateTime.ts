@@ -3,6 +3,8 @@
  * Ensures all runtime calculations are timezone-independent
  */
 
+import { format } from "date-fns";
+
 /**
  * Get current UTC time in milliseconds
  * Replacement for Date.now() to ensure UTC consistency
@@ -45,6 +47,20 @@ export function calculateRuntime(startTime: number, endTime?: number): number {
     }
 
     return runtime;
+}
+
+/**
+ * Parse a backend timestamp and format it using date-fns.
+ * Returns an empty string for null/undefined/unparseable values.
+ */
+export function formatBackendTimestamp(
+    timestamp: string | null | undefined,
+    fmt: string,
+): string {
+    if (!timestamp) return "";
+    const ms = parseBackendTimestamp(timestamp);
+    if (ms === null) return "";
+    return format(new Date(ms), fmt);
 }
 
 /**

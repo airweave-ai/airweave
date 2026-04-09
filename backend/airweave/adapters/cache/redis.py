@@ -4,13 +4,13 @@ Uses SHA-256 for API key cache keys instead of Fernet encryption,
 removing the dependency on the credentials module.
 """
 
-import hashlib
 import json
 import logging
 from typing import Optional
 from uuid import UUID
 
 from airweave import schemas
+from airweave.core.hashing import hash_api_key
 from airweave.core.protocols.cache import ContextCache
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ API_KEY_PREFIX = "context:apikey"
 
 ORG_TTL = 30
 USER_TTL = 30
-API_KEY_TTL = 600
+API_KEY_TTL = 60
 
 
 class RedisContextCache(ContextCache):
@@ -37,7 +37,7 @@ class RedisContextCache(ContextCache):
 
     @staticmethod
     def _hash_api_key(api_key: str) -> str:
-        return hashlib.sha256(api_key.encode()).hexdigest()
+        return hash_api_key(api_key)
 
     # --- Read ---
 
@@ -69,10 +69,27 @@ class RedisContextCache(ContextCache):
             key_hash = self._hash_api_key(api_key)
             data = await self._redis.get(f"{API_KEY_PREFIX}:{key_hash}")
             if data:
-                return UUID(data.decode("utf-8"))
+                payload = json.loads(data)
+                if isinstance(payload, dict):
+                    return UUID(payload["org_id"])
+                return UUID(payload if isinstance(payload, str) else data.decode("utf-8"))
             return None
         except Exception as e:
             logger.debug("Cache read error (api_key): %s", e)
+            return None
+
+    async def get_api_key_auth(self, api_key: str) -> Optional[dict]:
+        """Return cached rich auth metadata for an API key or None on miss."""
+        try:
+            key_hash = self._hash_api_key(api_key)
+            data = await self._redis.get(f"{API_KEY_PREFIX}:{key_hash}")
+            if data:
+                payload = json.loads(data)
+                if isinstance(payload, dict) and "org_id" in payload:
+                    return payload
+            return None
+        except Exception as e:
+            logger.debug("Cache read error (api_key auth): %s", e)
             return None
 
     # --- Write ---
@@ -94,12 +111,22 @@ class RedisContextCache(ContextCache):
             logger.debug("Cache write error (user %s): %s", user.email, e)
 
     async def set_api_key_org_id(self, api_key: str, org_id: UUID) -> None:
-        """Cache an API key → org ID mapping with TTL."""
+        """Cache an API key → org ID mapping with TTL.
+
+        Deprecated: prefer set_api_key_auth() which stores rich metadata.
+        This method delegates to set_api_key_auth() with a minimal dict
+        to avoid format conflicts on the same Redis key.
+        """
+        await self.set_api_key_auth(api_key, {"org_id": str(org_id)})
+
+    async def set_api_key_auth(self, api_key: str, auth_data: dict) -> None:
+        """Cache rich auth metadata for an API key with TTL."""
         try:
             key_hash = self._hash_api_key(api_key)
-            await self._redis.setex(f"{API_KEY_PREFIX}:{key_hash}", API_KEY_TTL, str(org_id))
+            payload = json.dumps(auth_data)
+            await self._redis.setex(f"{API_KEY_PREFIX}:{key_hash}", API_KEY_TTL, payload)
         except Exception as e:
-            logger.debug("Cache write error (api_key): %s", e)
+            logger.debug("Cache write error (api_key auth): %s", e)
 
     # --- Invalidation ---
 

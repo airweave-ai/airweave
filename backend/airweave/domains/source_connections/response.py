@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.config import settings as core_settings
+from airweave.core.exceptions import NotFoundException
 from airweave.core.shared_models import SourceConnectionErrorCategory, SyncJobStatus
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
 from airweave.domains.credentials.protocols import IntegrationCredentialRepositoryProtocol
@@ -265,22 +266,24 @@ class ResponseBuilder(ResponseBuilderProtocol):
             return AuthenticationMethod.AUTH_PROVIDER
 
         if source_conn.connection_id:
-            connection = await self._connection_repo.get(db, source_conn.connection_id, ctx)
+            try:
+                connection = await self._connection_repo.get(db, source_conn.connection_id, ctx)
+            except NotFoundException:
+                connection = None
             if connection and connection.integration_credential_id:
                 credential = await self._credential_repo.get(
                     db, connection.integration_credential_id, ctx
                 )
-                if credential:
-                    method_map = {
-                        "oauth_token": AuthenticationMethod.OAUTH_TOKEN,
-                        "oauth_browser": AuthenticationMethod.OAUTH_BROWSER,
-                        "oauth_byoc": AuthenticationMethod.OAUTH_BYOC,
-                        "direct": AuthenticationMethod.DIRECT,
-                        "auth_provider": AuthenticationMethod.AUTH_PROVIDER,
-                    }
-                    resolved = method_map.get(credential.authentication_method)
-                    if resolved:
-                        return resolved
+                method_map = {
+                    "oauth_token": AuthenticationMethod.OAUTH_TOKEN,
+                    "oauth_browser": AuthenticationMethod.OAUTH_BROWSER,
+                    "oauth_byoc": AuthenticationMethod.OAUTH_BYOC,
+                    "direct": AuthenticationMethod.DIRECT,
+                    "auth_provider": AuthenticationMethod.AUTH_PROVIDER,
+                }
+                resolved = method_map.get(credential.authentication_method)
+                if resolved:
+                    return resolved
 
         return determine_auth_method(source_conn)
 

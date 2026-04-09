@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.api.context import ApiContext
+from airweave.core.exceptions import NotFoundException
 from airweave.core.shared_models import SyncStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.syncs.types import OptimisticLockError
@@ -37,10 +38,13 @@ class FakeSyncRepository:
         """Configure create() return value."""
         self._create_result = sync_schema
 
-    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[schemas.Sync]:
-        """Return seeded sync schema or None."""
+    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> schemas.Sync:
+        """Return seeded sync schema or raise NotFoundException."""
         self._calls.append(("get", db, id, ctx))
-        return self._store.get(id)
+        result = self._store.get(id)
+        if result is None:
+            raise NotFoundException("Sync not found")
+        return result
 
     async def get_without_connections(
         self, db: AsyncSession, id: UUID, ctx: ApiContext

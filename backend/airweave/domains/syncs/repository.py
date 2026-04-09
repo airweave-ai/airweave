@@ -19,7 +19,7 @@ from airweave.schemas.sync import SyncCreate, SyncUpdate
 class SyncRepository(SyncRepositoryProtocol):
     """Delegates to the crud.sync singleton."""
 
-    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[schemas.Sync]:
+    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> schemas.Sync:
         """Get a sync by ID, including connections."""
         return await crud.sync.get(db, id=id, ctx=ctx, with_connections=True)
 

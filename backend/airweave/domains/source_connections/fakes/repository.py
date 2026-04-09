@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
+from airweave.core.exceptions import NotFoundException
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 from airweave.domains.source_connections.types import ScheduleInfo, SourceConnectionStats
@@ -63,10 +64,13 @@ class FakeSourceConnectionRepository(SourceConnectionRepositoryProtocol):
         """Seed sync IDs returned by get_sync_ids_for_collection."""
         self._sync_ids_by_collection[readable_collection_id] = list(sync_ids)
 
-    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[SourceConnection]:
-        """Return seeded source connection by ID."""
+    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> SourceConnection:
+        """Return seeded source connection by ID or raise NotFoundException."""
         self._calls.append(("get", db, id, ctx))
-        return self._store.get(id)
+        result = self._store.get(id)
+        if result is None:
+            raise NotFoundException("Source connection not found")
+        return result
 
     async def get_by_sync_id(
         self, db: AsyncSession, sync_id: UUID, ctx: ApiContext
@@ -207,7 +211,10 @@ class FakeSourceConnectionRepository(SourceConnectionRepositoryProtocol):
         *,
         id: UUID,
         ctx: ApiContext,
-    ) -> Optional[SourceConnection]:
-        """Remove a source connection from the in-memory store."""
+    ) -> SourceConnection:
+        """Remove a source connection or raise NotFoundException."""
         self._calls.append(("remove", db, id, ctx))
-        return self._store.pop(id, None)
+        result = self._store.pop(id, None)
+        if result is None:
+            raise NotFoundException("Source connection not found")
+        return result

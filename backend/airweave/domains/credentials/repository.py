@@ -21,9 +21,7 @@ from airweave.schemas.integration_credential import (
 class IntegrationCredentialRepository(IntegrationCredentialRepositoryProtocol):
     """Delegates to the crud.integration_credential singleton."""
 
-    async def get(
-        self, db: AsyncSession, id: UUID, ctx: ApiContext
-    ) -> Optional[IntegrationCredential]:
+    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> IntegrationCredential:
         """Get an integration credential by ID."""
         return await crud.integration_credential.get(db, id, ctx)
 

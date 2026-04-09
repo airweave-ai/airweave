@@ -416,8 +416,8 @@ class TestSendWelcomeFromSchema:
 
 class TestFallbackCreate:
     @pytest.mark.asyncio
-    async def test_creates_user_and_api_key_via_crud(self):
-        from unittest.mock import MagicMock, patch
+    async def test_creates_user_via_crud(self):
+        from unittest.mock import patch
 
         fake_user = _UserStub(email="fallback@test.com", full_name="Fallback")
         fake_org = SimpleNamespace(id=uuid4(), name="Test Org")
@@ -439,15 +439,9 @@ class TestFallbackCreate:
                 new_callable=AsyncMock,
                 return_value=(fake_user, fake_org),
             ) as mock_create,
-            patch(
-                "airweave.domains.users.service.crud.api_key.create",
-                new_callable=AsyncMock,
-                return_value=MagicMock(),
-            ) as mock_api_key,
         ):
             result = await svc._fallback_create(db, _make_user_create(email="fallback@test.com"))
 
         assert result.is_new is True
         assert result.user.email == "fallback@test.com"
         mock_create.assert_awaited_once()
-        mock_api_key.assert_awaited_once()

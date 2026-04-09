@@ -30,7 +30,7 @@ class SourceConnectionRepositoryProtocol(Protocol):
     Wraps crud.source_connection for testability.
     """
 
-    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[SourceConnection]:
+    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> SourceConnection:
         """Get a source connection by ID within org scope."""
         ...
 
@@ -125,7 +125,7 @@ class SourceConnectionRepositoryProtocol(Protocol):
         *,
         id: UUID,
         ctx: ApiContext,
-    ) -> Optional[SourceConnection]:
+    ) -> SourceConnection:
         """Delete a source connection by ID."""
         ...
 

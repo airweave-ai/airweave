@@ -19,6 +19,7 @@ from airweave import schemas
 from airweave.api.context import ApiContext, ConnectContext
 from airweave.core.events.source_connection import SourceConnectionLifecycleEvent
 from airweave.core.events.sync import SyncLifecycleEvent
+from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import logger
 from airweave.core.protocols.encryption import CredentialEncryptor
 from airweave.core.protocols.event_bus import EventBus
@@ -766,8 +767,16 @@ class OAuthCallbackService:
 
         Shared by the immediate callback path and the deferred verify path.
         """
-        sync = await self._sync_repo.get(db, id=source_conn.sync_id, ctx=ctx)
-        if not sync:
+        if source_conn.sync_id is None:
+            ctx.logger.warning(
+                "_run_sync_workflow: source connection has no sync_id, "
+                "skipping immediate workflow trigger"
+            )
+            return
+
+        try:
+            sync = await self._sync_repo.get(db, id=source_conn.sync_id, ctx=ctx)
+        except NotFoundException:
             ctx.logger.warning(
                 f"_run_sync_workflow: sync {source_conn.sync_id} not found, "
                 "skipping immediate workflow trigger"
@@ -808,9 +817,10 @@ class OAuthCallbackService:
 
         if not source_conn.connection_id:
             raise ValueError(f"Source connection {source_conn.id} has no connection_id")
-        conn_model = await self._connection_repo.get(db, id=source_conn.connection_id, ctx=ctx)
-        if not conn_model:
-            raise ValueError(f"Connection {source_conn.connection_id} not found")
+        try:
+            conn_model = await self._connection_repo.get(db, id=source_conn.connection_id, ctx=ctx)
+        except NotFoundException as exc:
+            raise ValueError(f"Connection {source_conn.connection_id} not found") from exc
         connection_schema = schemas.Connection.model_validate(conn_model, from_attributes=True)
 
         try:

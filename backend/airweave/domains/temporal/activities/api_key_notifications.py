@@ -8,12 +8,12 @@ from datetime import timedelta
 
 from temporalio import activity
 
-from airweave import crud
 from airweave.core.config import settings
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.logging import logger
 from airweave.core.protocols.email import EmailService
 from airweave.db.session import get_db_context
+from airweave.domains.organizations.protocols import ApiKeyMaintenanceProtocol
 from airweave.email.templates import get_api_key_expiration_email
 from airweave.models.api_key import APIKey
 
@@ -24,9 +24,11 @@ class CheckAndNotifyExpiringKeysActivity:
 
     Dependencies:
         email_service: EmailService protocol for sending notifications.
+        api_key_repo: ApiKeyMaintenanceProtocol for querying expiring keys.
     """
 
     email_service: EmailService
+    api_key_repo: ApiKeyMaintenanceProtocol
 
     async def _send_expiration_notification(
         self,
@@ -106,7 +108,7 @@ class CheckAndNotifyExpiringKeysActivity:
         async with get_db_context() as db:
             for threshold_name, start_date, end_date in thresholds:
                 try:
-                    api_keys = await crud.api_key.get_keys_expiring_in_range(
+                    api_keys = await self.api_key_repo.get_keys_expiring_in_range(
                         db=db,
                         start_date=start_date,
                         end_date=end_date,

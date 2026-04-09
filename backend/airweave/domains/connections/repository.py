@@ -17,7 +17,7 @@ from airweave.schemas.connection import ConnectionCreate, ConnectionUpdate
 class ConnectionRepository(ConnectionRepositoryProtocol):
     """Delegates to the crud.connection singleton."""
 
-    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Optional[Connection]:
+    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Connection:
         """Get a connection by ID."""
         return await crud.connection.get(db, id, ctx)
 
@@ -58,6 +58,6 @@ class ConnectionRepository(ConnectionRepositoryProtocol):
         """Update a connection."""
         return await crud.connection.update(db, db_obj=db_obj, obj_in=obj_in, ctx=ctx, uow=uow)
 
-    async def remove(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> Optional[Connection]:
+    async def remove(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> Connection:
         """Delete a connection by ID."""
         return await crud.connection.remove(db, id=id, ctx=ctx)

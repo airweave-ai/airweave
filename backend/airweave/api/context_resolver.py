@@ -9,7 +9,8 @@ Testable by passing fakes for every dependency.
 
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
+from datetime import datetime
+from typing import Any, Optional
 
 from fastapi import HTTPException, Request
 from fastapi_auth0 import Auth0User
@@ -19,11 +20,16 @@ from airweave import schemas
 from airweave.analytics.service import analytics
 from airweave.api.context import ApiContext, RequestHeaders
 from airweave.core.config import settings
-from airweave.core.exceptions import NotFoundException, RateLimitExceededException
+from airweave.core.datetime_utils import utc_now_naive
+from airweave.core.exceptions import (
+    NotFoundException,
+    PermissionException,
+    RateLimitExceededException,
+)
 from airweave.core.logging import logger
 from airweave.core.protocols.cache import ContextCache
 from airweave.core.protocols.rate_limiter import RateLimiter
-from airweave.core.shared_models import AuthMethod
+from airweave.core.shared_models import ApiKeyStatus, AuthMethod
 from airweave.domains.organizations.protocols import (
     ApiKeyRepositoryProtocol,
     OrganizationRepositoryProtocol,
@@ -44,6 +50,7 @@ class AuthResult:
     method: AuthMethod = AuthMethod.SYSTEM
     metadata: dict = field(default_factory=dict)
     api_key_org_id: Optional[str] = None
+    api_key_obj: Optional[Any] = None
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +97,7 @@ class ContextResolver:
         organization_id = self._resolve_organization_id(x_organization_id, auth)
         organization = await self._get_or_fetch_organization(db, organization_id)
 
-        await self._validate_organization_access(db, organization_id, auth, x_api_key)
+        await self._validate_organization_access(db, organization_id, auth)
 
         ctx = self._build_context(request, request_id, auth, organization)
 
@@ -130,12 +137,12 @@ class ContextResolver:
         x_api_key: Optional[str],
         request: Request,
     ) -> AuthResult:
+        if x_api_key:
+            return await self._authenticate_api_key(db, x_api_key, request)
         if not settings.AUTH_ENABLED:
             return await self._authenticate_system(db)
         if auth0_user:
             return await self._authenticate_auth0(db, auth0_user)
-        if x_api_key:
-            return await self._authenticate_api_key(db, x_api_key, request)
         raise HTTPException(status_code=401, detail="No valid authentication provided")
 
     async def _authenticate_system(self, db: AsyncSession) -> AuthResult:
@@ -165,25 +172,62 @@ class ContextResolver:
         self, db: AsyncSession, api_key: str, request: Request
     ) -> AuthResult:
         try:
-            org_id = await self._cache.get_api_key_org_id(api_key)
-            if org_id:
+            # Check cache for rich auth metadata
+            cached = await self._cache.get_api_key_auth(api_key)
+            if cached:
+                # Validate expiration/status on cache hit
+                if not self._validate_cached_auth(cached):
+                    await self._cache.invalidate_api_key(api_key)
+                    raise ValueError("Cached API key is expired or revoked")
+
+                client_ip = _extract_client_ip(request)
+                self._api_keys.record_usage_by_id(
+                    api_key_id=uuid.UUID(cached["key_id"]),
+                    organization_id=uuid.UUID(cached["org_id"]),
+                    ip_address=client_ip,
+                    endpoint=request.url.path,
+                    user_agent=request.headers.get("user-agent"),
+                )
+
                 return AuthResult(
                     method=AuthMethod.API_KEY,
-                    metadata={"api_key_id": "cached", "created_by": None},
-                    api_key_org_id=str(org_id),
+                    metadata={
+                        "api_key_id": cached.get("key_id", "cached"),
+                        "created_by": None,
+                    },
+                    api_key_org_id=cached["org_id"],
                 )
 
             api_key_obj = await self._api_keys.get_by_key(db, key=api_key)
             org_id = api_key_obj.organization_id
 
             client_ip = _extract_client_ip(request)
-            audit_logger = logger.with_context(event_type="api_key_usage")
-            audit_logger.info(
-                f"API key usage: key={api_key_obj.id} org={org_id} ip={client_ip} "
-                f"endpoint={request.url.path} created_by={api_key_obj.created_by_email}"
+            audit_logger = logger.with_context(
+                event_type="api_key_usage",
+                api_key_id=str(api_key_obj.id),
+                org_id=str(org_id),
+                ip=client_ip,
+                endpoint=request.url.path,
+                created_by=api_key_obj.created_by_email,
             )
+            audit_logger.info("API key usage")
 
-            await self._cache.set_api_key_org_id(api_key, org_id)
+            # Cache rich auth metadata
+            auth_data = {
+                "org_id": str(org_id),
+                "key_id": str(api_key_obj.id),
+                "exp": api_key_obj.expiration_date.isoformat(),
+                "status": api_key_obj.status,
+            }
+            await self._cache.set_api_key_auth(api_key, auth_data)
+
+            # Record usage (enqueued for batch flush)
+            self._api_keys.record_usage(
+                api_key_obj=api_key_obj,
+                ip_address=client_ip,
+                endpoint=request.url.path,
+                user_agent=request.headers.get("user-agent"),
+            )
 
             return AuthResult(
                 method=AuthMethod.API_KEY,
@@ -192,13 +236,46 @@ class ContextResolver:
                     "created_by": api_key_obj.created_by_email,
                 },
                 api_key_org_id=str(org_id),
+                api_key_obj=api_key_obj,
             )
 
-        except (ValueError, NotFoundException) as e:
-            logger.error(f"API key validation failed: {e}")
-            if "expired" in str(e):
-                raise HTTPException(status_code=403, detail="API key has expired") from e
+        except (ValueError, NotFoundException, PermissionException) as e:
+            logger.with_context(error=str(e)).error("API key validation failed")
+            if "not active" in str(e):
+                raise HTTPException(status_code=403, detail="API key is not active") from e
             raise HTTPException(status_code=403, detail="Invalid or expired API key") from e
+
+    @staticmethod
+    def _validate_cached_auth(cached: dict) -> bool:
+        """Validate cached auth metadata for expiration and status.
+
+        Fails closed: missing or unparseable fields cause rejection.
+        """
+        try:
+            return ContextResolver._validate_cached_auth_inner(cached)
+        except (ValueError, TypeError, KeyError):
+            return False
+
+    @staticmethod
+    def _validate_cached_auth_inner(cached: dict) -> bool:
+        """Inner validation logic; caller catches parse errors."""
+        now = utc_now_naive()
+
+        exp_str = cached.get("exp")
+        if not exp_str:
+            return False
+        exp = datetime.fromisoformat(exp_str)
+        if exp < now:
+            return False
+
+        status = cached.get("status", ApiKeyStatus.ACTIVE.value)
+        if status == ApiKeyStatus.EXPIRED.value:
+            return False
+
+        if status == ApiKeyStatus.REVOKED.value:
+            return False
+
+        return True
 
     # ------------------------------------------------------------------
     # User fetching (DB)
@@ -213,8 +290,6 @@ class ContextResolver:
     async def _fetch_auth0_user(
         self, db: AsyncSession, auth0_user: Auth0User
     ) -> Optional[schemas.User]:
-        from datetime import datetime
-
         if not auth0_user.email:
             return None
         try:
@@ -275,7 +350,6 @@ class ContextResolver:
         db: AsyncSession,
         organization_id: str,
         auth: AuthResult,
-        x_api_key: Optional[str],
     ) -> None:
         if auth.method in (AuthMethod.AUTH0, AuthMethod.SYSTEM):
             if not auth.user:
@@ -290,9 +364,9 @@ class ContextResolver:
                     detail=f"User does not have access to organization {organization_id}",
                 )
 
-        elif auth.method == AuthMethod.API_KEY and x_api_key:
-            api_key_obj = await self._api_keys.get_by_key(db, key=x_api_key)
-            if str(api_key_obj.organization_id) != organization_id:
+        elif auth.method == AuthMethod.API_KEY:
+            # Use stored api_key_obj from auth — no second get_by_key() call
+            if auth.api_key_org_id and str(auth.api_key_org_id) != organization_id:
                 raise HTTPException(
                     status_code=403,
                     detail=f"API key does not have access to organization {organization_id}",

@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
+from airweave.core.exceptions import NotFoundException
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.integration_credential import IntegrationCredential
 from airweave.schemas.integration_credential import (
@@ -24,11 +25,13 @@ class FakeIntegrationCredentialRepository:
     def seed(self, id: UUID, obj: IntegrationCredential) -> None:
         self._store[id] = obj
 
-    async def get(
-        self, db: AsyncSession, id: UUID, ctx: ApiContext
-    ) -> Optional[IntegrationCredential]:
+    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> IntegrationCredential:
+        """Get a credential by ID or raise NotFoundException."""
         self._calls.append(("get", db, id, ctx))
-        return self._store.get(id)
+        result = self._store.get(id)
+        if result is None:
+            raise NotFoundException("Integration credential not found")
+        return result
 
     async def update(
         self,

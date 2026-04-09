@@ -6,7 +6,6 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.api.context import ApiContext
-from airweave.core.context import BaseContext
 from airweave.core.shared_models import IntegrationType
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.models.connection import Connection
@@ -16,7 +15,7 @@ from airweave.schemas.connection import ConnectionCreate, ConnectionUpdate
 class ConnectionRepositoryProtocol(Protocol):
     """Read-only access to connection records."""
 
-    async def get(self, db: AsyncSession, id: UUID, ctx: BaseContext) -> Optional[Connection]:
+    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> Connection:
         """Get a connection by ID within an organization."""
         ...
 
@@ -55,6 +54,6 @@ class ConnectionRepositoryProtocol(Protocol):
         """Update a connection."""
         ...
 
-    async def remove(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> Optional[Connection]:
+    async def remove(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> Connection:
         """Delete a connection by ID."""
         ...

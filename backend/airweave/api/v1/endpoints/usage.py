@@ -275,10 +275,8 @@ async def _get_target_period(
 ) -> Optional[BillingPeriod]:
     """Get the target billing period based on period_id or current period."""
     if period_id:
-        target_period = await crud.billing_period.get(db, id=period_id, ctx=ctx)
-        if not target_period:
-            raise HTTPException(status_code=404, detail="Billing period not found")
-        return target_period
+        # Raises NotFoundException if the period doesn't exist
+        return await crud.billing_period.get(db, id=period_id, ctx=ctx)
     else:
         return await crud.billing_period.get_current_period(db, organization_id=ctx.organization.id)
 

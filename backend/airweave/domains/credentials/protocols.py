@@ -19,9 +19,7 @@ from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
 class IntegrationCredentialRepositoryProtocol(Protocol):
     """Access to integration credential records."""
 
-    async def get(
-        self, db: AsyncSession, id: UUID, ctx: ApiContext
-    ) -> Optional[IntegrationCredential]:
+    async def get(self, db: AsyncSession, id: UUID, ctx: ApiContext) -> IntegrationCredential:
         """Get an integration credential by ID within an organization."""
         ...
 

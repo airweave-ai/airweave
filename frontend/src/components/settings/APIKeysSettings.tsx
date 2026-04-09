@@ -1,10 +1,20 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Key, Copy, Loader2, Plus, Trash2, RotateCw, CheckCircle2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  Key, Copy, Loader2, Plus, Trash2, RotateCw, CheckCircle2, Activity,
+  ChevronDown, ChevronUp,
+} from "lucide-react";
 import { toast } from "sonner";
-import { format, differenceInDays } from "date-fns";
+import { differenceInDays } from "date-fns";
+import { formatBackendTimestamp } from "@/utils/dateTime";
 import { cn } from "@/lib/utils";
-import { useAPIKeysStore, type APIKey } from "@/lib/stores/apiKeys";
+import {
+  useAPIKeysStore,
+  type APIKey,
+  type APIKeyUsageLogEntry,
+  type APIKeyUsageStats,
+} from "@/lib/stores/apiKeys";
 import { useOrganizationContext } from "@/hooks/use-organization-context";
 import {
   Dialog,
@@ -20,7 +30,6 @@ const EXPIRATION_PRESETS = [
   { days: 60, label: "60 days" },
   { days: 90, label: "90 days", recommended: true },
   { days: 180, label: "180 days" },
-  { days: 365, label: "365 days" },
 ];
 
 export function APIKeysSettings() {
@@ -30,35 +39,47 @@ export function APIKeysSettings() {
     apiKeys,
     isLoading,
     error,
+    usageStats,
+    usageLogs,
+    usageLogsHasMore,
     fetchAPIKeys,
     createAPIKey,
     rotateAPIKey,
-    deleteAPIKey
+    deleteAPIKey,
+    fetchUsageStats,
+    fetchUsageLogs,
   } = useAPIKeysStore();
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [selectedExpiration, setSelectedExpiration] = useState(90);
+  const [description, setDescription] = useState("");
   const [creating, setCreating] = useState(false);
   const [newlyCreatedKey, setNewlyCreatedKey] = useState<APIKey | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [keyToDelete, setKeyToDelete] = useState<APIKey | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [rotateDialogOpen, setRotateDialogOpen] = useState(false);
+  const [keyToRotate, setKeyToRotate] = useState<APIKey | null>(null);
   const [rotatingKeyId, setRotatingKeyId] = useState<string | null>(null);
+  const [expandedKeyId, setExpandedKeyId] = useState<string | null>(null);
+  const [loadingActivity, setLoadingActivity] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchAPIKeys();
+    fetchAPIKeys(true);
   }, [fetchAPIKeys]);
 
   const handleCreateClick = () => {
     setSelectedExpiration(90);
+    setDescription("");
     setCreateDialogOpen(true);
   };
 
   const handleConfirmCreate = async () => {
     setCreating(true);
     try {
-      const newKey = await createAPIKey(selectedExpiration);
+      const desc = description.trim() || undefined;
+      const newKey = await createAPIKey(selectedExpiration, desc);
       setNewlyCreatedKey(newKey);
       setCreateDialogOpen(false);
       toast.success("API key created successfully");
@@ -80,16 +101,24 @@ export function APIKeysSettings() {
     );
   };
 
-  const handleRotateKey = async (apiKey: APIKey) => {
-    setRotatingKeyId(apiKey.id);
+  const handleRotateClick = (apiKey: APIKey) => {
+    setKeyToRotate(apiKey);
+    setRotateDialogOpen(true);
+  };
+
+  const handleConfirmRotate = async () => {
+    if (!keyToRotate) return;
+    setRotatingKeyId(keyToRotate.id);
+    setRotateDialogOpen(false);
     try {
-      const newKey = await rotateAPIKey(apiKey.id);
+      const newKey = await rotateAPIKey(keyToRotate.id);
       toast.success("Key rotated successfully");
       setNewlyCreatedKey(newKey);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to rotate key");
     } finally {
       setRotatingKeyId(null);
+      setKeyToRotate(null);
     }
   };
 
@@ -111,9 +140,42 @@ export function APIKeysSettings() {
     }
   };
 
-  const maskKey = (key: string) => {
-    if (!key || key.length < 8) return key;
-    return `${key.substring(0, 8)}${"•".repeat(32)}`;
+  const handleToggleActivity = async (apiKey: APIKey) => {
+    if (expandedKeyId === apiKey.id) {
+      setExpandedKeyId(null);
+      return;
+    }
+    setExpandedKeyId(apiKey.id);
+    setLoadingActivity(apiKey.id);
+    try {
+      await Promise.all([
+        fetchUsageStats(apiKey.id),
+        fetchUsageLogs(apiKey.id, 0, 20),
+      ]);
+    } catch {
+      toast.error("Failed to load activity");
+    } finally {
+      setLoadingActivity(null);
+    }
+  };
+
+  const handleLoadMoreLogs = async (keyId: string) => {
+    const existing = usageLogs[keyId] || [];
+    setLoadingActivity(keyId);
+    try {
+      await fetchUsageLogs(keyId, existing.length, 20);
+    } catch {
+      toast.error("Failed to load more logs");
+    } finally {
+      setLoadingActivity(null);
+    }
+  };
+
+  const displayKeyPrefix = (apiKey: APIKey) => {
+    if (apiKey.key_prefix) {
+      return `${apiKey.key_prefix}${"*".repeat(24)}`;
+    }
+    return `${"?".repeat(8)}${"*".repeat(24)}`;
   };
 
   const getDaysRemaining = (expirationDate: string) => {
@@ -126,8 +188,10 @@ export function APIKeysSettings() {
 
   const getStatusColor = (daysRemaining: number) => {
     if (daysRemaining < 0) return "text-red-500";
-    if (daysRemaining <= 7) return "text-amber-500";
-    return "text-slate-500 dark:text-slate-400";
+    if (daysRemaining <= 7) return "text-red-400";
+    if (daysRemaining <= 30) return "text-orange-500";
+    if (daysRemaining <= 60) return "text-amber-500";
+    return "text-green-600 dark:text-green-400";
   };
 
   if (!canManage) {
@@ -143,6 +207,11 @@ export function APIKeysSettings() {
       </div>
     );
   }
+
+  const truncate = (str: string | null, len: number) => {
+    if (!str) return "-";
+    return str.length > len ? str.slice(0, len) + "..." : str;
+  };
 
   if (isLoading && apiKeys.length === 0) {
     return (
@@ -198,7 +267,7 @@ export function APIKeysSettings() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => handleCopyKey(newlyCreatedKey.decrypted_key)}
+              onClick={() => newlyCreatedKey.decrypted_key && handleCopyKey(newlyCreatedKey.decrypted_key)}
               className="h-[34px] gap-2 text-xs bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700"
             >
               {copiedKey === newlyCreatedKey.decrypted_key ? (
@@ -236,17 +305,27 @@ export function APIKeysSettings() {
         </div>
       ) : (
         <div className="space-y-3">
-          {apiKeys.map((apiKey) => {
+          {[...apiKeys].sort((a, b) => {
+            const statusOrder = { active: 0, expired: 1, revoked: 2 };
+            const aOrder = statusOrder[a.status] ?? 1;
+            const bOrder = statusOrder[b.status] ?? 1;
+            if (aOrder !== bOrder) return aOrder - bOrder;
+            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          }).map((apiKey) => {
             const daysRemaining = getDaysRemaining(apiKey.expiration_date);
-            const isExpired = daysRemaining < 0;
+            const isExpired = daysRemaining < 0 || apiKey.status === "expired";
+            const isRevoked = apiKey.status === "revoked";
             const isExpiringSoon = daysRemaining >= 0 && daysRemaining <= 7;
+            const isExpanded = expandedKeyId === apiKey.id;
+            const stats = usageStats[apiKey.id];
+            const logs = usageLogs[apiKey.id] || [];
 
             return (
               <div
                 key={apiKey.id}
                 className={cn(
                   "rounded-lg border bg-white dark:bg-slate-900/50",
-                  isExpired
+                  isExpired || isRevoked
                     ? "border-red-200 dark:border-red-900/50"
                     : "border-slate-200 dark:border-slate-800"
                 )}
@@ -255,28 +334,40 @@ export function APIKeysSettings() {
                   <div className="flex items-start justify-between gap-4">
                     {/* Key Info */}
                     <div className="flex-1 min-w-0 space-y-3">
+                      {apiKey.description && (
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                          {apiKey.description}
+                        </p>
+                      )}
                       <div className="flex items-center gap-3">
                         <code className="text-xs font-mono font-medium">
-                          {maskKey(apiKey.decrypted_key)}
+                          {displayKeyPrefix(apiKey)}
                         </code>
                         {isExpired && (
                           <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
                             Expired
                           </span>
                         )}
-                        {isExpiringSoon && !isExpired && (
+                        {isRevoked && !isExpired && (
+                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                            Revoked
+                          </span>
+                        )}
+                        {isExpiringSoon && !isExpired && !isRevoked && (
                           <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
                             Expiring soon
                           </span>
                         )}
                       </div>
                       <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
-                        <span>Created {format(new Date(apiKey.created_at), "MMM d, yyyy")}</span>
+                        <span>Created {formatBackendTimestamp(apiKey.created_at, "MMM d, yyyy 'at' h:mm a")}</span>
                         <span className="text-slate-300 dark:text-slate-700">•</span>
-                        <span className={getStatusColor(daysRemaining)}>
-                          {isExpired
-                            ? `Expired ${Math.abs(daysRemaining)} day${Math.abs(daysRemaining) === 1 ? "" : "s"} ago`
-                            : `Expires in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"}`}
+                        <span className={isRevoked ? "text-red-500" : getStatusColor(daysRemaining)}>
+                          {isRevoked
+                            ? `Revoked${apiKey.revoked_at ? ` ${formatBackendTimestamp(apiKey.revoked_at, "MMM d, yyyy 'at' h:mm a")}` : ""}`
+                            : isExpired
+                              ? `Expired ${Math.abs(daysRemaining)} day${Math.abs(daysRemaining) === 1 ? "" : "s"} ago`
+                              : `Expires in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"}`}
                         </span>
                       </div>
                     </div>
@@ -286,21 +377,23 @@ export function APIKeysSettings() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => handleCopyKey(apiKey.decrypted_key)}
+                        onClick={() => handleToggleActivity(apiKey)}
                         className="h-8 w-8 text-slate-500 hover:text-slate-900 dark:hover:text-slate-100"
-                        title="Copy key"
+                        title="View activity"
                       >
-                        {copiedKey === apiKey.decrypted_key ? (
-                          <CheckCircle2 className="h-4 w-4" />
+                        {loadingActivity === apiKey.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : isExpanded ? (
+                          <ChevronUp className="h-4 w-4" />
                         ) : (
-                          <Copy className="h-4 w-4" />
+                          <Activity className="h-4 w-4" />
                         )}
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => handleRotateKey(apiKey)}
-                        disabled={rotatingKeyId === apiKey.id}
+                        onClick={() => handleRotateClick(apiKey)}
+                        disabled={rotatingKeyId === apiKey.id || isRevoked || isExpired}
                         className="h-8 w-8 text-slate-500 hover:text-slate-900 dark:hover:text-slate-100"
                         title="Rotate key"
                       >
@@ -325,6 +418,90 @@ export function APIKeysSettings() {
                     </div>
                   </div>
                 </div>
+
+                {/* Activity Panel */}
+                {isExpanded && (
+                  <div className="border-t border-slate-200 dark:border-slate-800 px-4 py-3 space-y-3">
+                    {loadingActivity === apiKey.id && !stats ? (
+                      <div className="flex items-center justify-center py-4">
+                        <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                      </div>
+                    ) : stats && stats.total_requests > 0 ? (
+                      <>
+                        {/* Stats summary */}
+                        <div className="flex items-center gap-6 text-xs text-slate-600 dark:text-slate-400">
+                          <span>
+                            <span className="font-medium text-slate-900 dark:text-slate-100">{stats.total_requests}</span> request{stats.total_requests === 1 ? "" : "s"}
+                          </span>
+                          <span>
+                            <span className="font-medium text-slate-900 dark:text-slate-100">{stats.unique_ips}</span> unique IP{stats.unique_ips === 1 ? "" : "s"}
+                          </span>
+                          {stats.last_used && (
+                            <span>
+                              Last used {formatBackendTimestamp(stats.last_used, "MMM d, yyyy HH:mm")}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Log entries */}
+                        {logs.length > 0 && (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="text-left text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800">
+                                  <th className="pb-2 pr-4 font-medium">Timestamp</th>
+                                  <th className="pb-2 pr-4 font-medium">Endpoint</th>
+                                  <th className="pb-2 pr-4 font-medium">IP</th>
+                                  <th className="pb-2 font-medium">User Agent</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {logs.map((log) => (
+                                  <tr key={log.id} className="border-b border-slate-50 dark:border-slate-800/50">
+                                    <td className="py-1.5 pr-4 text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                                      {formatBackendTimestamp(log.timestamp, "MMM d HH:mm:ss")}
+                                    </td>
+                                    <td className="py-1.5 pr-4 font-mono text-slate-700 dark:text-slate-300">
+                                      {truncate(log.endpoint, 40)}
+                                    </td>
+                                    <td className="py-1.5 pr-4 font-mono text-slate-600 dark:text-slate-400">
+                                      {log.ip_address}
+                                    </td>
+                                    <td className="py-1.5 text-slate-500 dark:text-slate-500">
+                                      {truncate(log.user_agent, 50)}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
+                        {/* Load more */}
+                        {usageLogsHasMore[apiKey.id] && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleLoadMoreLogs(apiKey.id)}
+                            disabled={loadingActivity === apiKey.id}
+                            className="text-xs"
+                          >
+                            {loadingActivity === apiKey.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                            ) : (
+                              <ChevronDown className="h-3 w-3 mr-1" />
+                            )}
+                            Load more
+                          </Button>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-xs text-slate-500 dark:text-slate-400 py-2">
+                        No activity recorded yet
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -336,36 +513,52 @@ export function APIKeysSettings() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader className="space-y-2">
             <DialogTitle className="text-xl font-semibold">Create API key</DialogTitle>
-            <DialogDescription className="text-slate-500 dark:text-slate-400">
-              Choose how long this key should remain valid
-            </DialogDescription>
           </DialogHeader>
 
-          <div className="py-6 space-y-2">
-            {EXPIRATION_PRESETS.map((preset) => (
-              <button
-                key={preset.days}
-                onClick={() => setSelectedExpiration(preset.days)}
-                className={cn(
-                  "w-full flex items-center justify-between px-4 py-3.5 rounded-lg border text-left transition-colors",
-                  selectedExpiration === preset.days
-                    ? "border-primary bg-primary/5 dark:bg-primary/10"
-                    : "border-slate-200 dark:border-slate-800"
-                )}
-              >
-                <span className={cn(
-                  "text-sm font-medium",
-                  selectedExpiration === preset.days
-                    ? "text-slate-900 dark:text-slate-50"
-                    : "text-slate-700 dark:text-slate-300"
-                )}>{preset.label}</span>
-                {preset.recommended && (
-                  <span className="text-xs px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium">
-                    Recommended
-                  </span>
-                )}
-              </button>
-            ))}
+          <div className="py-6 space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                Description (optional)
+              </label>
+              <Input
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="e.g. Production backend, CI pipeline"
+                maxLength={255}
+                className="text-sm"
+              />
+              <span className="text-xs text-slate-400">{description.length}/255</span>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                Choose how long this key should remain valid
+              </label>
+              {EXPIRATION_PRESETS.map((preset) => (
+                <button
+                  key={preset.days}
+                  onClick={() => setSelectedExpiration(preset.days)}
+                  className={cn(
+                    "w-full flex items-center justify-between px-4 py-3.5 rounded-lg border text-left transition-colors",
+                    selectedExpiration === preset.days
+                      ? "border-primary bg-primary/5 dark:bg-primary/10"
+                      : "border-slate-200 dark:border-slate-800"
+                  )}
+                >
+                  <span className={cn(
+                    "text-sm font-medium",
+                    selectedExpiration === preset.days
+                      ? "text-slate-900 dark:text-slate-50"
+                      : "text-slate-700 dark:text-slate-300"
+                  )}>{preset.label}</span>
+                  {preset.recommended && (
+                    <span className="text-xs px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium">
+                      Recommended
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
 
           <DialogFooter className="gap-2">
@@ -407,8 +600,11 @@ export function APIKeysSettings() {
 
           {keyToDelete && (
             <div className="my-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-3">
+              {keyToDelete.description && (
+                <p className="text-sm font-medium mb-1">{keyToDelete.description}</p>
+              )}
               <code className="text-sm font-mono">
-                {maskKey(keyToDelete.decrypted_key)}
+                {displayKeyPrefix(keyToDelete)}
               </code>
             </div>
           )}
@@ -437,6 +633,46 @@ export function APIKeysSettings() {
                   Delete key
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rotate Confirmation Dialog */}
+      <Dialog open={rotateDialogOpen} onOpenChange={setRotateDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rotate API key</DialogTitle>
+            <DialogDescription>
+              A new key will be created and the current key will be immediately revoked.
+              Make sure your integrations are ready to use the new key.
+            </DialogDescription>
+          </DialogHeader>
+
+          {keyToRotate && (
+            <div className="my-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-3">
+              {keyToRotate.description && (
+                <p className="text-sm font-medium mb-1">{keyToRotate.description}</p>
+              )}
+              <code className="text-sm font-mono">
+                {displayKeyPrefix(keyToRotate)}
+              </code>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRotateDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmRotate}
+              className="bg-slate-800 hover:bg-slate-700 dark:bg-slate-200 dark:hover:bg-slate-300 text-slate-50 dark:text-slate-900"
+            >
+              <RotateCw className="mr-2 h-4 w-4" />
+              Rotate key
             </Button>
           </DialogFooter>
         </DialogContent>

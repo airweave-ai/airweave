@@ -1,5 +1,6 @@
 """Protocols for the organization domain."""
 
+from datetime import datetime
 from typing import Any, Optional, Protocol
 from uuid import UUID
 
@@ -7,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.db.unit_of_work import UnitOfWork
+from airweave.models.api_key import APIKey
 from airweave.models.organization import Organization
 from airweave.models.user import User
 from airweave.models.user_organization import UserOrganization
@@ -26,7 +28,7 @@ class OrganizationRepositoryProtocol(Protocol):
         ctx: Any = None,
         skip_access_validation: bool = False,
         enrich: bool = False,
-    ) -> Optional[schemas.Organization]:
+    ) -> schemas.Organization:
         """Return organization (enriched with billing/features when enrich=True)."""
         ...
 
@@ -36,7 +38,7 @@ class OrganizationRepositoryProtocol(Protocol):
         *,
         organization_id: UUID,
         skip_access_validation: bool = False,
-    ) -> Optional[Organization]:
+    ) -> Organization:
         """Return organization ORM model by ID."""
         ...
 
@@ -84,8 +86,67 @@ class ApiKeyRepositoryProtocol(Protocol):
 
         Raises:
             NotFoundException: If no matching key is found.
-            ValueError: If the key has expired.
+            PermissionException: If the key has expired or been revoked.
         """
+        ...
+
+    def record_usage(
+        self,
+        *,
+        api_key_obj: Any,
+        ip_address: str,
+        endpoint: str,
+        user_agent: Optional[str] = None,
+    ) -> None:
+        """Enqueue API key usage event for batch insertion."""
+        ...
+
+    def record_usage_by_id(
+        self,
+        *,
+        api_key_id: UUID,
+        organization_id: UUID,
+        ip_address: str,
+        endpoint: str,
+        user_agent: Optional[str] = None,
+    ) -> None:
+        """Record usage from cached auth metadata (no ORM object needed)."""
+        ...
+
+
+class ApiKeyMaintenanceProtocol(Protocol):
+    """Maintenance operations for API key lifecycle (Temporal activities)."""
+
+    async def get_revoked_keys_older_than(
+        self,
+        db: AsyncSession,
+        *,
+        max_age_days: int = 90,
+    ) -> list[APIKey]:
+        """Return revoked keys older than the retention period."""
+        ...
+
+    async def expire_past_due_keys(self, db: AsyncSession) -> int:
+        """Transition active keys past their expiration date to expired."""
+        ...
+
+    async def prune_usage_log(
+        self,
+        db: AsyncSession,
+        *,
+        max_age_days: int = 90,
+        batch_size: int = 10_000,
+    ) -> int:
+        """Delete usage log entries older than the retention period."""
+        ...
+
+    async def get_keys_expiring_in_range(
+        self,
+        db: AsyncSession,
+        start_date: datetime,
+        end_date: datetime,
+    ) -> list[APIKey]:
+        """Return active keys expiring within a date range."""
         ...
 
 

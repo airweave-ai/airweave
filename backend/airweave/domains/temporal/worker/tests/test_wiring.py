@@ -32,7 +32,7 @@ def test_create_activities_returns_list():
         result = create_activities()
 
     assert isinstance(result, list)
-    assert len(result) == 7
+    assert len(result) == 10
 
 
 @pytest.mark.unit
@@ -56,4 +56,4 @@ def test_get_workflows_returns_classes():
     assert "RunSourceConnectionWorkflow" in class_names
     assert "CleanupStuckSyncJobsWorkflow" in class_names
     assert "CleanupSyncDataWorkflow" in class_names
-    assert "APIKeyExpirationCheckWorkflow" in class_names
+    assert "APIKeyMaintenanceWorkflow" in class_names
