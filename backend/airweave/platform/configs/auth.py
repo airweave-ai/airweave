@@ -786,6 +786,16 @@ class SharePointOnlineAppAuthConfig(AuthConfig):
         min_length=1,
         json_schema_extra={"is_secret": True},
     )
+    certificate: str = Field(
+        default="",
+        title="Certificate (PEM)",
+        description=(
+            "PEM-encoded certificate that was uploaded to the Azure AD app registration. "
+            "Used to compute the x5t thumbprint for SP REST API token exchange. "
+            "If omitted, SP site group expansion will not work."
+        ),
+        json_schema_extra={"is_secret": True},
+    )
 
 
 class ServiceNowAuthConfig(AuthConfig):
