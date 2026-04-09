@@ -61,7 +61,7 @@ class FileService:
     @staticmethod
     async def _resolve_headers(auth: SourceAuthProvider, url: str) -> dict:
         """Build auth headers. Pre-signed URLs skip the bearer token."""
-        if "X-Amz-Algorithm" in url:
+        if "X-Amz-Algorithm" in url or "tempauth=" in url:
             return {}
         token = await auth.get_token() if hasattr(auth, "get_token") else None
         if not token:

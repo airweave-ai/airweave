@@ -35,6 +35,7 @@ from airweave.domains.access_control.schemas import MembershipTuple
 from airweave.domains.browse_tree.types import BrowseNode, NodeSelectionData
 from airweave.domains.sources.exceptions import SourceAuthError
 from airweave.domains.sources.token_providers.credential import DirectCredentialProvider
+from airweave.domains.sources.token_providers.static import StaticTokenProvider
 from airweave.domains.storage import FileSkippedException
 from airweave.domains.storage.file_service import FileService
 from airweave.domains.sync_pipeline.exceptions import EntityProcessingError
@@ -512,10 +513,20 @@ class SharePointOnlineSource(BaseSource):
                 entity.url = (
                     f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item_id}/content"
                 )
+
+            # For client-credentials auth, the download URL is either a pre-signed
+            # tempauth URL (no auth header needed) or a Graph API content URL
+            # (needs Graph bearer token). DirectCredentialProvider has no get_token(),
+            # so we provide a StaticTokenProvider with the Graph token as fallback.
+            auth = self.auth
+            if isinstance(auth, DirectCredentialProvider) and "tempauth=" not in entity.url:
+                graph_token = await self._get_graph_token()
+                auth = StaticTokenProvider(graph_token)
+
             await files.download_from_url(
                 entity=entity,
                 client=self.http_client,
-                auth=self.auth,
+                auth=auth,
                 logger=self.logger,
             )
             return entity
@@ -547,6 +558,8 @@ class SharePointOnlineSource(BaseSource):
                     self.logger.debug(f"File download skipped for {item.drive_id}/{item.item_id}")
                 except EntityProcessingError as e:
                     self.logger.warning(f"Skipping file download: {e}")
+                except Exception as e:
+                    self.logger.warning(f"Unexpected error downloading {item.entity.name}: {e}")
 
         tasks = [asyncio.create_task(download_one(p)) for p in pending]
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -819,6 +832,8 @@ class SharePointOnlineSource(BaseSource):
 
                             except EntityProcessingError as e:
                                 self.logger.warning(f"Skipping file: {e}")
+                            except Exception as e:
+                                self.logger.warning(f"Unexpected error processing file: {e}")
 
                     if pending_files and files:
                         downloaded = await self._download_files_parallel(pending_files, files)
