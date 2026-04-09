@@ -1,6 +1,6 @@
 import { RouterProvider } from '@tanstack/react-router';
+import { router } from './router';
 import { AuthErrorPage } from '@/app/pages/auth/error';
-import { router } from '@/app/router';
 import { queryClient } from '@/shared/api';
 import { useAuth } from '@/shared/auth';
 import { Spinner } from '@/shared/ui/spinner';

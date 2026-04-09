@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { Outlet, createFileRoute } from '@tanstack/react-router';
 import type { Collection } from '@/shared/api';
 import { CollectionDetailPage } from '@/app/pages/collections/detail-page';
 import { ensureCollection } from '@/features/collections';
@@ -22,5 +22,10 @@ export const Route = createFileRoute(
 function RouteComponent() {
   const { collectionId } = Route.useParams();
 
-  return <CollectionDetailPage collectionId={collectionId} />;
+  return (
+    <>
+      <CollectionDetailPage collectionId={collectionId} />
+      <Outlet />
+    </>
+  );
 }

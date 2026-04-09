@@ -8,6 +8,14 @@ const apiErrorWithDetailSchema = z.object({
   detail: z.string(),
 });
 
+const apiValidationErrorSchema = z.object({
+  detail: z.array(
+    z.object({
+      msg: z.string(),
+    }),
+  ),
+});
+
 export type ApiErrorWithDetail = z.infer<typeof apiErrorWithDetailSchema>;
 
 export function parseApiErrorWithDetail(error: unknown) {
@@ -24,4 +32,31 @@ export function hasApiErrorDetail(error: unknown, detail: string) {
   const parsedError = parseApiErrorWithDetail(error);
 
   return parsedError?.detail === detail;
+}
+
+export function getApiErrorMessage(
+  error: unknown,
+  fallbackMessage: string,
+) {
+  if (!error) {
+    return undefined;
+  }
+
+  const parsedError = parseApiErrorWithDetail(error);
+
+  if (typeof parsedError?.detail === 'string' && parsedError.detail) {
+    return parsedError.detail;
+  }
+
+  const parsedValidationError = apiValidationErrorSchema.safeParse(error);
+
+  if (parsedValidationError.success && parsedValidationError.data.detail.length > 0) {
+    return parsedValidationError.data.detail.map((detail) => detail.msg).join(', ');
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallbackMessage;
 }

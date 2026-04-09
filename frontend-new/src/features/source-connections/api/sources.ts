@@ -1,4 +1,8 @@
-import { queryOptions, useQueryClient } from '@tanstack/react-query';
+import {
+  queryOptions,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query';
 import {
   queryClient as defaultQueryClient,
   getSourcesShortNameGetOptions,
@@ -15,6 +19,16 @@ export function useListSourcesQueryOptions() {
   const currentOrganizationId = useCurrentOrganizationId();
 
   return listSourcesQueryOptions(currentOrganizationId);
+}
+
+export function prefetchSources({
+  queryClient,
+  organizationId,
+}: {
+  queryClient: QueryClient;
+  organizationId: string;
+}) {
+  return queryClient.prefetchQuery(listSourcesQueryOptions(organizationId));
 }
 
 type GetSourceParams = NonNullable<
