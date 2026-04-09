@@ -23,22 +23,29 @@ export function CollectionSourceConnections({
     <Tooltip>
       <TooltipTrigger
         className={cn(
-          'flex w-26 items-center gap-1.5 -space-x-4.5',
-          size === 'sm' && 'w-20 -space-x-4',
+          'flex min-w-26 items-center gap-1.5',
+          size === 'sm' && 'min-w-20',
         )}
       >
-        {sourceConnections
-          .slice(0, MAX_SOURCE_CONNECTIONS_ICONS)
-          .map((source, index) => (
-            <CollectionSourceConnectionIcon
-              key={`${source.name}:${index}`}
-              shortName={source.short_name}
-              size={size}
-              style={{ zIndex: sourceConnectionCount - index }}
-            />
-          ))}
+        <div
+          className={cn(
+            'flex flex-1 -space-x-3',
+            size === 'sm' && '-space-x-2.5',
+          )}
+        >
+          {sourceConnections
+            .slice(0, MAX_SOURCE_CONNECTIONS_ICONS)
+            .map((source, index) => (
+              <CollectionSourceConnectionIcon
+                key={`${source.name}:${index}`}
+                shortName={source.short_name}
+                size={size}
+                style={{ zIndex: sourceConnectionCount - index }}
+              />
+            ))}
+        </div>
         {sourceConnectionCount > MAX_SOURCE_CONNECTIONS_ICONS && (
-          <p className="font-mono text-xs text-muted-foreground">
+          <p className="ms-0 font-mono text-xs text-muted-foreground">
             +{sourceConnectionCount - MAX_SOURCE_CONNECTIONS_ICONS}
           </p>
         )}
