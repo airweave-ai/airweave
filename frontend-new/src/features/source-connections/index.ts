@@ -1,15 +1,29 @@
 export { isBrowserOAuthMethod } from './lib/source-connection-auth-methods';
 export {
-  getSourceConnectionQueryOptions,
+  ensureSourceConnection,
   prefetchSources,
-  prefetchSourceConnection,
+  useGetSourceConnectionQueryOptions,
   useGetSourceQueryOptions,
 } from './api';
 export {
-  ConnectSourceAuth,
-  useConnectSourceAuthController,
+  ConnectSourceAuthCallback,
+  ConnectSourceAuthError,
+  ConnectSourceAuthorize,
 } from './components/connect-source-auth';
-export { SourcePickerFilters, SourcePickerResults } from './components/source-picker';
+export {
+  ConnectSourcePrimaryActionButton,
+  ConnectSourceStepDialogHeader,
+  ConnectSourceStepLayoutActions,
+  ConnectSourceStepLayoutAside,
+  ConnectSourceStepLayoutContent,
+  ConnectSourceStepLayoutMain,
+} from './components/connect-source-step-layout';
+export { SourceConnectionHeader } from './components/source-connection-header';
+export { SourceConnectionStepLabel } from './components/source-connection-step-label';
+export {
+  SourcePickerFilters,
+  SourcePickerResults,
+} from './components/source-picker';
 export { SourceConnectionConfigForm } from './components/source-connection-config-form';
 export type { SourceConnectionFormOutput } from './components/source-connection-config-form';
 export { useSourceConnectionConfigSubmission } from './hooks/use-source-connection-config-submission';

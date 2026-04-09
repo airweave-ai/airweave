@@ -1,9 +1,13 @@
 import * as React from 'react';
 import { IconArrowRight } from '@tabler/icons-react';
-import { SourceIcon } from '../source-icon';
+import {
+  ConnectSourcePrimaryActionButton,
+  ConnectSourceStepLayoutActions,
+  ConnectSourceStepLayoutContent,
+} from '../connect-source-step-layout';
+import { SourceConnectionHeader } from '../source-connection-header';
 import { SourceConnectionAuthSection } from './source-connection-auth-section';
 import { SourceConnectionConfigSection } from './source-connection-config-section';
-import { getSourceDocsUrl } from './source-docs-url';
 import {
   getAuthMethodForVariant,
   getSourceConnectionFormOptions,
@@ -14,10 +18,7 @@ import { SourceConnectionTextInput } from './source-connection-text-input';
 import { SourceConnectionProgress } from './source-connection-progress';
 import type { SourceConnectionFormOutput } from './source-connection-form-hook';
 import type { Source } from '@/shared/api';
-import { cn } from '@/shared/tailwind/cn';
-import { Button } from '@/shared/ui/button';
 import { FieldError, FieldGroup } from '@/shared/ui/field';
-import { Spinner } from '@/shared/ui/spinner';
 
 interface SourceConnectionConfigFormProps {
   onBack: () => void;
@@ -40,6 +41,7 @@ export function SourceConnectionConfigForm({
     () => getSourceConnectionFormOptions({ formSchema, source }),
     [formSchema, source],
   );
+  const formId = React.useId();
 
   const form = useSourceConnectionForm({
     ...sourceConnectionFormOptions,
@@ -49,42 +51,25 @@ export function SourceConnectionConfigForm({
   });
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex justify-between gap-3 pb-6">
-        <div className="flex gap-3">
-          <div className="flex size-10 items-center justify-center rounded-xs border bg-muted">
-            <SourceIcon
-              className="size-4"
-              name={source.name}
-              shortName={source.short_name}
-            />
-          </div>
-          <div>
-            <h2 className="font-medium">Connect {source.name}</h2>
-            <a
-              href={getSourceDocsUrl(source.short_name)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-mono text-sm font-normal text-muted-foreground hover:underline"
-            >
-              See Docs
-            </a>
-          </div>
-        </div>
-        <form.Subscribe selector={(state) => state.values.authVariant}>
-          {(selectedAuthVariant) => (
-            <SourceConnectionProgress authVariant={selectedAuthVariant} />
-          )}
-        </form.Subscribe>
-      </div>
-      <form
-        className="flex min-h-0 flex-1 flex-col"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void form.handleSubmit();
-        }}
-      >
-        <div className="mb-6 min-h-0 flex-1 space-y-6 overflow-y-auto">
+    <div className="flex h-full min-h-0 flex-col gap-6">
+      <SourceConnectionHeader
+        source={source}
+        aside={
+          <form.Subscribe selector={(state) => state.values.authVariant}>
+            {(selectedAuthVariant) => (
+              <SourceConnectionProgress authVariant={selectedAuthVariant} />
+            )}
+          </form.Subscribe>
+        }
+      />
+      <ConnectSourceStepLayoutContent asChild>
+        <form
+          id={formId}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void form.handleSubmit();
+          }}
+        >
           <FieldGroup>
             <form.Field name="name">
               {(field) => (
@@ -102,55 +87,40 @@ export function SourceConnectionConfigForm({
           </FieldGroup>
           <SourceConnectionAuthSection form={form} source={source} />
           <SourceConnectionConfigSection form={form} source={source} />
-        </div>
+        </form>
+      </ConnectSourceStepLayoutContent>
 
-        <div className="shrink-0">
-          {submitError ? <FieldError>{submitError}</FieldError> : null}
+      <div className="shrink-0 space-y-2">
+        {submitError ? <FieldError>{submitError}</FieldError> : null}
 
-          <form.Subscribe
-            selector={(state) => ({
-              authVariant: state.values.authVariant,
-              isSubmitting: state.isSubmitting,
-            })}
-          >
-            {({ authVariant, isSubmitting }) => {
-              const authMethod = getAuthMethodForVariant(authVariant);
+        <form.Subscribe
+          selector={(state) => ({
+            authVariant: state.values.authVariant,
+            isSubmitting: state.isSubmitting,
+          })}
+        >
+          {({ authVariant, isSubmitting }) => {
+            const authMethod = getAuthMethodForVariant(authVariant);
 
-              return (
-                <div
-                  className={cn(
-                    'flex flex-col gap-2 sm:flex-row sm:justify-between',
-                  )}
+            return (
+              <ConnectSourceStepLayoutActions
+                onBack={onBack}
+                backDisabled={isSubmitting}
+              >
+                <ConnectSourcePrimaryActionButton
+                  type="submit"
+                  form={formId}
+                  disabled={authMethod === 'auth_provider'}
+                  icon={<IconArrowRight className="size-4" />}
+                  isLoading={isSubmitting}
                 >
-                  <Button
-                    type="button"
-                    size="lg"
-                    className="max-w-55 flex-1"
-                    disabled={isSubmitting}
-                    variant="ghost"
-                    onClick={onBack}
-                  >
-                    Back
-                  </Button>
-                  <Button
-                    type="submit"
-                    size="lg"
-                    className="max-w-130 flex-1"
-                    disabled={isSubmitting || authMethod === 'auth_provider'}
-                  >
-                    Connect with {source.name}{' '}
-                    {isSubmitting ? (
-                      <Spinner className="size-4" />
-                    ) : (
-                      <IconArrowRight className="size-4" />
-                    )}
-                  </Button>
-                </div>
-              );
-            }}
-          </form.Subscribe>
-        </div>
-      </form>
+                  Connect with {source.name}
+                </ConnectSourcePrimaryActionButton>
+              </ConnectSourceStepLayoutActions>
+            );
+          }}
+        </form.Subscribe>
+      </div>
     </div>
   );
 }

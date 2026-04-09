@@ -1,3 +1,4 @@
+import { SourceConnectionStepLabel } from '../source-connection-step-label';
 import { getAuthMethodForVariant } from './source-connection-form-hook';
 import type {
   SourceConnectionAuthMethod,
@@ -10,16 +11,9 @@ export function SourceConnectionProgress({
   authVariant: SourceConnectionAuthVariant;
 }) {
   const authMethod = getAuthMethodForVariant(authVariant);
-  const { step, numberOfSteps, label } = authMethodStepLabels[authMethod];
+  const progress = authMethodStepLabels[authMethod];
 
-  return (
-    <span className="font-mono text-sm text-foreground/60">
-      Step {step}{' '}
-      <span className="text-foreground/40">
-        of {numberOfSteps}: {label}
-      </span>
-    </span>
-  );
+  return <SourceConnectionStepLabel {...progress} />;
 }
 
 type Progress = {

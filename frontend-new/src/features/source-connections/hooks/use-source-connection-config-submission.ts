@@ -3,10 +3,7 @@ import { useCreateSourceConnectionMutation } from '../api';
 import { setConnectSourceAuthClaimToken } from '../components/connect-source-auth/connect-source-auth-storage';
 import { getAuthMethodForVariant } from '../components/source-connection-config-form/source-connection-form-hook';
 import type { SourceConnectionFormOutput } from '../components/source-connection-config-form';
-import type {
-  Source,
-  SourceConnectionCreate,
-} from '@/shared/api';
+import type { Source, SourceConnectionCreate } from '@/shared/api';
 import { getApiErrorMessage } from '@/shared/api';
 
 interface UseSourceConnectionConfigSubmissionArgs {
@@ -24,14 +21,16 @@ export function useSourceConnectionConfigSubmission({
 
   const handleSubmit = React.useCallback(
     async (values: SourceConnectionFormOutput) => {
-      const sourceConnection = await createSourceConnectionMutation.mutateAsync({
-        body: buildSourceConnectionPayload({
-          redirectUrl,
-          readableCollectionId: collectionId,
-          source,
-          values,
-        }),
-      });
+      const sourceConnection = await createSourceConnectionMutation.mutateAsync(
+        {
+          body: buildSourceConnectionPayload({
+            redirectUrl,
+            readableCollectionId: collectionId,
+            source,
+            values,
+          }),
+        },
+      );
 
       if (sourceConnection.auth.claim_token) {
         setConnectSourceAuthClaimToken(

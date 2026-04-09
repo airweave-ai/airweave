@@ -1,2 +1,3 @@
-export { ConnectSourceAuth } from './connect-source-auth';
-export { useConnectSourceAuthController } from './connect-source-auth-controller';
+export { ConnectSourceAuthCallback } from './connect-source-auth-callback';
+export { ConnectSourceAuthError } from './connect-source-auth-error';
+export { ConnectSourceAuthorize } from './connect-source-authorize';
