@@ -165,6 +165,11 @@ class GoogleDriveFileEntity(FileEntity):
     viewed_by_me_time: Optional[datetime] = AirweaveField(
         None, description="Last time the user viewed the file.", embeddable=False
     )
+    labels: List[str] = AirweaveField(
+        default_factory=list,
+        description="Applied Drive label IDs (from files.listLabels).",
+        embeddable=False,
+    )
 
     def __init__(self, **data):
         """Initialize the entity and set file_type from mime_type if not provided."""
@@ -232,6 +237,7 @@ class GoogleDriveFileEntity(FileEntity):
             shared_with_me_time=_parse_drive_dt(data.get("sharedWithMeTime")),
             modified_by_me_time=_parse_drive_dt(data.get("modifiedByMeTime")),
             viewed_by_me_time=_parse_drive_dt(data.get("viewedByMeTime")),
+            labels=list(data.get("labels") or []),
         )
 
     def model_dump(self, *args, **kwargs) -> dict[str, Any]:
@@ -303,3 +309,113 @@ class GoogleDriveFileDeletionEntity(DeletionEntity):
         if self.drive_id:
             return f"https://drive.google.com/drive/folders/{self.drive_id}"
         return "https://drive.google.com/drive/my-drive"
+
+
+class GoogleDriveCommentEntity(BaseEntity):
+    """Schema for a Google Drive comment.
+
+    Reference:
+      https://developers.google.com/workspace/drive/api/reference/rest/v3/comments
+    """
+
+    comment_id: str = AirweaveField(
+        ..., description="Unique ID for the comment.", is_entity_id=True
+    )
+    file_id: str = AirweaveField(..., description="Drive file ID this comment belongs to.")
+    content: str = AirweaveField(
+        ..., description="Comment text content.", embeddable=True, is_name=True
+    )
+    author_name: Optional[str] = AirweaveField(
+        None, description="Display name of the comment author.", embeddable=True
+    )
+    created_time: Optional[datetime] = AirweaveField(
+        None, description="When the comment was created.", is_created_at=True, embeddable=False
+    )
+    modified_time: Optional[datetime] = AirweaveField(
+        None,
+        description="When the comment was last modified.",
+        is_updated_at=True,
+        embeddable=False,
+    )
+    deleted: bool = AirweaveField(
+        False, description="Whether the comment is deleted.", embeddable=False
+    )
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        breadcrumbs: List[Breadcrumb],
+        file_id: str,
+    ) -> "GoogleDriveCommentEntity":
+        """Create a comment entity from a Drive comments.list item."""
+        raw_id = data.get("id")
+        if not isinstance(raw_id, str):
+            raise ValueError("Drive comment payload missing 'id' as a string")
+        author = data.get("author") or {}
+        return cls(
+            entity_id=raw_id,
+            breadcrumbs=breadcrumbs,
+            comment_id=raw_id,
+            file_id=file_id,
+            content=data.get("content") or "",
+            author_name=author.get("displayName"),
+            created_time=_parse_drive_dt(data.get("createdTime")),
+            modified_time=_parse_drive_dt(data.get("modifiedTime")),
+            deleted=bool(data.get("deleted", False)),
+        )
+
+
+class GoogleDriveReplyEntity(BaseEntity):
+    """Schema for a Google Drive comment reply.
+
+    Reference:
+      https://developers.google.com/workspace/drive/api/reference/rest/v3/replies
+    """
+
+    reply_id: str = AirweaveField(..., description="Unique ID for the reply.", is_entity_id=True)
+    comment_id: str = AirweaveField(..., description="Parent comment ID.")
+    file_id: str = AirweaveField(..., description="Drive file ID this reply belongs to.")
+    content: str = AirweaveField(
+        ..., description="Reply text content.", embeddable=True, is_name=True
+    )
+    author_name: Optional[str] = AirweaveField(
+        None, description="Display name of the reply author.", embeddable=True
+    )
+    created_time: Optional[datetime] = AirweaveField(
+        None, description="When the reply was created.", is_created_at=True, embeddable=False
+    )
+    modified_time: Optional[datetime] = AirweaveField(
+        None, description="When the reply was last modified.", is_updated_at=True, embeddable=False
+    )
+    deleted: bool = AirweaveField(
+        False, description="Whether the reply is deleted.", embeddable=False
+    )
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Dict[str, Any],
+        *,
+        breadcrumbs: List[Breadcrumb],
+        file_id: str,
+        comment_id: str,
+    ) -> "GoogleDriveReplyEntity":
+        """Create a reply entity from a Drive comment reply payload."""
+        raw_id = data.get("id")
+        if not isinstance(raw_id, str):
+            raise ValueError("Drive reply payload missing 'id' as a string")
+        author = data.get("author") or {}
+        return cls(
+            entity_id=raw_id,
+            breadcrumbs=breadcrumbs,
+            reply_id=raw_id,
+            comment_id=comment_id,
+            file_id=file_id,
+            content=data.get("content") or "",
+            author_name=author.get("displayName"),
+            created_time=_parse_drive_dt(data.get("createdTime")),
+            modified_time=_parse_drive_dt(data.get("modifiedTime")),
+            deleted=bool(data.get("deleted", False)),
+        )
