@@ -6,6 +6,7 @@ logic end-to-end but the coverage tool loses visibility through httpx/ASGI.
 """
 
 from datetime import datetime, timezone
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
@@ -112,6 +113,13 @@ def _system_ctx(method: AuthMethod = AuthMethod.SYSTEM) -> ApiContext:
     )
 
 
+def _dummy_request() -> MagicMock:
+    """Build a mock Request with no Authorization header (no reauth claims)."""
+    request = MagicMock()
+    request.headers = {}
+    return request
+
+
 def _get_enforce(check, *, block_api_key_auth=False):
     """Extract the inner _enforce closure from require_org_role's Depends."""
     dep = require_org_role(check, block_api_key_auth=block_api_key_auth)
@@ -126,7 +134,7 @@ class TestRequireOrgRoleBranches:
         enforce = _get_enforce(logic.can_manage_api_keys, block_api_key_auth=True)
         ctx = _ctx_with_role("", auth_method=AuthMethod.API_KEY)
         with pytest.raises(HTTPException) as exc_info:
-            await enforce(ctx=ctx)
+            await enforce(request=_dummy_request(), ctx=ctx)
         assert exc_info.value.status_code == 403
         assert "API key authentication is not permitted" in exc_info.value.detail
 
@@ -134,14 +142,14 @@ class TestRequireOrgRoleBranches:
     async def test_system_auth_bypasses(self):
         enforce = _get_enforce(logic.can_manage_api_keys, block_api_key_auth=True)
         ctx = _system_ctx(AuthMethod.SYSTEM)
-        result = await enforce(ctx=ctx)
+        result = await enforce(request=_dummy_request(), ctx=ctx)
         assert result is ctx
 
     @pytest.mark.asyncio
     async def test_internal_system_auth_bypasses(self):
         enforce = _get_enforce(logic.can_manage_api_keys)
         ctx = _system_ctx(AuthMethod.INTERNAL_SYSTEM)
-        result = await enforce(ctx=ctx)
+        result = await enforce(request=_dummy_request(), ctx=ctx)
         assert result is ctx
 
     @pytest.mark.asyncio
@@ -156,7 +164,7 @@ class TestRequireOrgRoleBranches:
         )
         enforce = _get_enforce(logic.can_manage_api_keys)
         with pytest.raises(HTTPException) as exc_info:
-            await enforce(ctx=ctx)
+            await enforce(request=_dummy_request(), ctx=ctx)
         assert exc_info.value.status_code == 403
         assert "requires user authentication" in exc_info.value.detail
 
@@ -165,7 +173,7 @@ class TestRequireOrgRoleBranches:
         enforce = _get_enforce(logic.can_manage_api_keys)
         ctx = _wrong_org_ctx()
         with pytest.raises(HTTPException) as exc_info:
-            await enforce(ctx=ctx)
+            await enforce(request=_dummy_request(), ctx=ctx)
         assert exc_info.value.status_code == 403
         assert "Insufficient permissions" in exc_info.value.detail
 
@@ -174,7 +182,7 @@ class TestRequireOrgRoleBranches:
         enforce = _get_enforce(logic.can_manage_api_keys)
         ctx = _ctx_with_role("member")
         with pytest.raises(HTTPException) as exc_info:
-            await enforce(ctx=ctx)
+            await enforce(request=_dummy_request(), ctx=ctx)
         assert exc_info.value.status_code == 403
         assert "Insufficient permissions" in exc_info.value.detail
 
@@ -183,5 +191,5 @@ class TestRequireOrgRoleBranches:
     async def test_privileged_role_passes(self, role):
         enforce = _get_enforce(logic.can_manage_api_keys)
         ctx = _ctx_with_role(role)
-        result = await enforce(ctx=ctx)
+        result = await enforce(request=_dummy_request(), ctx=ctx)
         assert result is ctx

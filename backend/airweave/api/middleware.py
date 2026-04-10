@@ -25,6 +25,7 @@ from airweave.core.exceptions import (
     NotFoundException,
     PermissionException,
     RateLimitExceededException,
+    ReauthenticationRequiredException,
     TokenRefreshError,
     unpack_validation_error,
 )
@@ -466,6 +467,25 @@ async def invalid_state_exception_handler(request: Request, exc: InvalidStateErr
 async def invalid_input_exception_handler(request: Request, exc: InvalidInputError) -> JSONResponse:
     """Exception handler for InvalidInputError."""
     return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
+async def reauth_required_exception_handler(
+    request: Request, exc: ReauthenticationRequiredException
+) -> JSONResponse:
+    """Return a structured 403 the frontend can distinguish from permission errors.
+
+    The ``error`` field is machine-parseable so the frontend intercepts it
+    before the generic 401/403 token-refresh retry and triggers Auth0
+    step-up authentication instead.
+    """
+    return JSONResponse(
+        status_code=403,
+        content={
+            "error": "reauthentication_required",
+            "detail": exc.message,
+            "max_age": exc.max_age,
+        },
+    )
 
 
 async def rate_limit_exception_handler(
