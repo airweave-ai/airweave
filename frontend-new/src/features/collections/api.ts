@@ -1,9 +1,14 @@
 import * as React from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  queryOptions,
+  useMutation,
+  useQueryClient,
+} from '@tanstack/react-query';
 import type { QueryClient } from '@tanstack/react-query';
 import {
   countCollectionsCountGetOptions,
   createCollectionsPostMutation,
+  queryClient as defaultQueryClient,
   getCollectionsReadableIdGetOptions,
   listCollectionsGetOptions,
   matchQueryKey,
@@ -104,6 +109,7 @@ export function useCollectionCountQueryOptions(searchParams?: SearchParams) {
 export function getCollectionQueryOptions(
   organizationId: string,
   { collectionId }: ReadableIdParams,
+  queryClient = defaultQueryClient,
 ) {
   const params: GetCollectionParams = {
     path: {
@@ -111,17 +117,28 @@ export function getCollectionQueryOptions(
     },
   };
 
-  return getCollectionsReadableIdGetOptions(
-    withOrganizationHeaders({ organizationId }, params),
-  );
+  const listQueryOptions = listCollectionsQueryOptions(organizationId);
+
+  return queryOptions({
+    ...getCollectionsReadableIdGetOptions(
+      withOrganizationHeaders({ organizationId }, params),
+    ),
+    initialData: () => {
+      const collections = queryClient.getQueryData(listQueryOptions.queryKey);
+      return collections?.find((collection) => collection.id === collectionId);
+    },
+    initialDataUpdatedAt: () =>
+      queryClient.getQueryState(listQueryOptions.queryKey)?.dataUpdatedAt,
+  });
 }
 
 export function useGetCollectionQueryOptions(params: ReadableIdParams) {
+  const queryClient = useQueryClient();
   const currentOrganizationId = useCurrentOrganizationId();
 
   return React.useMemo(
-    () => getCollectionQueryOptions(currentOrganizationId, params),
-    [currentOrganizationId, params],
+    () => getCollectionQueryOptions(currentOrganizationId, params, queryClient),
+    [currentOrganizationId, params, queryClient],
   );
 }
 

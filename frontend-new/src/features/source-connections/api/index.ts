@@ -16,4 +16,5 @@ export {
   prefetchSources,
   useGetSourceQueryOptions,
   useListSourcesQueryOptions,
+  ensureSource,
 } from './sources';
