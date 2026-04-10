@@ -78,7 +78,7 @@ async def subscribe_sync_job(
         event_stream(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache, no-transform",
+            "Cache-Control": "no-store, no-transform",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
             "Content-Type": "text/event-stream",
@@ -151,7 +151,7 @@ async def subscribe_entity_state(
         event_stream(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache, no-transform",
+            "Cache-Control": "no-store, no-transform",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
             "Content-Type": "text/event-stream",

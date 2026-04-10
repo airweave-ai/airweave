@@ -223,6 +223,59 @@ async def rate_limit_headers_middleware(request: Request, call_next: callable) -
     return response
 
 
+_CACHE_CONTROL_EXEMPT_PREFIXES = (
+    "/health",
+    "/metrics",
+    "/docs",
+    "/openapi.json",
+    "/favicon.ico",
+    "/redoc",
+)
+_CACHE_CONTROL_EXEMPT_EXACT = frozenset(_CACHE_CONTROL_EXEMPT_PREFIXES) | {"/"}
+_CACHE_CONTROL_EXEMPT_SLASH = tuple(p + "/" for p in _CACHE_CONTROL_EXEMPT_PREFIXES)
+
+
+async def cache_control_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """Middleware to prevent caching of sensitive data.
+
+    Sets ``Cache-Control: no-store`` and ``Pragma: no-cache`` on all
+    non-exempt responses.  Preserves the ``no-transform`` directive from
+    SSE responses to prevent proxy compression of event streams.
+
+    Exempt paths (health, docs, metrics, and other public endpoints) are
+    passed through without modification.
+
+    Args:
+    ----
+        request (Request): The incoming request.
+        call_next (callable): The next middleware in the chain.
+
+    Returns:
+    -------
+        Response: The response with cache-control headers added.
+
+    """
+    path = request.url.path
+    if path in _CACHE_CONTROL_EXEMPT_EXACT or path.startswith(_CACHE_CONTROL_EXEMPT_SLASH):
+        return await call_next(request)
+
+    response = await call_next(request)
+
+    # Preserve no-transform if already set (SSE endpoints need it to prevent
+    # proxy compression of event streams)
+    existing = response.headers.get("cache-control", "")
+    if "no-transform" in existing:
+        response.headers["Cache-Control"] = "no-store, no-transform"
+    else:
+        response.headers["Cache-Control"] = "no-store"
+
+    response.headers["Pragma"] = "no-cache"
+
+    return response
+
+
 class DynamicCORSMiddleware(BaseHTTPMiddleware):
     """Middleware to dynamically update CORS origins based on configuration.
 
