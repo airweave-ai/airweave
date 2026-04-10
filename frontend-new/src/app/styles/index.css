@@ -131,12 +131,77 @@
     @apply font-sans;
     color-scheme: dark;
   }
-
-  ::view-transition-old(app-dialog-transition) {
-    @apply animate-out fade-out-0 fill-mode-both zoom-out-95;
-  }
 }
 
 @utility bg-cta {
   background: url('/cta-bg.png') lightgray 50% / cover no-repeat;
+}
+
+::view-transition-old(app-dialog-transition) {
+  @apply animate-out fade-out-0 fill-mode-both zoom-out-95;
+}
+
+@keyframes airweave-loader-intro {
+  from {
+    opacity: 0;
+    filter: blur(16px);
+  }
+
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+@keyframes airweave-loader-rotate {
+  0% {
+    transform: rotate(0deg);
+    animation-timing-function: cubic-bezier(0.5, 0, 0, 1);
+  }
+
+  25% {
+    transform: rotate(90deg);
+    animation-timing-function: cubic-bezier(0.5, 0, 0, 1);
+  }
+
+  50% {
+    transform: rotate(180deg);
+    animation-timing-function: cubic-bezier(0.5, 0, 0, 1);
+  }
+
+  75% {
+    transform: rotate(270deg);
+    animation-timing-function: cubic-bezier(0.5, 0, 0, 1);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@layer components {
+  .airweave-loader-logo-intro {
+    animation: airweave-loader-intro 800ms cubic-bezier(0, 0, 0, 1) both;
+  }
+
+  .airweave-loader-text-intro {
+    animation: airweave-loader-intro 800ms cubic-bezier(0, 0, 0, 1) 240ms both;
+  }
+
+  .airweave-loader-rotate {
+    animation: airweave-loader-rotate 4.2s 746ms infinite;
+    transform-origin: center;
+    will-change: transform;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .airweave-loader-logo-intro,
+  .airweave-loader-text-intro,
+  .airweave-loader-rotate {
+    animation: none;
+    filter: none;
+    opacity: 1;
+    transform: none;
+  }
 }
