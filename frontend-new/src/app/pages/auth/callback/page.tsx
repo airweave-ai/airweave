@@ -1,4 +1,4 @@
-import { AuthStatusScreen } from '../components/status-screen';
+import { Loader } from '@/shared/components/loader';
 
 type AuthCallbackPageProps = {
   organizationName?: string;
@@ -6,13 +6,8 @@ type AuthCallbackPageProps = {
 
 export function AuthCallbackPage({ organizationName }: AuthCallbackPageProps) {
   return (
-    <AuthStatusScreen
-      description={
-        organizationName
-          ? `Finalizing your membership for ${organizationName}.`
-          : 'You will be redirected back to the app in a moment.'
-      }
-      title={organizationName ? 'Accepting invitation' : 'Finishing sign-in'}
-    />
+    <Loader className="min-h-screen">
+      {organizationName ? 'Accepting invitation' : 'Finishing sign-in'}
+    </Loader>
   );
 }

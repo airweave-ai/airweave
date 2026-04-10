@@ -155,7 +155,7 @@ export function ConnectSourceAuthCallback({
 
   return (
     <ConnectSourceStepLayoutContent className="flex items-center justify-center text-center">
-      <Loader />
+      <Loader>Finishing source authorization...</Loader>
     </ConnectSourceStepLayoutContent>
   );
 }
