@@ -68,3 +68,17 @@ export function useGetSourceQueryOptions(params: ShortNameParams) {
 
   return getSourceQueryOptions(currentOrganizationId, params, queryClient);
 }
+
+export function ensureSource({
+  queryClient,
+  organizationId,
+  sourceShortName,
+}: {
+  queryClient: QueryClient;
+  organizationId: string;
+  sourceShortName: string;
+}) {
+  return queryClient.ensureQueryData(
+    getSourceQueryOptions(organizationId, { sourceShortName }, queryClient),
+  );
+}

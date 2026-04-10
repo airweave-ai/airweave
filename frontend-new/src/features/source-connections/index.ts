@@ -1,6 +1,7 @@
 export { isBrowserOAuthMethod } from './lib/source-connection-auth-methods';
 export {
   ensureSourceConnection,
+  ensureSource,
   prefetchSources,
   useGetSourceConnectionQueryOptions,
   useGetSourceQueryOptions,
