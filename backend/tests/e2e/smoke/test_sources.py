@@ -154,7 +154,7 @@ class TestSources:
         sources = response.json()
 
         # Known valid auth provider short names
-        valid_providers = ["pipedream", "composio"]
+        valid_providers = ["pipedream", "composio", "custom"]
 
         for source in sources:
             providers = source.get("supported_auth_providers", [])

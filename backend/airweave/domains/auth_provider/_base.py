@@ -2,11 +2,18 @@
 
 from abc import ABC, abstractmethod
 from typing import Any, ClassVar, Dict, List, Optional, Set
+from uuid import UUID
 
 from pydantic import BaseModel
 
 from airweave.core.logging import logger
 from airweave.domains.auth_provider.auth_result import AuthResult
+
+# OAuth lifecycle fields that auth providers handle internally —
+# always optional when fetching credentials from a provider.
+AUTH_PROVIDER_OPTIONAL_FIELDS: frozenset[str] = frozenset(
+    {"refresh_token", "client_id", "client_secret"}
+)
 
 
 class BaseAuthProvider(ABC):
@@ -19,6 +26,7 @@ class BaseAuthProvider(ABC):
     auth_config_class: ClassVar[Optional[type[BaseModel]]] = None
     config_class: ClassVar[Optional[type[BaseModel]]] = None
     SETTINGS_URL: ClassVar[str] = ""
+    feature_flag: ClassVar[Optional[str]] = None
 
     def __init__(self):
         """Initialize the base auth provider."""
@@ -58,6 +66,7 @@ class BaseAuthProvider(ABC):
         source_short_name: str,
         source_auth_config_fields: List[str],
         optional_fields: Optional[Set[str]] = None,
+        source_connection_id: Optional[UUID] = None,
     ) -> Dict[str, Any]:
         """Get credentials for a source.
 
@@ -65,6 +74,8 @@ class BaseAuthProvider(ABC):
             source_short_name: The short name of the source to get credentials for
             source_auth_config_fields: The fields required for the source auth config
             optional_fields: Fields that can be skipped if the provider doesn't have them
+            source_connection_id: UUID of the source connection (used by Custom provider
+                to scope credentials per connection)
         """
         pass
 
@@ -104,6 +115,7 @@ class BaseAuthProvider(ABC):
         source_auth_config_fields: List[str],
         optional_fields: Optional[Set[str]] = None,
         source_config_field_mappings: Optional[Dict[str, str]] = None,
+        source_connection_id: Optional[UUID] = None,
     ) -> AuthResult:
         """Get auth result with credentials for a source.
 
@@ -115,12 +127,16 @@ class BaseAuthProvider(ABC):
             source_auth_config_fields: The fields required for the source auth config
             optional_fields: Fields that can be skipped if the provider doesn't have them
             source_config_field_mappings: Mapping of config fields extractable from auth response
+            source_connection_id: UUID of the source connection
 
         Returns:
             AuthResult with credentials and optional source config
         """
         credentials = await self.get_creds_for_source(
-            source_short_name, source_auth_config_fields, optional_fields
+            source_short_name,
+            source_auth_config_fields,
+            optional_fields,
+            source_connection_id=source_connection_id,
         )
 
         source_config = {}

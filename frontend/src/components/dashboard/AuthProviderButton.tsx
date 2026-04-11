@@ -10,7 +10,8 @@ interface AuthProviderButtonProps {
     name: string;
     shortName: string;
     isConnected?: boolean;
-    isComingSoon?: boolean;  // Add this prop
+    connectionCount?: number;
+    isComingSoon?: boolean;
     onClick?: () => void;
 }
 
@@ -19,7 +20,8 @@ export const AuthProviderButton = ({
     name,
     shortName,
     isConnected = false,
-    isComingSoon = false,  // Add default value
+    connectionCount = 0,
+    isComingSoon = false,
     onClick
 }: AuthProviderButtonProps) => {
     const { resolvedTheme } = useTheme();
@@ -30,12 +32,6 @@ export const AuthProviderButton = ({
         // Don't handle clicks for coming soon providers
         if (isComingSoon) return;
 
-        console.log('🔘 [AuthProviderButton] Button clicked:', {
-            id,
-            name,
-            shortName,
-            isConnected
-        });
         if (onClick) {
             onClick();
         }
@@ -78,7 +74,19 @@ export const AuthProviderButton = ({
                         )}
                     </div>
                     <div className="flex flex-col">
-                        <span className="text-xs sm:text-sm font-medium truncate">{name}</span>
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-xs sm:text-sm font-medium truncate">{name}</span>
+                            {connectionCount > 1 && (
+                                <span className={cn(
+                                    "text-[10px] font-medium px-1.5 py-0.5 rounded-full",
+                                    isDark
+                                        ? "bg-blue-900/60 text-blue-300"
+                                        : "bg-blue-100 text-blue-700"
+                                )}>
+                                    {connectionCount}
+                                </span>
+                            )}
+                        </div>
                         {isComingSoon && (
                             <span className="text-[10px] sm:text-xs text-muted-foreground">
                                 Coming soon

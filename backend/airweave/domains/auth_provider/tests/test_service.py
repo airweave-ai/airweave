@@ -9,7 +9,7 @@ import pytest
 from pydantic import BaseModel
 
 from airweave.core.exceptions import InvalidInputError, InvalidStateError, NotFoundException
-from airweave.core.shared_models import IntegrationType
+from airweave.core.shared_models import FeatureFlag, IntegrationType
 from airweave.domains.auth_provider.service import AuthProviderService
 from airweave.domains.auth_provider.types import AuthProviderRegistryEntry
 from airweave.platform.configs._base import Fields
@@ -403,3 +403,73 @@ async def test_to_schema_include_and_exclude_masked():
 
     no_mask = await service._to_schema("db", conn, _ctx(), include_masked_client_id=False)
     assert no_mask.masked_client_id is None
+
+
+# ---------------------------------------------------------------------------
+# Feature flag filtering
+# ---------------------------------------------------------------------------
+
+_UNFLAGGED = _entry(short_name="composio")
+_FLAGGED = AuthProviderRegistryEntry(
+    **{**_entry(short_name="custom").model_dump(), "name": "Custom", "feature_flag": "custom_auth_provider"}
+)
+
+
+def _ctx_with_features(features: list[FeatureFlag] | None = None):
+    """Build a context with organization.enabled_features."""
+    org = SimpleNamespace(enabled_features=features or [])
+    logger = SimpleNamespace(info=lambda *a, **k: None, error=lambda *a, **k: None)
+    return SimpleNamespace(
+        logger=logger,
+        organization=org,
+        has_user_context=True,
+        tracking_email="owner@airweave.ai",
+    )
+
+
+class TestIsHiddenByFeatureFlag:
+    """Tests for _is_hidden_by_feature_flag."""
+
+    def test_no_flag_always_visible(self):
+        assert AuthProviderService._is_hidden_by_feature_flag(_UNFLAGGED, []) is False
+
+    def test_flag_missing_from_org(self):
+        assert AuthProviderService._is_hidden_by_feature_flag(_FLAGGED, []) is True
+
+    def test_flag_present_in_org(self):
+        assert (
+            AuthProviderService._is_hidden_by_feature_flag(
+                _FLAGGED, [FeatureFlag.CUSTOM_AUTH_PROVIDER]
+            )
+            is False
+        )
+
+    def test_unknown_flag_fails_open(self):
+        entry = AuthProviderRegistryEntry(
+            **{**_UNFLAGGED.model_dump(), "feature_flag": "nonexistent_flag"}
+        )
+        assert AuthProviderService._is_hidden_by_feature_flag(entry, []) is False
+
+
+@pytest.mark.asyncio
+async def test_list_metadata_hides_flagged_provider():
+    registry = SimpleNamespace(list_all=lambda: [_UNFLAGGED, _FLAGGED])
+    service = AuthProviderService(registry, connection_repo=None, credential_repo=None)
+
+    ctx = _ctx_with_features()
+    result = await service.list_metadata(ctx=ctx)
+    names = [m.short_name for m in result]
+    assert "composio" in names
+    assert "custom" not in names
+
+
+@pytest.mark.asyncio
+async def test_list_metadata_shows_flagged_provider_with_flag():
+    registry = SimpleNamespace(list_all=lambda: [_UNFLAGGED, _FLAGGED])
+    service = AuthProviderService(registry, connection_repo=None, credential_repo=None)
+
+    ctx = _ctx_with_features([FeatureFlag.CUSTOM_AUTH_PROVIDER])
+    result = await service.list_metadata(ctx=ctx)
+    names = [m.short_name for m in result]
+    assert "composio" in names
+    assert "custom" in names

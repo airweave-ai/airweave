@@ -24,7 +24,7 @@ export const AuthProviderTable = () => {
     const [dialogOpen, setDialogOpen] = useState(false);
     const [selectedAuthProvider, setSelectedAuthProvider] = useState<any>(null);
     const [selectedConnection, setSelectedConnection] = useState<any>(null);
-    const [dialogMode, setDialogMode] = useState<'auth-provider' | 'auth-provider-detail' | 'auth-provider-edit'>('auth-provider');
+    const [dialogMode, setDialogMode] = useState<'auth-provider' | 'auth-provider-detail' | 'auth-provider-edit' | 'auth-provider-list'>('auth-provider');
     const [remountKey, setRemountKey] = useState(0);
 
     // Fetch auth providers and connections on component mount
@@ -33,79 +33,35 @@ export const AuthProviderTable = () => {
         Promise.all([
             fetchAuthProviders(),
             fetchAuthProviderConnections()
-        ]).then(([providers, connections]) => {
-            console.log(`🔄 [AuthProviderTable] Auth providers loaded: ${providers.length} providers, ${connections.length} connections`);
-        });
+        ]);
     }, [fetchAuthProviders, fetchAuthProviderConnections]);
 
-    // Log state changes
-    useEffect(() => {
-        console.log('🎮 [AuthProviderTable] State changed:', {
-            dialogOpen,
-            dialogMode,
-            selectedAuthProvider: selectedAuthProvider?.short_name,
-            selectedConnection: selectedConnection?.readable_id
-        });
-    }, [dialogOpen, dialogMode, selectedAuthProvider, selectedConnection]);
-
-    // Log when connections change
-    useEffect(() => {
-        console.log('📊 [AuthProviderTable] Auth provider connections changed:', {
-            count: authProviderConnections.length,
-            isLoadingConnections
-        });
-    }, [authProviderConnections, isLoadingConnections]);
-
-    // Log when dialog open state changes
-    useEffect(() => {
-        console.log('🚨 [AuthProviderTable] dialogOpen state changed to:', dialogOpen);
-    }, [dialogOpen]);
-
-    // Log dialog state for debugging
-
     const handleAuthProviderClick = (authProvider: any) => {
-        console.log('🖱️ [AuthProviderTable] handleAuthProviderClick called:', {
-            authProvider: authProvider.short_name,
-            hasConnection: !!authProviderConnections.find(conn => conn.short_name === authProvider.short_name)
-        });
+        const connections = authProviderConnections.filter(conn => conn.short_name === authProvider.short_name);
 
-        const connection = authProviderConnections.find(conn => conn.short_name === authProvider.short_name);
+        setSelectedAuthProvider(authProvider);
 
-        if (connection) {
-            console.log('🔗 [AuthProviderTable] Found existing connection:', connection.readable_id);
-            // Auth provider is already connected, show details
-            setSelectedAuthProvider(authProvider);
-            setSelectedConnection(connection);
-            setDialogMode('auth-provider-detail');
-            setDialogOpen(true);
-        } else if (!canManage) {
-            toast.info("Only admins can configure auth providers");
-            return;
-        } else {
-            console.log('➕ [AuthProviderTable] No connection found, opening configure dialog');
-            // Auth provider not connected, show configure dialog
-            setSelectedAuthProvider(authProvider);
+        if (connections.length === 0) {
+            if (!canManage) {
+                toast.info("Only admins can configure auth providers");
+                return;
+            }
             setSelectedConnection(null);
             setDialogMode('auth-provider');
             setDialogOpen(true);
+        } else {
+            setSelectedConnection(null);
+            setDialogMode('auth-provider-list');
+            setDialogOpen(true);
         }
-
-        console.log('🎯 [AuthProviderTable] Dialog state after click:', {
-            dialogOpen: true,
-            dialogMode: connection ? 'auth-provider-detail' : 'auth-provider',
-            selectedAuthProvider: authProvider.short_name
-        });
     };
 
     const handleDialogComplete = (result: any) => {
-        console.log("🏁 [AuthProviderTable] Dialog completed:", result);
-
         // Close the dialog
         setDialogOpen(false);
 
         // If it was an edit action, open edit dialog
         if (result?.action === 'edit') {
-            console.log("✏️ [AuthProviderTable] Edit action requested, opening edit dialog");
 
             // Store the auth provider details for edit dialog
             const tempAuthProvider = selectedAuthProvider;
@@ -130,7 +86,6 @@ export const AuthProviderTable = () => {
 
         // If it was an updated action, open detail dialog with refreshed data
         if (result?.action === 'updated') {
-            console.log("✅ [AuthProviderTable] Auth provider connection was updated");
 
             // Find the updated connection from the refreshed list
             const updatedConnection = authProviderConnections.find(
@@ -153,7 +108,6 @@ export const AuthProviderTable = () => {
 
         // If it was a deletion, increment remountKey to force dialog remount
         if (result?.action === 'deleted') {
-            console.log("🗑️ [AuthProviderTable] Auth provider connection was deleted");
             setRemountKey(prev => prev + 1);
         }
 
@@ -164,7 +118,6 @@ export const AuthProviderTable = () => {
 
         // Refresh connections if a new one was created or deleted
         if (result?.success) {
-            console.log("♻️ [AuthProviderTable] Refreshing auth provider connections");
             fetchAuthProviderConnections();
         }
     };
@@ -187,9 +140,7 @@ export const AuthProviderTable = () => {
     // Memoize dialog key to prevent remounts
     const dialogKey = useMemo(() => {
         // Only use auth provider short name as key since connection ID isn't available when creating new
-        const key = dialogOpen ? `auth-${selectedAuthProvider?.short_name || 'none'}-${remountKey}` : 'closed';
-        console.log('🔑 [AuthProviderTable] Dialog key:', key);
-        return key;
+        return dialogOpen ? `auth-${selectedAuthProvider?.short_name || 'none'}-${remountKey}` : 'closed';
     }, [dialogOpen, selectedAuthProvider?.short_name, remountKey]);
 
     return (
@@ -205,7 +156,7 @@ export const AuthProviderTable = () => {
                     </div>
                 ) : (
                     allProviders.map(provider => {
-                        const connection = authProviderConnections.find(
+                        const connections = authProviderConnections.filter(
                             conn => conn.short_name === provider.short_name
                         );
 
@@ -215,7 +166,8 @@ export const AuthProviderTable = () => {
                                 id={provider.short_name}
                                 name={provider.name}
                                 shortName={provider.short_name}
-                                isConnected={!!connection}
+                                isConnected={connections.length > 0}
+                                connectionCount={connections.length}
                                 isComingSoon={'isComingSoon' in provider ? provider.isComingSoon : false}
                                 onClick={() => handleAuthProviderClick(provider)}
                             />
