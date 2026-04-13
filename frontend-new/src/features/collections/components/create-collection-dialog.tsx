@@ -189,7 +189,7 @@ export function CreateCollectionDialogScreen({
           </form>
         </FlowDialogMain>
 
-        <FlowDialogAside className="flex min-h-full flex-col gap-4 p-4 xl:w-112">
+        <FlowDialogAside className="flex min-h-full flex-col gap-4 p-4 lg:w-112">
           <section className="space-y-4">
             <div className="space-y-1">
               <div className="flex items-center justify-between gap-3">

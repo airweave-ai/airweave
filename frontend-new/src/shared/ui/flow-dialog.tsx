@@ -63,7 +63,7 @@ function FlowDialogBody({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="flow-dialog-body"
       className={cn(
-        'flex min-h-0 flex-1 flex-col divide-y divide-border overflow-hidden xl:flex-row xl:divide-x xl:divide-y-0',
+        'flex min-h-0 flex-1 flex-col divide-y divide-border overflow-y-auto lg:flex-row lg:divide-x lg:divide-y-0 lg:overflow-hidden',
         className,
       )}
       {...props}
@@ -75,7 +75,10 @@ function FlowDialogMain({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="flow-dialog-main"
-      className={cn('min-h-0 flex-1 overflow-y-auto px-6 py-6', className)}
+      className={cn(
+        'min-h-0 flex-none overflow-visible px-6 py-6 lg:flex-1 lg:overflow-y-auto',
+        className,
+      )}
       {...props}
     />
   );
@@ -89,7 +92,7 @@ function FlowDialogAside({
     <aside
       data-slot="flow-dialog-aside"
       className={cn(
-        'w-full shrink-0 overflow-y-auto px-6 py-6 xl:w-80',
+        'w-full shrink-0 overflow-visible px-6 py-6 lg:w-80 lg:overflow-y-auto',
         className,
       )}
       {...props}

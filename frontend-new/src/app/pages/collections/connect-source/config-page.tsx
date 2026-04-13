@@ -2,6 +2,7 @@ import { getRouteApi } from '@tanstack/react-router';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { router } from '@/app/router/router';
 import {
+  ConnectSourceConfigSdkAside,
   ConnectSourceStepDialogHeader,
   ConnectSourceStepLayoutAside,
   ConnectSourceStepLayoutMain,
@@ -75,13 +76,7 @@ export function ConnectSourceConfigPage() {
         </ConnectSourceStepLayoutMain>
 
         <ConnectSourceStepLayoutAside>
-          <pre className="text-wrap">
-            # Initialize the Airweave client client = AirweaveSDK(
-            api_key="YOUR_API_KEY", ) # Create connection — returns auth_url for
-            OAuth flows response = client.source_connections.create(
-            short_name="notion", readable_collection_id="your-collection-id",
-            name="Notion Connection", )
-          </pre>
+          <ConnectSourceConfigSdkAside sourceName={source.name} />
         </ConnectSourceStepLayoutAside>
       </FlowDialogBody>
     </>

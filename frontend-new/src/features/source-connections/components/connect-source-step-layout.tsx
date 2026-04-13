@@ -37,8 +37,11 @@ export function ConnectSourceStepLayoutMain({
   ...props
 }: React.ComponentProps<typeof FlowDialogMain>) {
   return (
-    <FlowDialogMain className={cn('overflow-hidden', className)} {...props}>
-      <div className="flex h-full min-h-0 max-w-full flex-col gap-6">
+    <FlowDialogMain
+      className={cn('overflow-visible lg:overflow-hidden', className)}
+      {...props}
+    >
+      <div className="flex min-h-0 max-w-full flex-col gap-6 lg:h-full">
         {children}
       </div>
     </FlowDialogMain>
@@ -147,5 +150,13 @@ export function ConnectSourceStepLayoutAside({
   className,
   ...props
 }: React.ComponentProps<typeof FlowDialogAside>) {
-  return <FlowDialogAside className={cn('xl:w-112', className)} {...props} />;
+  return (
+    <FlowDialogAside
+      className={cn(
+        'min-h-0 overflow-visible px-0 py-0 lg:w-112 lg:overflow-hidden',
+        className,
+      )}
+      {...props}
+    />
+  );
 }

@@ -15,6 +15,11 @@ export {
   ConnectSourceAuthError,
   ConnectSourceAuthorize,
 } from './components/connect-source-auth';
+export {
+  ConnectSourceAuthSdkAside,
+  ConnectSourceConfigSdkAside,
+  ConnectSourceSyncSdkAside,
+} from './components/source-connection-sdk-aside';
 export { ConnectSourceSync } from './components/connect-source-sync';
 export {
   ConnectSourcePrimaryActionButton,
@@ -30,7 +35,12 @@ export {
   SourcePickerFilters,
   SourcePickerResults,
 } from './components/source-picker';
-export { SourceConnectionConfigForm } from './components/source-connection-config-form';
-export type { SourceConnectionFormOutput } from './components/source-connection-config-form';
+export {
+  SourceConnectionConfigForm,
+} from './components/source-connection-config-form';
+export type {
+  SourceConnectionAuthVariant,
+  SourceConnectionFormOutput,
+} from './components/source-connection-config-form';
 export { useSourceConnectionConfigSubmission } from './hooks/use-source-connection-config-submission';
 export { useSourcePicker } from './hooks/use-source-picker';
