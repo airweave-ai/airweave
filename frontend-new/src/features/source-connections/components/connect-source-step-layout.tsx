@@ -66,35 +66,49 @@ export function ConnectSourceStepLayoutContent({
 }
 
 export function ConnectSourceStepLayoutActions({
-  backDisabled = false,
-  backLabel = 'Back',
+  backAction,
   children,
   className,
-  onBack,
   ...props
 }: React.ComponentProps<'div'> & {
-  backDisabled?: boolean;
-  backLabel?: string;
+  backAction: React.ReactNode;
   children?: React.ReactNode;
-  onBack: () => void;
 }) {
   return (
     <div className={cn('shrink-0', className)} {...props}>
       <div className="flex flex-col gap-2 sm:flex-row sm:justify-between">
-        <Button
-          type="button"
-          size="lg"
-          variant="ghost"
-          className="w-full sm:max-w-55"
-          disabled={backDisabled}
-          onClick={onBack}
-        >
-          {backLabel}
-        </Button>
+        <div className="w-full sm:max-w-55">{backAction}</div>
 
         <div className="w-full sm:max-w-130">{children}</div>
       </div>
     </div>
+  );
+}
+
+export interface ConnectSourceBackActionButtonProps extends React.ComponentProps<
+  typeof Button
+> {}
+
+export function ConnectSourceBackActionButton({
+  asChild = false,
+  children,
+  className,
+  size = 'lg',
+  type = 'button',
+  variant = 'ghost',
+  ...props
+}: ConnectSourceBackActionButtonProps) {
+  return (
+    <Button
+      asChild={asChild}
+      type={asChild ? undefined : type}
+      size={size}
+      variant={variant}
+      className={cn('w-full', className)}
+      {...props}
+    >
+      {children}
+    </Button>
   );
 }
 

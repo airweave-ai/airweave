@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { IconArrowUpRight, IconCheck, IconCopy } from '@tabler/icons-react';
 import {
+  ConnectSourceBackActionButton,
   ConnectSourcePrimaryActionButton,
   ConnectSourceStepLayoutActions,
   ConnectSourceStepLayoutContent,
@@ -172,7 +173,13 @@ function AuthorizeReadyCard({
         </div>
       </ConnectSourceStepLayoutContent>
 
-      <ConnectSourceStepLayoutActions onBack={onBack}>
+      <ConnectSourceStepLayoutActions
+        backAction={
+          <ConnectSourceBackActionButton onClick={onBack}>
+            Back
+          </ConnectSourceBackActionButton>
+        }
+      >
         <ConnectSourcePrimaryActionButton
           type="button"
           icon={<IconArrowUpRight className="size-4" />}

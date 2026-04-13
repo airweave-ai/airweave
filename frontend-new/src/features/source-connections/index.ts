@@ -3,14 +3,19 @@ export {
   ensureSourceConnection,
   ensureSource,
   prefetchSources,
+  useCancelSourceConnectionSyncJobMutation,
+  useGetSourceConnectionJobsQueryOptions,
   useGetSourceConnectionQueryOptions,
+  useGetSyncJobStateStreamQueryOptions,
   useGetSourceQueryOptions,
+  useRunSourceConnectionSyncMutation,
 } from './api';
 export {
   ConnectSourceAuthCallback,
   ConnectSourceAuthError,
   ConnectSourceAuthorize,
 } from './components/connect-source-auth';
+export { ConnectSourceSync } from './components/connect-source-sync';
 export {
   ConnectSourcePrimaryActionButton,
   ConnectSourceStepDialogHeader,

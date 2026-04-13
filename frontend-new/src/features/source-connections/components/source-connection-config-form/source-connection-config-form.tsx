@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { IconArrowRight } from '@tabler/icons-react';
 import {
+  ConnectSourceBackActionButton,
   ConnectSourcePrimaryActionButton,
   ConnectSourceStepLayoutActions,
   ConnectSourceStepLayoutContent,
@@ -104,8 +105,14 @@ export function SourceConnectionConfigForm({
 
             return (
               <ConnectSourceStepLayoutActions
-                onBack={onBack}
-                backDisabled={isSubmitting}
+                backAction={
+                  <ConnectSourceBackActionButton
+                    disabled={isSubmitting}
+                    onClick={onBack}
+                  >
+                    Back
+                  </ConnectSourceBackActionButton>
+                }
               >
                 <ConnectSourcePrimaryActionButton
                   type="submit"
