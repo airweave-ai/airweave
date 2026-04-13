@@ -11,6 +11,18 @@ export {
   verifySourceConnectionOAuthMutationOptions,
 } from './source-connections';
 export {
+  cancelSourceConnectionSyncJobMutationOptions,
+  getSourceConnectionJobsQueryOptions,
+  getSyncJobStateStreamQueryOptions,
+  runSourceConnectionSyncMutationOptions,
+  useCancelSourceConnectionSyncJobMutation,
+  useCancelSourceConnectionSyncJobMutationOptions,
+  useGetSourceConnectionJobsQueryOptions,
+  useGetSyncJobStateStreamQueryOptions,
+  useRunSourceConnectionSyncMutation,
+  useRunSourceConnectionSyncMutationOptions,
+} from './sync';
+export {
   getSourceQueryOptions,
   listSourcesQueryOptions,
   prefetchSources,

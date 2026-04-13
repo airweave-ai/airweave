@@ -7,6 +7,7 @@ import {
   useReinitiateSourceConnectionOAuthMutationOptions,
 } from '../../api';
 import {
+  ConnectSourceBackActionButton,
   ConnectSourcePrimaryActionButton,
   ConnectSourceStepLayoutActions,
   ConnectSourceStepLayoutContent,
@@ -75,7 +76,13 @@ export function ConnectSourceAuthError({
           sourceName={sourceName}
         />
       ) : (
-        <ConnectSourceStepLayoutActions backLabel={backLabel} onBack={onBack} />
+        <ConnectSourceStepLayoutActions
+          backAction={
+            <ConnectSourceBackActionButton onClick={onBack}>
+              {backLabel ?? 'Back'}
+            </ConnectSourceBackActionButton>
+          }
+        />
       )}
     </>
   );
@@ -130,9 +137,14 @@ function ReconnectActions({
       ) : null}
 
       <ConnectSourceStepLayoutActions
-        backLabel={backLabel}
-        onBack={onBack}
-        backDisabled={reauthorizeMutation.isPending}
+        backAction={
+          <ConnectSourceBackActionButton
+            disabled={reauthorizeMutation.isPending}
+            onClick={onBack}
+          >
+            {backLabel ?? 'Back'}
+          </ConnectSourceBackActionButton>
+        }
       >
         <ConnectSourcePrimaryActionButton
           type="button"

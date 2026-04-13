@@ -246,7 +246,7 @@ export function CreateCollectionDialogScreen({
             </div>
           </section>
 
-          <p className="mt-auto pt-4 font-mono text-sm leading-5 text-muted-foreground">
+          <p className="mt-auto pt-4 pb-1.5 font-mono text-sm leading-5 text-muted-foreground">
             You can rename this collection, add/remove sources, and pause sync
             at any time.
           </p>

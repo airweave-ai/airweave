@@ -1,13 +1,11 @@
+import { useSuspenseQueries } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
-import { useSuspenseQuery } from '@tanstack/react-query';
 import {
-  ConnectSourcePrimaryActionButton,
   ConnectSourceStepDialogHeader,
-  ConnectSourceStepLayoutActions,
   ConnectSourceStepLayoutAside,
-  ConnectSourceStepLayoutContent,
   ConnectSourceStepLayoutMain,
-  SourceConnectionHeader,
+  ConnectSourceSync,
+  useGetSourceConnectionQueryOptions,
   useGetSourceQueryOptions,
 } from '@/features/source-connections';
 import { FlowDialogBody } from '@/shared/ui/flow-dialog';
@@ -19,55 +17,48 @@ const routeApi = getRouteApi(
 export function ConnectSourceSyncPage() {
   const navigate = routeApi.useNavigate();
   const { collectionId, source: sourceShortName } = routeApi.useParams();
-  const getSourceQueryOptions = useGetSourceQueryOptions({
+  const { sourceConnectionId } = routeApi.useLoaderData();
+  const sourceQueryOptions = useGetSourceQueryOptions({
     sourceShortName,
   });
-  const { data: source } = useSuspenseQuery(getSourceQueryOptions);
-
-  const handleClose = () =>
-    void navigate({
-      params: { collectionId },
-      to: '/collections/$collectionId',
-    });
-
-  const handleConnectAnotherSource = () =>
-    void navigate({
-      params: { collectionId },
-      to: '/collections/$collectionId/connect-source',
-    });
+  const sourceConnectionQueryOptions = useGetSourceConnectionQueryOptions({
+    sourceConnectionId,
+  });
+  const [{ data: source }, { data: sourceConnection }] = useSuspenseQueries({
+    queries: [sourceQueryOptions, sourceConnectionQueryOptions],
+  });
 
   return (
     <>
       <ConnectSourceStepDialogHeader
-        onClose={handleClose}
+        onClose={() =>
+          void navigate({
+            params: { collectionId },
+            to: '/collections/$collectionId',
+          })
+        }
         sourceName={source.name}
       />
 
       <FlowDialogBody>
         <ConnectSourceStepLayoutMain>
-          <SourceConnectionHeader source={source} />
-
-          <ConnectSourceStepLayoutContent className="flex items-center justify-center text-center">
-            <div className="w-full space-y-6 rounded-xl border border-border bg-foreground/5 p-6">
-              <div className="space-y-2">
-                <p className="text-sm text-foreground">
-                  This step is not implemented yet.
-                </p>
-              </div>
-            </div>
-          </ConnectSourceStepLayoutContent>
-
-          <ConnectSourceStepLayoutActions
-            backLabel="Connect another source"
-            onBack={handleConnectAnotherSource}
-          >
-            <ConnectSourcePrimaryActionButton
-              type="button"
-              onClick={handleClose}
-            >
-              Close
-            </ConnectSourcePrimaryActionButton>
-          </ConnectSourceStepLayoutActions>
+          <ConnectSourceSync
+            lastJob={sourceConnection.sync?.last_job ?? null}
+            onBack={() =>
+              void navigate({
+                params: { collectionId },
+                to: '/collections/$collectionId/connect-source',
+              })
+            }
+            onClose={() =>
+              void navigate({
+                params: { collectionId },
+                to: '/collections/$collectionId',
+              })
+            }
+            source={source}
+            sourceConnection={sourceConnection}
+          />
         </ConnectSourceStepLayoutMain>
 
         <ConnectSourceStepLayoutAside>
