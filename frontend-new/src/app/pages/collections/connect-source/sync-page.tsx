@@ -5,6 +5,7 @@ import {
   ConnectSourceStepLayoutAside,
   ConnectSourceStepLayoutMain,
   ConnectSourceSync,
+  ConnectSourceSyncSdkAside,
   useGetSourceConnectionQueryOptions,
   useGetSourceQueryOptions,
 } from '@/features/source-connections';
@@ -62,13 +63,7 @@ export function ConnectSourceSyncPage() {
         </ConnectSourceStepLayoutMain>
 
         <ConnectSourceStepLayoutAside>
-          <pre className="text-wrap">
-            # Initialize the Airweave client client = AirweaveSDK(
-            api_key="YOUR_API_KEY", ) # Create connection — returns auth_url for
-            OAuth flows response = client.source_connections.create(
-            short_name="notion", readable_collection_id="your-collection-id",
-            name="Notion Connection", )
-          </pre>
+          <ConnectSourceSyncSdkAside sourceName={source.name} />
         </ConnectSourceStepLayoutAside>
       </FlowDialogBody>
     </>
