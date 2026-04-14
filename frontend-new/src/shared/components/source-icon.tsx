@@ -1,8 +1,6 @@
 import type { ComponentProps } from 'react';
-import {
-  getAppIconUrl,
-  type AppIconVariant,
-} from '@/shared/icons/get-app-icon-url';
+import type { AppIconVariant } from '@/shared/icons/get-app-icon-url';
+import { getAppIconUrl } from '@/shared/icons/get-app-icon-url';
 import { cn } from '@/shared/tailwind/cn';
 
 interface SourceIconProps extends ComponentProps<'div'> {

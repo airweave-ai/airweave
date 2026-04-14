@@ -3,9 +3,11 @@ export {
   ensureSourceConnection,
   ensureSource,
   prefetchSources,
+  listSourceConnectionsQueryOptions,
   useCancelSourceConnectionSyncJobMutation,
   useGetSourceConnectionJobsQueryOptions,
   useGetSourceConnectionQueryOptions,
+  useListSourceConnectionsQueryOptions,
   useGetSyncJobStateStreamQueryOptions,
   useGetSourceQueryOptions,
   useRunSourceConnectionSyncMutation,
@@ -35,9 +37,7 @@ export {
   SourcePickerFilters,
   SourcePickerResults,
 } from './components/source-picker';
-export {
-  SourceConnectionConfigForm,
-} from './components/source-connection-config-form';
+export { SourceConnectionConfigForm } from './components/source-connection-config-form';
 export type {
   SourceConnectionAuthVariant,
   SourceConnectionFormOutput,

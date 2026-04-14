@@ -17,7 +17,9 @@ export function ConnectSourceSyncStatusCard({
   subtitle,
   title,
 }: ConnectSourceSyncStatusCardProps) {
-  const normalizedProgress = completed ? 1 : Math.max(0, Math.min(progress, 0.95));
+  const normalizedProgress = completed
+    ? 1
+    : Math.max(0, Math.min(progress, 0.95));
 
   return (
     <div className="space-y-4 rounded-md border border-border bg-background p-4">
@@ -42,7 +44,10 @@ export function ConnectSourceSyncStatusCard({
             className={cn(
               'h-full w-full rounded-full bg-foreground transition-transform duration-500 ease-[cubic-bezier(0.215,0.61,0.355,1)] motion-reduce:transition-none',
             )}
-            style={{ transform: `scaleX(${normalizedProgress})`, transformOrigin: 'left center' }}
+            style={{
+              transform: `scaleX(${normalizedProgress})`,
+              transformOrigin: 'left center',
+            }}
             aria-hidden="true"
           />
         </div>

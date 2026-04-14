@@ -43,16 +43,43 @@ const SYNC_SNIPPETS = sourceConnectionSdkSnippets.sync satisfies Record<
   SourceConnectionSdkSnippet
 >;
 
-export function ConnectSourceConfigSdkAside({ sourceName }: { sourceName: string }) {
-  return <SourceConnectionSdkAside snippets={CONFIG_SNIPPETS} sourceName={sourceName} />;
+export function ConnectSourceConfigSdkAside({
+  sourceName,
+}: {
+  sourceName: string;
+}) {
+  return (
+    <SourceConnectionSdkAside
+      snippets={CONFIG_SNIPPETS}
+      sourceName={sourceName}
+    />
+  );
 }
 
-export function ConnectSourceAuthSdkAside({ sourceName }: { sourceName: string }) {
-  return <SourceConnectionSdkAside snippets={AUTH_SNIPPETS} sourceName={sourceName} />;
+export function ConnectSourceAuthSdkAside({
+  sourceName,
+}: {
+  sourceName: string;
+}) {
+  return (
+    <SourceConnectionSdkAside
+      snippets={AUTH_SNIPPETS}
+      sourceName={sourceName}
+    />
+  );
 }
 
-export function ConnectSourceSyncSdkAside({ sourceName }: { sourceName: string }) {
-  return <SourceConnectionSdkAside snippets={SYNC_SNIPPETS} sourceName={sourceName} />;
+export function ConnectSourceSyncSdkAside({
+  sourceName,
+}: {
+  sourceName: string;
+}) {
+  return (
+    <SourceConnectionSdkAside
+      snippets={SYNC_SNIPPETS}
+      sourceName={sourceName}
+    />
+  );
 }
 
 function SourceConnectionSdkAside({
