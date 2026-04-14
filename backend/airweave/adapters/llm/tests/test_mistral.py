@@ -270,6 +270,7 @@ async def test_chat_extracts_thinking_from_content_chunks(mistral_llm: MistralLL
             }
         ],
         system_prompt="sys",
+        thinking=True,
     )
 
     assert result.thinking == "Let me reason about this..."

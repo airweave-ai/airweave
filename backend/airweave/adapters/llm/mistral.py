@@ -147,6 +147,10 @@ class MistralLLM(BaseLLM):
         raw_content = message.content
         text, thinking_text = _extract_text_and_thinking(raw_content)
 
+        # Only surface thinking when the caller requested it
+        if not thinking:
+            thinking_text = None
+
         tool_calls: list[LLMToolCall] = []
         if message.tool_calls:
             for tc_item in message.tool_calls:
