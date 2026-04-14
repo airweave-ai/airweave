@@ -44,18 +44,22 @@ class CustomAuthProvider(BaseAuthProvider):
     }
 
     # Instance attributes set in create()
-    endpoint_url: str
+    base_endpoint_url: str
     api_key: str
 
     @classmethod
     async def create(
-        cls, credentials: Optional[Dict[str, Any]] = None, config: Optional[Dict[str, Any]] = None
+        cls,
+        credentials: Optional[Dict[str, Any]] = None,
+        config: Optional[Dict[str, Any]] = None,
     ) -> "CustomAuthProvider":
         """Create a new Custom auth provider instance."""
-        assert credentials is not None
+        if credentials is None:
+            raise ValueError("credentials parameter is required")
+        auth_config = CustomAuthConfig(**credentials)
         instance = cls()
-        instance.endpoint_url = credentials["endpoint_url"].rstrip("/")
-        instance.api_key = credentials["api_key"]
+        instance.base_endpoint_url = auth_config.base_endpoint_url
+        instance.api_key = auth_config.api_key
         return instance
 
     def _build_headers(self) -> Dict[str, str]:
@@ -126,7 +130,7 @@ class CustomAuthProvider(BaseAuthProvider):
             )
         _optional_fields = optional_fields or set()
         headers = self._build_headers()
-        url = f"{self.endpoint_url}/{source_connection_id}"
+        url = f"{self.base_endpoint_url}/{source_connection_id}"
 
         self._check_ssrf(url)
         self.logger.info(f"[Custom] Fetching credentials for source '{source_short_name}'")
@@ -182,7 +186,7 @@ class CustomAuthProvider(BaseAuthProvider):
     async def validate(self) -> bool:
         """Validate the custom endpoint by calling GET {base_url}."""
         headers = self._build_headers()
-        url = self.endpoint_url
+        url = self.base_endpoint_url
 
         self._check_ssrf(url)
         self.logger.info("[Custom] Validating endpoint")

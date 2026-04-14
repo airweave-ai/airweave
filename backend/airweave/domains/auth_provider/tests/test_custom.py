@@ -23,7 +23,7 @@ async def provider():
     """Create a Custom provider."""
     return await CustomAuthProvider.create(
         credentials={
-            "endpoint_url": "https://api.example.com/tokens",
+            "base_endpoint_url": "https://api.example.com/tokens",
             "api_key": "my-secret-key",
         }
     )
@@ -34,18 +34,18 @@ class TestCreate:
 
     @pytest.mark.unit
     async def test_create(self, provider):
-        assert provider.endpoint_url == "https://api.example.com/tokens"
+        assert provider.base_endpoint_url == "https://api.example.com/tokens"
         assert provider.api_key == "my-secret-key"
 
     @pytest.mark.unit
     async def test_create_strips_trailing_slash(self):
         p = await CustomAuthProvider.create(
             credentials={
-                "endpoint_url": "https://api.example.com/tokens/",
+                "base_endpoint_url": "https://api.example.com/tokens/",
                 "api_key": "key",
             }
         )
-        assert p.endpoint_url == "https://api.example.com/tokens"
+        assert p.base_endpoint_url == "https://api.example.com/tokens"
 
 
 class TestBuildHeaders:
@@ -245,7 +245,7 @@ class TestGetCredsForSource:
 
     @pytest.mark.unit
     async def test_ssrf_blocked(self, provider):
-        provider.endpoint_url = "http://169.254.169.254/latest/meta-data"
+        provider.base_endpoint_url = "http://169.254.169.254/latest/meta-data"
 
         with pytest.raises(AuthProviderConfigError, match="SSRF"):
             await provider.get_creds_for_source(
@@ -305,7 +305,7 @@ class TestValidate:
 
     @pytest.mark.unit
     async def test_validate_ssrf_blocked(self, provider):
-        provider.endpoint_url = "http://169.254.169.254/latest/meta-data"
+        provider.base_endpoint_url = "http://169.254.169.254/latest/meta-data"
 
         with pytest.raises(AuthProviderConfigError, match="SSRF"):
             await provider.validate()

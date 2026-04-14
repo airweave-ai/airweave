@@ -1039,7 +1039,7 @@ class CustomAuthConfig(AuthConfig):
     - API key sources (Stripe, etc.):   {"api_key": "..."}
     """
 
-    endpoint_url: str = Field(
+    base_endpoint_url: str = Field(
         title="Endpoint Base URL",
         description=(
             "Base URL of your token endpoint. "
@@ -1057,12 +1057,12 @@ class CustomAuthConfig(AuthConfig):
         ),
     )
 
-    @field_validator("endpoint_url")
+    @field_validator("base_endpoint_url")
     @classmethod
-    def validate_endpoint_url(cls, v: str) -> str:
+    def validate_base_endpoint_url(cls, v: str) -> str:
         """Validate the endpoint URL for SSRF safety."""
         if not v or not v.strip():
-            raise ValueError("endpoint_url is required")
+            raise ValueError("base_endpoint_url is required")
         v = v.strip().rstrip("/")
         validate_url(v)
         return v
