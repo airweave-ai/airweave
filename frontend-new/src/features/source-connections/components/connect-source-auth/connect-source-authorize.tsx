@@ -6,9 +6,9 @@ import {
   ConnectSourceStepLayoutActions,
   ConnectSourceStepLayoutContent,
 } from '../connect-source-step-layout';
-import { SourceIcon } from '../source-icon';
 import { ConnectSourceAuthError } from './connect-source-auth-error';
 import type { SourceConnection } from '@/shared/api';
+import { SourceIcon } from '@/shared/components/source-icon';
 import { useCopyToClipboard } from '@/shared/hooks/use-copy-to-clipboard';
 import { Button } from '@/shared/ui/button';
 import {

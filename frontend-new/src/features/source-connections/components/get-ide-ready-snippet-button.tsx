@@ -1,4 +1,4 @@
-import { getAppIconUrl } from '@/shared/icons/get-app-icon-url';
+import { SourceIcon } from '@/shared/components/source-icon';
 import { Button } from '@/shared/ui/button';
 
 const IDE_READY_AGENT_SHORT_NAMES = [
@@ -17,28 +17,17 @@ export function GetIdeReadySnippetButton() {
     >
       <span>Get IDE-ready snippet</span>
       <span className="flex items-center -space-x-2">
-        {IDE_READY_AGENT_SHORT_NAMES.map((shortName, index) => {
-          const iconUrl = getAppIconUrl(shortName, 'color');
-
-          if (!iconUrl) {
-            return null;
-          }
-
-          return (
-            <span
-              key={shortName}
-              className="flex size-6 items-center justify-center rounded-full bg-background"
-              style={{ zIndex: IDE_READY_AGENT_SHORT_NAMES.length - index }}
-            >
-              <img
-                alt=""
-                aria-hidden="true"
-                className="size-5 object-contain"
-                src={iconUrl}
-              />
-            </span>
-          );
-        })}
+        {IDE_READY_AGENT_SHORT_NAMES.map((shortName, index) => (
+          <SourceIcon
+            key={shortName}
+            aria-hidden="true"
+            className="size-6 rounded-full bg-background p-0.5"
+            name={shortName}
+            shortName={shortName}
+            style={{ zIndex: IDE_READY_AGENT_SHORT_NAMES.length - index }}
+            variant="color"
+          />
+        ))}
       </span>
     </Button>
   );
