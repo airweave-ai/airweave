@@ -2,6 +2,10 @@
 
 Uses the native mistralai SDK for chat completions with json_schema
 structured output and OpenAI-compatible tool/function calling.
+
+Supports reasoning/thinking via two mechanisms:
+- Magistral models: native thinking (always-on), returned as ThinkChunk content blocks
+- Mistral Small 4: adjustable reasoning via reasoning_effort parameter
 """
 
 import json
@@ -11,6 +15,8 @@ from typing import Any, TypeVar
 from mistralai import Mistral
 from mistralai.models.jsonschema import JSONSchema
 from mistralai.models.responseformat import ResponseFormat
+from mistralai.models.textchunk import TextChunk
+from mistralai.models.thinkchunk import ThinkChunk
 from pydantic import BaseModel
 
 from airweave.adapters.llm.base import BaseLLM
@@ -88,8 +94,8 @@ class MistralLLM(BaseLLM):
                 provider=self._name,
             )
 
-        # Content may be a string or a list of content chunks
-        content = raw_content if isinstance(raw_content, str) else str(raw_content)
+        # Extract text, ignoring thinking chunks for structured output
+        content = _extract_text(raw_content)
 
         if response.usage:
             self._logger.debug(
@@ -116,6 +122,12 @@ class MistralLLM(BaseLLM):
         # Mistral uses OpenAI-compatible tool definitions directly
         strict_tools = self._prepare_tools_strict(tools)
 
+        # Build reasoning params based on thinking config
+        reasoning_params: dict[str, Any] = {}
+        tc = self._model_spec.thinking_config
+        if tc and tc.param_name == "reasoning_effort":
+            reasoning_params[tc.param_name] = "high" if thinking else "none"
+
         api_start = time.monotonic()
         response = await self._client.chat.complete_async(
             model=self._model_spec.api_model_name,
@@ -124,21 +136,21 @@ class MistralLLM(BaseLLM):
             tool_choice="any",
             temperature=0.3,
             max_tokens=max_tokens or self._model_spec.max_output_tokens,
+            **reasoning_params,
         )
         api_time = time.monotonic() - api_start
 
         choice = response.choices[0]
         message = choice.message
 
+        # Parse content — may contain thinking chunks for reasoning models
         raw_content = message.content
-        text: str | None = None
-        if raw_content:
-            text = raw_content if isinstance(raw_content, str) else str(raw_content)
+        text, thinking_text = _extract_text_and_thinking(raw_content)
 
         tool_calls: list[LLMToolCall] = []
         if message.tool_calls:
-            for tc in message.tool_calls:
-                arguments = tc.function.arguments
+            for tc_item in message.tool_calls:
+                arguments = tc_item.function.arguments
                 if isinstance(arguments, str):
                     try:
                         arguments = json.loads(arguments)
@@ -146,8 +158,8 @@ class MistralLLM(BaseLLM):
                         arguments = {}
                 tool_calls.append(
                     LLMToolCall(
-                        id=tc.id or "",
-                        name=tc.function.name,
+                        id=tc_item.id or "",
+                        name=tc_item.function.name,
                         arguments=arguments,
                     )
                 )
@@ -164,7 +176,7 @@ class MistralLLM(BaseLLM):
 
         return LLMResponse(
             text=text,
-            thinking=None,
+            thinking=thinking_text,
             tool_calls=tool_calls,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
@@ -194,3 +206,52 @@ class MistralLLM(BaseLLM):
             # Mistral SDK uses context manager protocol (__aexit__) for cleanup
             await self._client.__aexit__(None, None, None)
             self._logger.debug("[MistralLLM] Client closed")
+
+
+# ── Module-level helpers ───────────────────────────────────────────────
+
+
+def _extract_text(raw_content: Any) -> str:
+    """Extract text from content, which may be a string or list of typed chunks."""
+    if isinstance(raw_content, str):
+        return raw_content
+
+    # List of content chunks — collect only text chunks
+    text_parts: list[str] = []
+    if isinstance(raw_content, list):
+        for chunk in raw_content:
+            if isinstance(chunk, TextChunk):
+                text_parts.append(chunk.text)
+
+    return "\n".join(text_parts) if text_parts else str(raw_content)
+
+
+def _extract_text_and_thinking(raw_content: Any) -> tuple[str | None, str | None]:
+    """Extract text and thinking from content chunks.
+
+    Mistral reasoning models (Magistral, Mistral Small 4 with reasoning_effort)
+    return ThinkChunk blocks alongside TextChunk blocks in the content array.
+    ThinkChunk.thinking is a list of TextChunk/ReferenceChunk sub-items.
+    """
+    if raw_content is None:
+        return None, None
+
+    if isinstance(raw_content, str):
+        return raw_content if raw_content else None, None
+
+    text_parts: list[str] = []
+    thinking_parts: list[str] = []
+
+    if isinstance(raw_content, list):
+        for chunk in raw_content:
+            if isinstance(chunk, ThinkChunk):
+                # ThinkChunk.thinking is List[Union[TextChunk, ReferenceChunk]]
+                for sub in chunk.thinking:
+                    if isinstance(sub, TextChunk):
+                        thinking_parts.append(sub.text)
+            elif isinstance(chunk, TextChunk):
+                text_parts.append(chunk.text)
+
+    text = "\n".join(text_parts) if text_parts else None
+    thinking_text = "\n".join(thinking_parts) if thinking_parts else None
+    return text, thinking_text

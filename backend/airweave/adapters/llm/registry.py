@@ -48,6 +48,7 @@ class LLMModel(str, Enum):
     MINIMAX_M2_5 = "minimax-m2.5"
     MISTRAL_LARGE = "mistral-large"
     MISTRAL_SMALL = "mistral-small"
+    MAGISTRAL_SMALL = "magistral-small"
 
 
 @dataclass(frozen=True)
@@ -219,15 +220,30 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
             input_price_factor=2.0,
             output_price_factor=6.0,
         ),
+        # Mistral Small 4 — adjustable reasoning via reasoning_effort
         LLMModel.MISTRAL_SMALL: LLMModelSpec(
             api_model_name="mistral-small-latest",
             context_window=128_000,
             max_output_tokens=16_384,
             required_tokenizer_type=TokenizerType.TIKTOKEN,
             required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
-            thinking_config=ThinkingConfig(param_name="_noop", param_value=True),
+            thinking_config=ThinkingConfig(
+                param_name="reasoning_effort",
+                param_value="high",
+            ),
             input_price_factor=0.1,
             output_price_factor=0.3,
+        ),
+        # Magistral Small — native reasoning (always-on thinking)
+        LLMModel.MAGISTRAL_SMALL: LLMModelSpec(
+            api_model_name="magistral-small-latest",
+            context_window=128_000,
+            max_output_tokens=40_000,
+            required_tokenizer_type=TokenizerType.TIKTOKEN,
+            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
+            thinking_config=ThinkingConfig(param_name="_noop", param_value=True),
+            input_price_factor=0.5,
+            output_price_factor=1.5,
         ),
     },
 }

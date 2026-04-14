@@ -5,6 +5,8 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from mistralai.models.textchunk import TextChunk
+from mistralai.models.thinkchunk import ThinkChunk
 from pydantic import BaseModel
 
 from airweave.adapters.llm.exceptions import LLMProviderExhaustedError
@@ -17,7 +19,10 @@ from airweave.adapters.tokenizer.registry import TokenizerEncoding, TokenizerTyp
 # ---------------------------------------------------------------------------
 
 
-def _make_spec() -> LLMModelSpec:
+def _make_spec(
+    thinking_param: str = "_noop",
+    thinking_value: str | bool = True,
+) -> LLMModelSpec:
     return LLMModelSpec(
         api_model_name="mistral-large-latest",
         context_window=256_000,
@@ -25,8 +30,8 @@ def _make_spec() -> LLMModelSpec:
         required_tokenizer_type=TokenizerType.TIKTOKEN,
         required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
         thinking_config=ThinkingConfig(
-            param_name="_noop",
-            param_value=True,
+            param_name=thinking_param,
+            param_value=thinking_value,
         ),
     )
 
@@ -36,7 +41,7 @@ class _DummyOutput(BaseModel):
 
 
 def _mock_response(
-    content: str | None = '{"key": "value"}',
+    content: str | list | None = '{"key": "value"}',
     tool_calls: list | None = None,
     prompt_tokens: int = 100,
     completion_tokens: int = 50,
@@ -63,6 +68,21 @@ def mistral_llm():
     with patch("airweave.adapters.llm.mistral.settings") as mock_settings:
         mock_settings.MISTRAL_API_KEY = "test-key"
         llm = MistralLLM(model_spec=_make_spec(), max_retries=0)
+        yield llm
+
+
+@pytest.fixture
+def mistral_llm_reasoning():
+    """MistralLLM configured with reasoning_effort thinking config."""
+    with patch("airweave.adapters.llm.mistral.settings") as mock_settings:
+        mock_settings.MISTRAL_API_KEY = "test-key"
+        llm = MistralLLM(
+            model_spec=_make_spec(
+                thinking_param="reasoning_effort",
+                thinking_value="high",
+            ),
+            max_retries=0,
+        )
         yield llm
 
 
@@ -216,3 +236,125 @@ async def test_chat_uses_tool_choice_any(mistral_llm: MistralLLM) -> None:
 
     call_kwargs = mock_create.call_args.kwargs
     assert call_kwargs["tool_choice"] == "any"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# thinking/reasoning tests
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.asyncio
+async def test_chat_extracts_thinking_from_content_chunks(mistral_llm: MistralLLM) -> None:
+    """chat() extracts thinking from ThinkChunk content blocks."""
+    # Simulate Magistral-style response with thinking + text chunks
+    think_chunk = ThinkChunk(
+        thinking=[TextChunk(text="Let me reason about this...")],
+        type="thinking",
+    )
+    text_chunk = TextChunk(text="The answer is 42", type="text")
+
+    mistral_llm._client.chat.complete_async = AsyncMock(
+        return_value=_mock_response(content=[think_chunk, text_chunk], tool_calls=None)
+    )
+
+    result = await mistral_llm.chat(
+        messages=[{"role": "user", "content": "hi"}],
+        tools=[
+            {
+                "type": "function",
+                "function": {
+                    "name": "noop",
+                    "description": "",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            }
+        ],
+        system_prompt="sys",
+    )
+
+    assert result.thinking == "Let me reason about this..."
+    assert result.text == "The answer is 42"
+
+
+@pytest.mark.asyncio
+async def test_chat_no_thinking_returns_none(mistral_llm: MistralLLM) -> None:
+    """chat() returns thinking=None when no ThinkChunk is present."""
+    mistral_llm._client.chat.complete_async = AsyncMock(
+        return_value=_mock_response(content="plain text", tool_calls=None)
+    )
+
+    result = await mistral_llm.chat(
+        messages=[{"role": "user", "content": "hi"}],
+        tools=[
+            {
+                "type": "function",
+                "function": {
+                    "name": "noop",
+                    "description": "",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            }
+        ],
+        system_prompt="sys",
+    )
+
+    assert result.thinking is None
+    assert result.text == "plain text"
+
+
+@pytest.mark.asyncio
+async def test_chat_reasoning_effort_passed(mistral_llm_reasoning: MistralLLM) -> None:
+    """chat(thinking=True) passes reasoning_effort='high' for Small 4 models."""
+    mock_create = AsyncMock(
+        return_value=_mock_response(content=None, tool_calls=None)
+    )
+    mistral_llm_reasoning._client.chat.complete_async = mock_create
+
+    await mistral_llm_reasoning.chat(
+        messages=[{"role": "user", "content": "hi"}],
+        tools=[
+            {
+                "type": "function",
+                "function": {
+                    "name": "noop",
+                    "description": "",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            }
+        ],
+        system_prompt="sys",
+        thinking=True,
+    )
+
+    call_kwargs = mock_create.call_args.kwargs
+    assert call_kwargs["reasoning_effort"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_chat_reasoning_effort_none_when_not_thinking(
+    mistral_llm_reasoning: MistralLLM,
+) -> None:
+    """chat(thinking=False) passes reasoning_effort='none' for Small 4 models."""
+    mock_create = AsyncMock(
+        return_value=_mock_response(content=None, tool_calls=None)
+    )
+    mistral_llm_reasoning._client.chat.complete_async = mock_create
+
+    await mistral_llm_reasoning.chat(
+        messages=[{"role": "user", "content": "hi"}],
+        tools=[
+            {
+                "type": "function",
+                "function": {
+                    "name": "noop",
+                    "description": "",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            }
+        ],
+        system_prompt="sys",
+        thinking=False,
+    )
+
+    call_kwargs = mock_create.call_args.kwargs
+    assert call_kwargs["reasoning_effort"] == "none"
