@@ -6,6 +6,7 @@ from airweave.core.context import SystemContext
 from airweave.core.events.base import DomainEvent
 from airweave.core.events.billing import BillingPeriodCreatedEvent
 from airweave.core.logging import logger
+from airweave.core.protocols.event_bus import EventSubscriber
 from airweave.core.shared_models import SyncPauseReason, SyncStatus
 from airweave.db.session import get_db_context
 from airweave.domains.organizations.protocols import OrganizationRepositoryProtocol
@@ -13,7 +14,7 @@ from airweave.domains.syncs.protocols import SyncRepositoryProtocol, SyncStateMa
 from airweave.schemas.billing_period import BillingPeriodStatus
 
 
-class BillingUnpauseSubscriber:
+class BillingUnpauseSubscriber(EventSubscriber):
     """Unpause usage-exhausted syncs when a new active billing period is created."""
 
     EVENT_PATTERNS: List[str] = ["billing.period_created"]

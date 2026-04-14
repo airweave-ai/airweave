@@ -659,9 +659,19 @@ class SyncOrchestrator:
     async def _handle_sync_failure(self, error: Exception) -> None:
         """Handle sync failure by updating job status with error details."""
         error_message = get_error_message(error)
-        self.sync_context.logger.error(
-            f"Sync job {self.sync_context.sync_job.id} failed: {error_message}", exc_info=True
-        )
+        pause_reason = self._get_pause_reason(error)
+
+        # Expected graceful exits (usage exhausted, payment required, credential error)
+        # are pauses, not unexpected errors — log at warning without tracebacks.
+        if pause_reason is not None:
+            self.sync_context.logger.warning(
+                f"Sync job {self.sync_context.sync_job.id} paused "
+                f"({pause_reason.value}): {error_message}"
+            )
+        else:
+            self.sync_context.logger.error(
+                f"Sync job {self.sync_context.sync_job.id} failed: {error_message}", exc_info=True
+            )
 
         classification = classify_error(error)
 
@@ -678,7 +688,6 @@ class SyncOrchestrator:
         )
 
         # Pause sync for errors that won't resolve without user action
-        pause_reason = self._get_pause_reason(error)
         if pause_reason is not None:
             try:
                 await self._sync_state_machine.transition(
