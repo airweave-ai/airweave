@@ -4,6 +4,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import {
   createSourceConnectionsPostMutation,
   getSourceConnectionsSourceConnectionIdGetOptions,
+  listSourceConnectionsGetOptions,
   matchQueryKey,
   reinitiateOauthSourceConnectionsSourceConnectionIdReinitiateOauthPostMutation,
   verifyOauthSourceConnectionsSourceConnectionIdVerifyOauthPostMutation,
@@ -24,6 +25,42 @@ type GetSourceConnectionParams = NonNullable<
 type SourceConnectionIdParams = {
   sourceConnectionId: string;
 };
+
+type ListSourceConnectionsParams = NonNullable<
+  Parameters<typeof listSourceConnectionsGetOptions>[0]
+>;
+
+type ListCollectionSourceConnectionsParams = {
+  collectionId?: string;
+};
+
+export function listSourceConnectionsQueryOptions(
+  organizationId: string,
+  { collectionId }: ListCollectionSourceConnectionsParams = {},
+) {
+  const params: ListSourceConnectionsParams = {
+    query: {
+      collection: collectionId,
+      limit: 100,
+      skip: 0,
+    },
+  };
+
+  return listSourceConnectionsGetOptions(
+    withOrganizationHeaders({ organizationId }, params),
+  );
+}
+
+export function useListSourceConnectionsQueryOptions(
+  params?: ListCollectionSourceConnectionsParams,
+) {
+  const currentOrganizationId = useCurrentOrganizationId();
+
+  return React.useMemo(
+    () => listSourceConnectionsQueryOptions(currentOrganizationId, params),
+    [currentOrganizationId, params],
+  );
+}
 
 function getSourceConnectionQueryOptions(
   organizationId: string,

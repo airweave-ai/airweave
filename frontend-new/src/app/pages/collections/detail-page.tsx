@@ -1,12 +1,13 @@
-import { useSuspenseQuery } from '@tanstack/react-query';
+import { useSuspenseQueries } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { EllipsisVertical } from 'lucide-react';
-import type { Collection } from '@/shared/api';
+import type { Collection, SourceConnection } from '@/shared/api';
 import {
   CollectionSourceConnections,
   CollectionStatusBadge,
   useGetCollectionQueryOptions,
 } from '@/features/collections';
+import { useListSourceConnectionsQueryOptions } from '@/features/source-connections';
 import { SourceIconTile } from '@/shared/components/source-icon-tile';
 import { Button } from '@/shared/ui/button';
 
@@ -16,15 +17,23 @@ export function CollectionDetailPage({
   collectionId: string;
 }) {
   const collectionQueryOptions = useGetCollectionQueryOptions({ collectionId });
-  const { data: collection } = useSuspenseQuery(collectionQueryOptions);
-  const sourceConnections = collection.source_connection_summaries ?? [];
+  const sourceConnectionsQueryOptions = useListSourceConnectionsQueryOptions({
+    collectionId,
+  });
+  const [{ data: collection }, { data: sourceConnections }] =
+    useSuspenseQueries({
+      queries: [collectionQueryOptions, sourceConnectionsQueryOptions],
+    });
   const hasSourceConnections = sourceConnections.length > 0;
 
   return (
     <section className="space-y-4">
-      <CollectionDetailHeader collection={collection} />
+      <CollectionDetailHeader
+        collection={collection}
+        primarySource={sourceConnections[0]}
+      />
 
-      <div className="px-13">
+      <div className="px-4">
         <div className="rounded-sm border border-border bg-foreground/5 p-5">
           {hasSourceConnections ? (
             <div className="space-y-4">
@@ -76,8 +85,13 @@ export function CollectionDetailPage({
   );
 }
 
-function CollectionDetailHeader({ collection }: { collection: Collection }) {
-  const primarySource = collection.source_connection_summaries?.[0];
+function CollectionDetailHeader({
+  collection,
+  primarySource,
+}: {
+  collection: Collection;
+  primarySource: Pick<SourceConnection, 'name' | 'short_name'> | undefined;
+}) {
   const identifier = collection.readable_id || collection.id;
 
   return (

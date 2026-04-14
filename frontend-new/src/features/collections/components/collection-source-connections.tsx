@@ -87,10 +87,7 @@ function CollectionSourceConnectionIcon({
       >
         <SourceIcon
           aria-hidden="true"
-          className={cn(
-            'size-4.5 border-0',
-            size === 'sm' && 'size-3',
-          )}
+          className={cn('size-4.5 border-0', size === 'sm' && 'size-3')}
           name={name}
           shortName={shortName}
           variant="mono"
