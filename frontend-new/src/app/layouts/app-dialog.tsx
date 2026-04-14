@@ -1,17 +1,6 @@
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
-import * as z from 'zod';
 import { CreateCollectionDialogScreen } from '@/features/collections';
 import { FlowDialog, FlowDialogContent } from '@/shared/ui/flow-dialog';
-
-export const appDialogSearchSchema = z.object({
-  type: z.literal('create-collection'),
-});
-
-export const appSearchSchema = z.object({
-  dialog: appDialogSearchSchema.optional(),
-});
-
-export type AppSearch = z.infer<typeof appSearchSchema>;
 
 const routeApi = getRouteApi('/_authenticated/_app');
 

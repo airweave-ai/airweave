@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { EllipsisVertical } from 'lucide-react';
 import type { Collection, SourceConnection } from '@/shared/api';
 import {
+  CollectionSearch,
   CollectionSourceConnections,
   CollectionStatusBadge,
   useGetCollectionQueryOptions,
@@ -31,6 +32,11 @@ export function CollectionDetailPage({
       <CollectionDetailHeader
         collection={collection}
         primarySource={sourceConnections[0]}
+      />
+
+      <CollectionSearch
+        collectionId={collectionId}
+        disabled={!hasSourceConnections}
       />
 
       <div className="px-4">

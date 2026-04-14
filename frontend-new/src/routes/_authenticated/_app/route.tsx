@@ -1,5 +1,5 @@
 import { Outlet, createFileRoute, redirect } from '@tanstack/react-router';
-import { appSearchSchema } from '@/app/layouts/app-dialog';
+import { appSearchSchema } from '@/app/layouts/app-search';
 import { AppShell } from '@/app/layouts/app-shell';
 import { AppSessionProvider } from '@/app/providers/app-session-provider';
 import { ensureAppSession } from '@/features/app-session';
