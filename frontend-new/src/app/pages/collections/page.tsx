@@ -58,7 +58,7 @@ export function CollectionsPage({
   );
 
   return (
-    <section className="space-y-5 px-13 py-1">
+    <section className="space-y-5 px-16 py-4">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex items-center gap-1">
           <h1 className="font-heading text-lg font-semibold text-foreground">

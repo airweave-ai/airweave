@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { IconArrowUpRight } from '@tabler/icons-react';
 import { getSourceDocsUrl } from '../lib/source-docs-url';
-import { SourceIcon } from './source-icon';
 import type { Source } from '@/shared/api';
+import { SourceIconTile } from '@/shared/components/source-icon-tile';
 import { cn } from '@/shared/tailwind/cn';
 
 export interface SourceConnectionHeaderProps {
@@ -26,13 +26,7 @@ export function SourceConnectionHeader({
       )}
     >
       <div className="flex min-w-0 items-center gap-3">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-xs border border-border bg-muted bg-[linear-gradient(225.881deg,rgba(255,255,255,0.145)_7.54%,rgba(208,208,208,0.145)_88.81%)]">
-          <SourceIcon
-            className="size-4"
-            name={source.name}
-            shortName={source.short_name}
-          />
-        </div>
+        <SourceIconTile name={source.name} shortName={source.short_name} />
 
         <div className="min-w-0 space-y-0.5">
           <h2 className="flex items-center gap-1 text-base font-medium text-foreground">

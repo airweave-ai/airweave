@@ -1,6 +1,6 @@
 import { CollectionTooltipContent } from './collection-tooltip-content';
 import type { SourceConnectionSummary } from '@/shared/api';
-import { getAppIconUrl } from '@/shared/icons/get-app-icon-url';
+import { SourceIcon } from '@/shared/components/source-icon';
 import { cn } from '@/shared/tailwind/cn';
 import { Skeleton } from '@/shared/ui/skeleton';
 import { Tooltip, TooltipTrigger } from '@/shared/ui/tooltip';
@@ -38,6 +38,7 @@ export function CollectionSourceConnections({
             .map((source, index) => (
               <CollectionSourceConnectionIcon
                 key={`${source.name}:${index}`}
+                name={source.name}
                 shortName={source.short_name}
                 size={size}
                 style={{ zIndex: sourceConnectionCount - index }}
@@ -65,17 +66,17 @@ export function CollectionSourceConnections({
 }
 
 type CollectionSourceConnectionIconProps = React.ComponentProps<'div'> & {
+  name: string;
   size?: 'default' | 'sm';
   shortName: string;
 };
 
 function CollectionSourceConnectionIcon({
+  name,
   size = 'default',
   shortName,
   ...props
 }: CollectionSourceConnectionIconProps) {
-  const sourceIconSrc = getAppIconUrl(shortName);
-
   return (
     <div className={cn('relative')} {...props}>
       <div
@@ -84,16 +85,16 @@ function CollectionSourceConnectionIcon({
           size === 'sm' && 'size-6 p-1',
         )}
       >
-        {sourceIconSrc ? (
-          <img
-            alt=""
-            aria-hidden="true"
-            className={cn('size-4.5', size === 'sm' && 'size-3')}
-            src={sourceIconSrc}
-          />
-        ) : (
-          <span>{shortName.charAt(0).toUpperCase()}</span>
-        )}
+        <SourceIcon
+          aria-hidden="true"
+          className={cn(
+            'size-4.5 border-0',
+            size === 'sm' && 'size-3',
+          )}
+          name={name}
+          shortName={shortName}
+          variant="mono"
+        />
       </div>
     </div>
   );

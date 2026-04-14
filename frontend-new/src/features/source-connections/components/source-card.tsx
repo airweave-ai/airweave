@@ -1,5 +1,5 @@
-import { SourceIcon } from './source-icon';
 import type { Source } from '@/shared/api';
+import { SourceIcon } from '@/shared/components/source-icon';
 import { cn } from '@/shared/tailwind/cn';
 import { Badge } from '@/shared/ui/badge';
 

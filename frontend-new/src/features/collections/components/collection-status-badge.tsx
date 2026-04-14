@@ -17,7 +17,7 @@ const statusVariants: Record<
 > = {
   ACTIVE: 'success',
   ERROR: 'destructive',
-  'NEEDS SOURCE': 'destructive',
+  'NEEDS SOURCE': 'info',
 };
 
 export function CollectionStatusBadge({

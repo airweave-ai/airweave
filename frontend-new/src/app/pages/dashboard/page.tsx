@@ -5,7 +5,7 @@ import { CollectionsSummaryCard } from '@/features/collections';
 
 export function DashboardPage() {
   return (
-    <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_24rem] xl:items-start">
+    <section className="grid gap-4 p-3 xl:grid-cols-[minmax(0,1fr)_24rem] xl:items-start">
       <CollectionsSummaryCard
         createCollectionAction={
           <CreateCollectionButton size="lg">
