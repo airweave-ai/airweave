@@ -6,6 +6,7 @@ import {
 } from '@tanstack/react-query';
 import type { QueryClient } from '@tanstack/react-query';
 import {
+  classicSearchCollectionsReadableIdSearchClassicPostMutation,
   countCollectionsCountGetOptions,
   createCollectionsPostMutation,
   queryClient as defaultQueryClient,
@@ -47,6 +48,27 @@ export function useCreateCollectionMutation() {
       await invalidateCollectionQueries(queryClient);
     },
   });
+}
+
+export function classicCollectionSearchMutationOptions(organizationId: string) {
+  return classicSearchCollectionsReadableIdSearchClassicPostMutation(
+    withOrganizationHeaders({ organizationId }),
+  );
+}
+
+export function useClassicCollectionSearchMutationOptions() {
+  const currentOrganizationId = useCurrentOrganizationId();
+
+  return React.useMemo(
+    () => classicCollectionSearchMutationOptions(currentOrganizationId),
+    [currentOrganizationId],
+  );
+}
+
+export function useClassicCollectionSearchMutation() {
+  const mutationOptions = useClassicCollectionSearchMutationOptions();
+
+  return useMutation(mutationOptions);
 }
 
 export function listCollectionsQueryOptions(

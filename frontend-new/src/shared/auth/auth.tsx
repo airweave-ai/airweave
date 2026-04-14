@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { Auth0Provider, useAuth0 } from '@auth0/auth0-react';
 import { getAuthCallbackRedirectTarget } from './auth-redirects';
-import type { AuthStoreSnapshot } from './auth-store';
 import { resetAuthStoreSnapshot, setAuthStoreSnapshot } from './auth-store';
+import type { AuthStoreSnapshot } from './auth-store';
 import type { AppState, User as AuthUser } from '@auth0/auth0-react';
 import { env } from '@/shared/config/env';
 

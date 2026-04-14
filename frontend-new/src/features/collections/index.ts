@@ -1,4 +1,5 @@
 export { CollectionsSummaryCard } from './components/collections-summary-card';
+export { CollectionSearch } from './components/collection-search';
 export { CollectionFilterButtonGroup } from './components/collection-filter-button-group';
 export { CollectionsSearchEmptyState } from './components/collections-search-empty-state';
 export { CollectionsTable } from './components/collections-table';
@@ -7,9 +8,12 @@ export { CollectionSourceConnections } from './components/collection-source-conn
 export { CollectionStatusBadge } from './components/collection-status-badge';
 export { CreateCollectionDialogScreen } from './components/create-collection-dialog';
 export {
+  classicCollectionSearchMutationOptions,
   collectionCountQueryOptions,
   createCollectionMutationOptions,
   ensureCollection,
+  useClassicCollectionSearchMutation,
+  useClassicCollectionSearchMutationOptions,
   useCollectionCountQueryOptions,
   useCreateCollectionMutation,
   useCreateCollectionMutationOptions,
