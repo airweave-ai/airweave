@@ -23,6 +23,7 @@ class LLMProvider(str, Enum):
     GROQ = "groq"
     ANTHROPIC = "anthropic"
     TOGETHER = "together"
+    MISTRAL = "mistral"
 
 
 class LLMModel(str, Enum):
@@ -45,6 +46,8 @@ class LLMModel(str, Enum):
     QWEN_3_5_DEDICATED = "qwen-3.5-dedicated"
     ZAI_GLM_5_DEDICATED = "zai-glm-5-dedicated"
     MINIMAX_M2_5 = "minimax-m2.5"
+    MISTRAL_LARGE = "mistral-large"
+    MISTRAL_SMALL = "mistral-small"
 
 
 @dataclass(frozen=True)
@@ -205,6 +208,28 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
             output_price_factor=1.20,
         ),
     },
+    LLMProvider.MISTRAL: {
+        LLMModel.MISTRAL_LARGE: LLMModelSpec(
+            api_model_name="mistral-large-latest",
+            context_window=256_000,
+            max_output_tokens=16_384,
+            required_tokenizer_type=TokenizerType.TIKTOKEN,
+            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
+            thinking_config=ThinkingConfig(param_name="_noop", param_value=True),
+            input_price_factor=2.0,
+            output_price_factor=6.0,
+        ),
+        LLMModel.MISTRAL_SMALL: LLMModelSpec(
+            api_model_name="mistral-small-latest",
+            context_window=128_000,
+            max_output_tokens=16_384,
+            required_tokenizer_type=TokenizerType.TIKTOKEN,
+            required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
+            thinking_config=ThinkingConfig(param_name="_noop", param_value=True),
+            input_price_factor=0.1,
+            output_price_factor=0.3,
+        ),
+    },
 }
 
 
@@ -214,6 +239,7 @@ PROVIDER_API_KEY_SETTINGS: dict[LLMProvider, str] = {
     LLMProvider.GROQ: "GROQ_API_KEY",
     LLMProvider.ANTHROPIC: "ANTHROPIC_API_KEY",
     LLMProvider.TOGETHER: "TOGETHER_API_KEY",
+    LLMProvider.MISTRAL: "MISTRAL_API_KEY",
 }
 
 

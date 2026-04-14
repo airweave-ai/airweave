@@ -12,6 +12,7 @@ from airweave.adapters.llm.exceptions import (
 )
 from airweave.adapters.llm.fallback import FallbackChainLLM
 from airweave.adapters.llm.groq import GroqLLM
+from airweave.adapters.llm.mistral import MistralLLM
 from airweave.adapters.llm.override import create_llm_from_override
 from airweave.adapters.llm.registry import (
     MODEL_REGISTRY,
@@ -35,6 +36,7 @@ __all__ = [
     "AnthropicLLM",
     "CerebrasLLM",
     "GroqLLM",
+    "MistralLLM",
     "TogetherLLM",
     "FallbackChainLLM",
     # Exceptions
