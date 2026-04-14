@@ -77,7 +77,7 @@ export function AppHeader() {
   });
 
   return (
-    <header className="border-b bg-background px-4 py-3 sm:px-6">
+    <header className="border-b bg-background px-4 py-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <SidebarTrigger className="md:hidden" />

@@ -95,7 +95,7 @@ function CollectionDetailHeader({
   const identifier = collection.readable_id || collection.id;
 
   return (
-    <header className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
+    <header className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 items-center gap-3">
         <SourceIconTile
           name={primarySource?.name ?? collection.name}
@@ -119,7 +119,7 @@ function CollectionDetailHeader({
       </div>
 
       <div className="flex items-center justify-end gap-2 sm:shrink-0">
-        <Button className="font-mono" type="button" variant="outline">
+        <Button className="border-0 font-mono" type="button" variant="outline">
           Memory
         </Button>
         <Button
