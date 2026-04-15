@@ -7,6 +7,7 @@ bypassing the container's shared fallback chain.
 from airweave.adapters.llm.anthropic import AnthropicLLM
 from airweave.adapters.llm.cerebras import CerebrasLLM
 from airweave.adapters.llm.groq import GroqLLM
+from airweave.adapters.llm.mistral import MistralLLM
 from airweave.adapters.llm.registry import (
     LLMModel,
     LLMProvider,
@@ -19,6 +20,7 @@ _PROVIDER_CLASSES = {
     LLMProvider.ANTHROPIC: AnthropicLLM,
     LLMProvider.CEREBRAS: CerebrasLLM,
     LLMProvider.GROQ: GroqLLM,
+    LLMProvider.MISTRAL: MistralLLM,
     LLMProvider.TOGETHER: TogetherLLM,
 }
 
