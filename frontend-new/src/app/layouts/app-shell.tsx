@@ -1,7 +1,7 @@
 import { AppDialog } from './app-dialog';
+import { AppHeader } from './app-header';
+import { AppSidebar } from './app-sidebar';
 import type { PropsWithChildren } from 'react';
-import { AppHeader } from '@/app/layouts/app-header';
-import { AppSidebar } from '@/app/layouts/app-sidebar';
 import { SidebarInset, SidebarProvider } from '@/shared/ui/sidebar';
 
 export function AppShell({ children }: PropsWithChildren) {
