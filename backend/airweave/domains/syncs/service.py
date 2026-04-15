@@ -161,10 +161,15 @@ class SyncService(SyncServiceProtocol):
         ctx: BaseContext,
         *,
         reason: str = "",
+        pause_reason: SyncPauseReason | None = None,
     ) -> SyncTransitionResult:
         """Pause a sync: update DB status, pause Temporal schedules."""
         return await self._state_machine.transition(
-            sync_id=sync_id, target=SyncStatus.PAUSED, ctx=ctx, reason=reason
+            sync_id=sync_id,
+            target=SyncStatus.PAUSED,
+            ctx=ctx,
+            reason=reason,
+            pause_reason=pause_reason,
         )
 
     async def resume(
@@ -178,6 +183,19 @@ class SyncService(SyncServiceProtocol):
         return await self._state_machine.transition(
             sync_id=sync_id, target=SyncStatus.ACTIVE, ctx=ctx, reason=reason
         )
+
+    async def list_paused_by_reason(
+        self,
+        organization_id: UUID,
+        pause_reason: SyncPauseReason,
+        ctx: BaseContext,
+    ) -> List[schemas.Sync]:
+        """List paused syncs for an org filtered by pause_reason."""
+        async with get_db_context() as db:
+            models = await self._sync_repo.get_paused_by_reason(
+                db, organization_id=organization_id, pause_reason=pause_reason.value
+            )
+            return [schemas.Sync.model_validate(m, from_attributes=True) for m in models]
 
     async def delete(
         self,

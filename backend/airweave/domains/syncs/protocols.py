@@ -146,6 +146,7 @@ class SyncServiceProtocol(Protocol):
         ctx: BaseContext,
         *,
         reason: str = "",
+        pause_reason: SyncPauseReason | None = None,
     ) -> SyncTransitionResult:
         """Pause a sync."""
         ...
@@ -158,6 +159,15 @@ class SyncServiceProtocol(Protocol):
         reason: str = "",
     ) -> SyncTransitionResult:
         """Resume a paused sync."""
+        ...
+
+    async def list_paused_by_reason(
+        self,
+        organization_id: UUID,
+        pause_reason: SyncPauseReason,
+        ctx: BaseContext,
+    ) -> List[schemas.Sync]:
+        """List paused syncs for an org filtered by pause_reason."""
         ...
 
     async def delete(

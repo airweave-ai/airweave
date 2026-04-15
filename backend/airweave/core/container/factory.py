@@ -132,6 +132,7 @@ from airweave.domains.syncs.jobs.state_machine import SyncJobStateMachine
 from airweave.domains.syncs.repository import SyncRepository
 from airweave.domains.syncs.service import SyncService
 from airweave.domains.syncs.state_machine import SyncStateMachine
+from airweave.domains.syncs.subscribers.billing_unpause import BillingUnpauseSubscriber
 from airweave.domains.temporal.client import get_cached_client as get_cached_temporal_client
 from airweave.domains.temporal.schedule_service import TemporalScheduleService
 from airweave.domains.temporal.service import TemporalWorkflowService
@@ -308,17 +309,6 @@ def create_container(settings: Settings) -> Container:
         auth_provider_registry=source_deps["auth_provider_registry"],
     )
 
-    # BillingUnpauseSubscriber — unpauses usage-exhausted syncs on new billing period
-    from airweave.domains.syncs.subscribers.billing_unpause import BillingUnpauseSubscriber
-
-    billing_unpause = BillingUnpauseSubscriber(
-        sync_state_machine=sync_deps["sync_state_machine"],
-        sync_repo=source_deps["sync_repo"],
-        org_repo=billing_repos["org_repo"],
-    )
-    for pattern in billing_unpause.EVENT_PATTERNS:
-        event_bus.subscribe(pattern, billing_unpause.handle)
-
     # -----------------------------------------------------------------
     # Shared services (needed by both sync and source_connection domains)
     # Built here, before embedders, to keep deps available below.
@@ -424,6 +414,14 @@ def create_container(settings: Settings) -> Container:
         temporal_schedule_service=sync_deps["temporal_schedule_service"],
         sync_factory=sync_factory,
     )
+
+    # BillingUnpauseSubscriber — unpauses usage-exhausted syncs on new billing period
+    billing_unpause = BillingUnpauseSubscriber(
+        sync_service=sync_service,
+        org_repo=billing_repos["org_repo"],
+    )
+    for pattern in billing_unpause.EVENT_PATTERNS:
+        event_bus.subscribe(pattern, billing_unpause.handle)
 
     # -----------------------------------------------------------------
     # Source connection sub-services (need sync_service)
