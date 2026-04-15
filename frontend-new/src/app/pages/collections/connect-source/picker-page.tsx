@@ -26,7 +26,6 @@ export function ConnectSourcePickerPage() {
     error,
     filteredSourceCount,
     filteredSources,
-    hasFilters,
     isLoading,
     labelCounts,
     refetch,
@@ -74,7 +73,6 @@ export function ConnectSourcePickerPage() {
           <SourcePickerResults
             error={error}
             filteredSources={filteredSources}
-            hasFilters={hasFilters}
             isLoading={isLoading}
             onClearFilters={clearFilters}
             onRetry={() => void refetch()}
@@ -87,6 +85,7 @@ export function ConnectSourcePickerPage() {
                 to: '/collections/$collectionId/connect-source/$source/config',
               })
             }
+            search={search}
           />
         </FlowDialogMain>
       </FlowDialogBody>

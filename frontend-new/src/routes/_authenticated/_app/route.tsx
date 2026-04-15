@@ -1,8 +1,10 @@
+import * as React from 'react';
 import { Outlet, createFileRoute, redirect } from '@tanstack/react-router';
 import { appSearchSchema } from '@/app/layouts/app-search';
 import { AppShell } from '@/app/layouts/app-shell';
 import { AppSessionProvider } from '@/app/providers/app-session-provider';
 import { ensureAppSession } from '@/features/app-session';
+import { Loader } from '@/shared/components/loader';
 
 export const Route = createFileRoute('/_authenticated/_app')({
   beforeLoad: async ({ context }) => {
@@ -24,7 +26,9 @@ function LayoutComponent() {
   return (
     <AppSessionProvider>
       <AppShell>
-        <Outlet />
+        <React.Suspense fallback={<Loader />}>
+          <Outlet />
+        </React.Suspense>
       </AppShell>
     </AppSessionProvider>
   );

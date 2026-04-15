@@ -1,75 +1,87 @@
+import { SearchX } from 'lucide-react';
+
 import { SourceCard } from '../source-card';
 import type { Source } from '@/shared/api';
+import { ErrorState } from '@/shared/components/error-state';
 import { Button } from '@/shared/ui/button';
-import { Spinner } from '@/shared/ui/spinner';
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/shared/ui/empty';
+import { Loader } from '@/shared/components/loader';
 
 interface SourcePickerResultsProps {
   error: unknown;
   filteredSources: Array<Source>;
-  hasFilters: boolean;
   isLoading: boolean;
   onClearFilters: () => void;
   onRetry: () => void;
   onSelectSource?: (source: Source) => void;
+  search?: string;
 }
 
 export function SourcePickerResults({
   error,
   filteredSources,
-  hasFilters,
   isLoading,
   onClearFilters,
   onRetry,
   onSelectSource,
+  search,
 }: SourcePickerResultsProps) {
   if (isLoading) {
-    return (
-      <div className="flex min-h-48 items-center justify-center">
-        <Spinner className="size-5 text-muted-foreground" />
-      </div>
-    );
+    return <Loader />;
   }
 
   if (error) {
     return (
-      <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-center">
-        <p className="text-sm text-muted-foreground">Failed to load sources.</p>
-        <Button
-          type="button"
-          variant="outline"
-          className="border-border bg-foreground/5 text-foreground hover:bg-foreground/10"
-          onClick={onRetry}
-        >
-          Retry
-        </Button>
-      </div>
+      <ErrorState
+        description="An unexpected error occurred while loading sources."
+        onRetry={onRetry}
+        title="We couldn't load sources"
+      />
     );
   }
 
   if (filteredSources.length === 0) {
+    const hasSearch = Boolean(search?.trim());
+
     return (
-      <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-center">
-        <p className="text-sm text-muted-foreground">
-          {hasFilters
-            ? 'No sources match your filters.'
-            : 'No sources available.'}
-        </p>
-        {hasFilters ? (
-          <Button
-            type="button"
-            variant="ghost"
-            className="text-foreground hover:bg-foreground/5"
-            onClick={onClearFilters}
-          >
-            Clear filters
-          </Button>
+      <Empty className="min-h-full">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <SearchX className="size-4" />
+          </EmptyMedia>
+
+          <EmptyTitle>
+            {hasSearch
+              ? `No sources found for "${search?.trim()}"`
+              : 'No sources available.'}
+          </EmptyTitle>
+          <EmptyDescription>
+            {hasSearch
+              ? 'Try a different name, check spelling, or clear your search to see all available sources.'
+              : 'There are no sources to display right now.'}
+          </EmptyDescription>
+        </EmptyHeader>
+
+        {hasSearch ? (
+          <EmptyContent>
+            <Button type="button" variant="outline" onClick={onClearFilters}>
+              Clear Search
+            </Button>
+          </EmptyContent>
         ) : null}
-      </div>
+      </Empty>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+    <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
       {filteredSources.map((source) => (
         <SourceCard
           key={source.short_name}
