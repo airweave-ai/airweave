@@ -6,11 +6,11 @@ import { SidebarInset, SidebarProvider } from '@/shared/ui/sidebar';
 
 export function AppShell({ children }: PropsWithChildren) {
   return (
-    <SidebarProvider>
+    <SidebarProvider className="h-svh overflow-hidden">
       <AppSidebar />
-      <SidebarInset className="overflow-hidden">
+      <SidebarInset className="min-h-0 overflow-hidden">
         <AppHeader />
-        <div className="flex-1 overflow-auto">{children}</div>
+        <div className="min-h-0 flex-1 overflow-auto">{children}</div>
         <AppDialog />
       </SidebarInset>
     </SidebarProvider>

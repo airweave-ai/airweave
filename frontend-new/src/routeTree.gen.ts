@@ -8,74 +8,74 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from './routes/__root';
-import { Route as LoginRouteImport } from './routes/login';
-import { Route as CallbackRouteImport } from './routes/callback';
-import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route';
-import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated/onboarding';
-import { Route as AuthenticatedAppRouteRouteImport } from './routes/_authenticated/_app/route';
-import { Route as AuthenticatedAppIndexRouteImport } from './routes/_authenticated/_app/index';
-import { Route as AuthenticatedAppCollectionsIndexRouteImport } from './routes/_authenticated/_app/collections/index';
-import { Route as AuthenticatedAppCollectionsCollectionIdRouteImport } from './routes/_authenticated/_app/collections/$collectionId';
-import { Route as AuthenticatedAppCollectionsCollectionIdConnectSourceRouteImport } from './routes/_authenticated/_app/collections/$collectionId.connect-source';
-import { Route as AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRouteImport } from './routes/_authenticated/_app/collections/$collectionId.connect-source.index';
-import { Route as AuthenticatedAppCollectionsCollectionIdConnectSourceSourceSyncRouteImport } from './routes/_authenticated/_app/collections/$collectionId.connect-source.$source.sync';
-import { Route as AuthenticatedAppCollectionsCollectionIdConnectSourceSourceConfigRouteImport } from './routes/_authenticated/_app/collections/$collectionId.connect-source.$source.config';
-import { Route as AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRouteImport } from './routes/_authenticated/_app/collections/$collectionId.connect-source.$source.auth';
+import { Route as rootRouteImport } from './routes/__root'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as CallbackRouteImport } from './routes/callback'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated/onboarding'
+import { Route as AuthenticatedAppRouteRouteImport } from './routes/_authenticated/_app/route'
+import { Route as AuthenticatedAppIndexRouteImport } from './routes/_authenticated/_app/index'
+import { Route as AuthenticatedAppCollectionsIndexRouteImport } from './routes/_authenticated/_app/collections/index'
+import { Route as AuthenticatedAppCollectionsCollectionIdRouteImport } from './routes/_authenticated/_app/collections/$collectionId'
+import { Route as AuthenticatedAppCollectionsCollectionIdConnectSourceRouteImport } from './routes/_authenticated/_app/collections/$collectionId.connect-source'
+import { Route as AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRouteImport } from './routes/_authenticated/_app/collections/$collectionId.connect-source.index'
+import { Route as AuthenticatedAppCollectionsCollectionIdConnectSourceSourceSyncRouteImport } from './routes/_authenticated/_app/collections/$collectionId.connect-source.$source.sync'
+import { Route as AuthenticatedAppCollectionsCollectionIdConnectSourceSourceConfigRouteImport } from './routes/_authenticated/_app/collections/$collectionId.connect-source.$source.config'
+import { Route as AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRouteImport } from './routes/_authenticated/_app/collections/$collectionId.connect-source.$source.auth'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const CallbackRoute = CallbackRouteImport.update({
   id: '/callback',
   path: '/callback',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const AuthenticatedOnboardingRoute = AuthenticatedOnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
   getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
+} as any)
 const AuthenticatedAppRouteRoute = AuthenticatedAppRouteRouteImport.update({
   id: '/_app',
   getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
+} as any)
 const AuthenticatedAppIndexRoute = AuthenticatedAppIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AuthenticatedAppRouteRoute,
-} as any);
+} as any)
 const AuthenticatedAppCollectionsIndexRoute =
   AuthenticatedAppCollectionsIndexRouteImport.update({
     id: '/collections/',
     path: '/collections/',
     getParentRoute: () => AuthenticatedAppRouteRoute,
-  } as any);
+  } as any)
 const AuthenticatedAppCollectionsCollectionIdRoute =
   AuthenticatedAppCollectionsCollectionIdRouteImport.update({
     id: '/collections/$collectionId',
     path: '/collections/$collectionId',
     getParentRoute: () => AuthenticatedAppRouteRoute,
-  } as any);
+  } as any)
 const AuthenticatedAppCollectionsCollectionIdConnectSourceRoute =
   AuthenticatedAppCollectionsCollectionIdConnectSourceRouteImport.update({
     id: '/connect-source',
     path: '/connect-source',
     getParentRoute: () => AuthenticatedAppCollectionsCollectionIdRoute,
-  } as any);
+  } as any)
 const AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRoute =
   AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRouteImport.update({
     id: '/',
     path: '/',
     getParentRoute: () =>
       AuthenticatedAppCollectionsCollectionIdConnectSourceRoute,
-  } as any);
+  } as any)
 const AuthenticatedAppCollectionsCollectionIdConnectSourceSourceSyncRoute =
   AuthenticatedAppCollectionsCollectionIdConnectSourceSourceSyncRouteImport.update(
     {
@@ -84,7 +84,7 @@ const AuthenticatedAppCollectionsCollectionIdConnectSourceSourceSyncRoute =
       getParentRoute: () =>
         AuthenticatedAppCollectionsCollectionIdConnectSourceRoute,
     } as any,
-  );
+  )
 const AuthenticatedAppCollectionsCollectionIdConnectSourceSourceConfigRoute =
   AuthenticatedAppCollectionsCollectionIdConnectSourceSourceConfigRouteImport.update(
     {
@@ -93,7 +93,7 @@ const AuthenticatedAppCollectionsCollectionIdConnectSourceSourceConfigRoute =
       getParentRoute: () =>
         AuthenticatedAppCollectionsCollectionIdConnectSourceRoute,
     } as any,
-  );
+  )
 const AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRoute =
   AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRouteImport.update(
     {
@@ -102,51 +102,51 @@ const AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRoute =
       getParentRoute: () =>
         AuthenticatedAppCollectionsCollectionIdConnectSourceRoute,
     } as any,
-  );
+  )
 
 export interface FileRoutesByFullPath {
-  '/': typeof AuthenticatedAppIndexRoute;
-  '/callback': typeof CallbackRoute;
-  '/login': typeof LoginRoute;
-  '/onboarding': typeof AuthenticatedOnboardingRoute;
-  '/collections/$collectionId': typeof AuthenticatedAppCollectionsCollectionIdRouteWithChildren;
-  '/collections/': typeof AuthenticatedAppCollectionsIndexRoute;
-  '/collections/$collectionId/connect-source': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceRouteWithChildren;
-  '/collections/$collectionId/connect-source/': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRoute;
-  '/collections/$collectionId/connect-source/$source/auth': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRoute;
-  '/collections/$collectionId/connect-source/$source/config': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceConfigRoute;
-  '/collections/$collectionId/connect-source/$source/sync': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceSyncRoute;
+  '/': typeof AuthenticatedAppIndexRoute
+  '/callback': typeof CallbackRoute
+  '/login': typeof LoginRoute
+  '/onboarding': typeof AuthenticatedOnboardingRoute
+  '/collections/$collectionId': typeof AuthenticatedAppCollectionsCollectionIdRouteWithChildren
+  '/collections/': typeof AuthenticatedAppCollectionsIndexRoute
+  '/collections/$collectionId/connect-source': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceRouteWithChildren
+  '/collections/$collectionId/connect-source/': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRoute
+  '/collections/$collectionId/connect-source/$source/auth': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRoute
+  '/collections/$collectionId/connect-source/$source/config': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceConfigRoute
+  '/collections/$collectionId/connect-source/$source/sync': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceSyncRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof AuthenticatedAppIndexRoute;
-  '/callback': typeof CallbackRoute;
-  '/login': typeof LoginRoute;
-  '/onboarding': typeof AuthenticatedOnboardingRoute;
-  '/collections/$collectionId': typeof AuthenticatedAppCollectionsCollectionIdRouteWithChildren;
-  '/collections': typeof AuthenticatedAppCollectionsIndexRoute;
-  '/collections/$collectionId/connect-source': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRoute;
-  '/collections/$collectionId/connect-source/$source/auth': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRoute;
-  '/collections/$collectionId/connect-source/$source/config': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceConfigRoute;
-  '/collections/$collectionId/connect-source/$source/sync': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceSyncRoute;
+  '/': typeof AuthenticatedAppIndexRoute
+  '/callback': typeof CallbackRoute
+  '/login': typeof LoginRoute
+  '/onboarding': typeof AuthenticatedOnboardingRoute
+  '/collections/$collectionId': typeof AuthenticatedAppCollectionsCollectionIdRouteWithChildren
+  '/collections': typeof AuthenticatedAppCollectionsIndexRoute
+  '/collections/$collectionId/connect-source': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRoute
+  '/collections/$collectionId/connect-source/$source/auth': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRoute
+  '/collections/$collectionId/connect-source/$source/config': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceConfigRoute
+  '/collections/$collectionId/connect-source/$source/sync': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceSyncRoute
 }
 export interface FileRoutesById {
-  __root__: typeof rootRouteImport;
-  '/_authenticated': typeof AuthenticatedRouteRouteWithChildren;
-  '/callback': typeof CallbackRoute;
-  '/login': typeof LoginRoute;
-  '/_authenticated/_app': typeof AuthenticatedAppRouteRouteWithChildren;
-  '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute;
-  '/_authenticated/_app/': typeof AuthenticatedAppIndexRoute;
-  '/_authenticated/_app/collections/$collectionId': typeof AuthenticatedAppCollectionsCollectionIdRouteWithChildren;
-  '/_authenticated/_app/collections/': typeof AuthenticatedAppCollectionsIndexRoute;
-  '/_authenticated/_app/collections/$collectionId/connect-source': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceRouteWithChildren;
-  '/_authenticated/_app/collections/$collectionId/connect-source/': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRoute;
-  '/_authenticated/_app/collections/$collectionId/connect-source/$source/auth': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRoute;
-  '/_authenticated/_app/collections/$collectionId/connect-source/$source/config': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceConfigRoute;
-  '/_authenticated/_app/collections/$collectionId/connect-source/$source/sync': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceSyncRoute;
+  __root__: typeof rootRouteImport
+  '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/callback': typeof CallbackRoute
+  '/login': typeof LoginRoute
+  '/_authenticated/_app': typeof AuthenticatedAppRouteRouteWithChildren
+  '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
+  '/_authenticated/_app/': typeof AuthenticatedAppIndexRoute
+  '/_authenticated/_app/collections/$collectionId': typeof AuthenticatedAppCollectionsCollectionIdRouteWithChildren
+  '/_authenticated/_app/collections/': typeof AuthenticatedAppCollectionsIndexRoute
+  '/_authenticated/_app/collections/$collectionId/connect-source': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceRouteWithChildren
+  '/_authenticated/_app/collections/$collectionId/connect-source/': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRoute
+  '/_authenticated/_app/collections/$collectionId/connect-source/$source/auth': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRoute
+  '/_authenticated/_app/collections/$collectionId/connect-source/$source/config': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceConfigRoute
+  '/_authenticated/_app/collections/$collectionId/connect-source/$source/sync': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceSyncRoute
 }
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath;
+  fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/callback'
@@ -158,8 +158,8 @@ export interface FileRouteTypes {
     | '/collections/$collectionId/connect-source/'
     | '/collections/$collectionId/connect-source/$source/auth'
     | '/collections/$collectionId/connect-source/$source/config'
-    | '/collections/$collectionId/connect-source/$source/sync';
-  fileRoutesByTo: FileRoutesByTo;
+    | '/collections/$collectionId/connect-source/$source/sync'
+  fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/callback'
@@ -170,7 +170,7 @@ export interface FileRouteTypes {
     | '/collections/$collectionId/connect-source'
     | '/collections/$collectionId/connect-source/$source/auth'
     | '/collections/$collectionId/connect-source/$source/config'
-    | '/collections/$collectionId/connect-source/$source/sync';
+    | '/collections/$collectionId/connect-source/$source/sync'
   id:
     | '__root__'
     | '/_authenticated'
@@ -185,116 +185,116 @@ export interface FileRouteTypes {
     | '/_authenticated/_app/collections/$collectionId/connect-source/'
     | '/_authenticated/_app/collections/$collectionId/connect-source/$source/auth'
     | '/_authenticated/_app/collections/$collectionId/connect-source/$source/config'
-    | '/_authenticated/_app/collections/$collectionId/connect-source/$source/sync';
-  fileRoutesById: FileRoutesById;
+    | '/_authenticated/_app/collections/$collectionId/connect-source/$source/sync'
+  fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren;
-  CallbackRoute: typeof CallbackRoute;
-  LoginRoute: typeof LoginRoute;
+  AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  CallbackRoute: typeof CallbackRoute
+  LoginRoute: typeof LoginRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
     '/login': {
-      id: '/login';
-      path: '/login';
-      fullPath: '/login';
-      preLoaderRoute: typeof LoginRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/callback': {
-      id: '/callback';
-      path: '/callback';
-      fullPath: '/callback';
-      preLoaderRoute: typeof CallbackRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
+      id: '/callback'
+      path: '/callback'
+      fullPath: '/callback'
+      preLoaderRoute: typeof CallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated': {
-      id: '/_authenticated';
-      path: '';
-      fullPath: '/';
-      preLoaderRoute: typeof AuthenticatedRouteRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/onboarding': {
-      id: '/_authenticated/onboarding';
-      path: '/onboarding';
-      fullPath: '/onboarding';
-      preLoaderRoute: typeof AuthenticatedOnboardingRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof AuthenticatedOnboardingRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/_app': {
-      id: '/_authenticated/_app';
-      path: '';
-      fullPath: '/';
-      preLoaderRoute: typeof AuthenticatedAppRouteRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/_app'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedAppRouteRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/_app/': {
-      id: '/_authenticated/_app/';
-      path: '/';
-      fullPath: '/';
-      preLoaderRoute: typeof AuthenticatedAppIndexRouteImport;
-      parentRoute: typeof AuthenticatedAppRouteRoute;
-    };
+      id: '/_authenticated/_app/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedAppIndexRouteImport
+      parentRoute: typeof AuthenticatedAppRouteRoute
+    }
     '/_authenticated/_app/collections/': {
-      id: '/_authenticated/_app/collections/';
-      path: '/collections';
-      fullPath: '/collections/';
-      preLoaderRoute: typeof AuthenticatedAppCollectionsIndexRouteImport;
-      parentRoute: typeof AuthenticatedAppRouteRoute;
-    };
+      id: '/_authenticated/_app/collections/'
+      path: '/collections'
+      fullPath: '/collections/'
+      preLoaderRoute: typeof AuthenticatedAppCollectionsIndexRouteImport
+      parentRoute: typeof AuthenticatedAppRouteRoute
+    }
     '/_authenticated/_app/collections/$collectionId': {
-      id: '/_authenticated/_app/collections/$collectionId';
-      path: '/collections/$collectionId';
-      fullPath: '/collections/$collectionId';
-      preLoaderRoute: typeof AuthenticatedAppCollectionsCollectionIdRouteImport;
-      parentRoute: typeof AuthenticatedAppRouteRoute;
-    };
+      id: '/_authenticated/_app/collections/$collectionId'
+      path: '/collections/$collectionId'
+      fullPath: '/collections/$collectionId'
+      preLoaderRoute: typeof AuthenticatedAppCollectionsCollectionIdRouteImport
+      parentRoute: typeof AuthenticatedAppRouteRoute
+    }
     '/_authenticated/_app/collections/$collectionId/connect-source': {
-      id: '/_authenticated/_app/collections/$collectionId/connect-source';
-      path: '/connect-source';
-      fullPath: '/collections/$collectionId/connect-source';
-      preLoaderRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceRouteImport;
-      parentRoute: typeof AuthenticatedAppCollectionsCollectionIdRoute;
-    };
+      id: '/_authenticated/_app/collections/$collectionId/connect-source'
+      path: '/connect-source'
+      fullPath: '/collections/$collectionId/connect-source'
+      preLoaderRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceRouteImport
+      parentRoute: typeof AuthenticatedAppCollectionsCollectionIdRoute
+    }
     '/_authenticated/_app/collections/$collectionId/connect-source/': {
-      id: '/_authenticated/_app/collections/$collectionId/connect-source/';
-      path: '/';
-      fullPath: '/collections/$collectionId/connect-source/';
-      preLoaderRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRouteImport;
-      parentRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceRoute;
-    };
+      id: '/_authenticated/_app/collections/$collectionId/connect-source/'
+      path: '/'
+      fullPath: '/collections/$collectionId/connect-source/'
+      preLoaderRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRouteImport
+      parentRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceRoute
+    }
     '/_authenticated/_app/collections/$collectionId/connect-source/$source/sync': {
-      id: '/_authenticated/_app/collections/$collectionId/connect-source/$source/sync';
-      path: '/$source/sync';
-      fullPath: '/collections/$collectionId/connect-source/$source/sync';
-      preLoaderRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceSyncRouteImport;
-      parentRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceRoute;
-    };
+      id: '/_authenticated/_app/collections/$collectionId/connect-source/$source/sync'
+      path: '/$source/sync'
+      fullPath: '/collections/$collectionId/connect-source/$source/sync'
+      preLoaderRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceSyncRouteImport
+      parentRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceRoute
+    }
     '/_authenticated/_app/collections/$collectionId/connect-source/$source/config': {
-      id: '/_authenticated/_app/collections/$collectionId/connect-source/$source/config';
-      path: '/$source/config';
-      fullPath: '/collections/$collectionId/connect-source/$source/config';
-      preLoaderRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceConfigRouteImport;
-      parentRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceRoute;
-    };
+      id: '/_authenticated/_app/collections/$collectionId/connect-source/$source/config'
+      path: '/$source/config'
+      fullPath: '/collections/$collectionId/connect-source/$source/config'
+      preLoaderRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceConfigRouteImport
+      parentRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceRoute
+    }
     '/_authenticated/_app/collections/$collectionId/connect-source/$source/auth': {
-      id: '/_authenticated/_app/collections/$collectionId/connect-source/$source/auth';
-      path: '/$source/auth';
-      fullPath: '/collections/$collectionId/connect-source/$source/auth';
-      preLoaderRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRouteImport;
-      parentRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceRoute;
-    };
+      id: '/_authenticated/_app/collections/$collectionId/connect-source/$source/auth'
+      path: '/$source/auth'
+      fullPath: '/collections/$collectionId/connect-source/$source/auth'
+      preLoaderRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRouteImport
+      parentRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceRoute
+    }
   }
 }
 
 interface AuthenticatedAppCollectionsCollectionIdConnectSourceRouteChildren {
-  AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRoute;
-  AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRoute;
-  AuthenticatedAppCollectionsCollectionIdConnectSourceSourceConfigRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceConfigRoute;
-  AuthenticatedAppCollectionsCollectionIdConnectSourceSourceSyncRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceSyncRoute;
+  AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRoute
+  AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRoute
+  AuthenticatedAppCollectionsCollectionIdConnectSourceSourceConfigRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceConfigRoute
+  AuthenticatedAppCollectionsCollectionIdConnectSourceSourceSyncRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceSyncRoute
 }
 
 const AuthenticatedAppCollectionsCollectionIdConnectSourceRouteChildren: AuthenticatedAppCollectionsCollectionIdConnectSourceRouteChildren =
@@ -307,32 +307,32 @@ const AuthenticatedAppCollectionsCollectionIdConnectSourceRouteChildren: Authent
       AuthenticatedAppCollectionsCollectionIdConnectSourceSourceConfigRoute,
     AuthenticatedAppCollectionsCollectionIdConnectSourceSourceSyncRoute:
       AuthenticatedAppCollectionsCollectionIdConnectSourceSourceSyncRoute,
-  };
+  }
 
 const AuthenticatedAppCollectionsCollectionIdConnectSourceRouteWithChildren =
   AuthenticatedAppCollectionsCollectionIdConnectSourceRoute._addFileChildren(
     AuthenticatedAppCollectionsCollectionIdConnectSourceRouteChildren,
-  );
+  )
 
 interface AuthenticatedAppCollectionsCollectionIdRouteChildren {
-  AuthenticatedAppCollectionsCollectionIdConnectSourceRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceRouteWithChildren;
+  AuthenticatedAppCollectionsCollectionIdConnectSourceRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceRouteWithChildren
 }
 
 const AuthenticatedAppCollectionsCollectionIdRouteChildren: AuthenticatedAppCollectionsCollectionIdRouteChildren =
   {
     AuthenticatedAppCollectionsCollectionIdConnectSourceRoute:
       AuthenticatedAppCollectionsCollectionIdConnectSourceRouteWithChildren,
-  };
+  }
 
 const AuthenticatedAppCollectionsCollectionIdRouteWithChildren =
   AuthenticatedAppCollectionsCollectionIdRoute._addFileChildren(
     AuthenticatedAppCollectionsCollectionIdRouteChildren,
-  );
+  )
 
 interface AuthenticatedAppRouteRouteChildren {
-  AuthenticatedAppIndexRoute: typeof AuthenticatedAppIndexRoute;
-  AuthenticatedAppCollectionsCollectionIdRoute: typeof AuthenticatedAppCollectionsCollectionIdRouteWithChildren;
-  AuthenticatedAppCollectionsIndexRoute: typeof AuthenticatedAppCollectionsIndexRoute;
+  AuthenticatedAppIndexRoute: typeof AuthenticatedAppIndexRoute
+  AuthenticatedAppCollectionsCollectionIdRoute: typeof AuthenticatedAppCollectionsCollectionIdRouteWithChildren
+  AuthenticatedAppCollectionsIndexRoute: typeof AuthenticatedAppCollectionsIndexRoute
 }
 
 const AuthenticatedAppRouteRouteChildren: AuthenticatedAppRouteRouteChildren = {
@@ -340,31 +340,31 @@ const AuthenticatedAppRouteRouteChildren: AuthenticatedAppRouteRouteChildren = {
   AuthenticatedAppCollectionsCollectionIdRoute:
     AuthenticatedAppCollectionsCollectionIdRouteWithChildren,
   AuthenticatedAppCollectionsIndexRoute: AuthenticatedAppCollectionsIndexRoute,
-};
+}
 
 const AuthenticatedAppRouteRouteWithChildren =
   AuthenticatedAppRouteRoute._addFileChildren(
     AuthenticatedAppRouteRouteChildren,
-  );
+  )
 
 interface AuthenticatedRouteRouteChildren {
-  AuthenticatedAppRouteRoute: typeof AuthenticatedAppRouteRouteWithChildren;
-  AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute;
+  AuthenticatedAppRouteRoute: typeof AuthenticatedAppRouteRouteWithChildren
+  AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAppRouteRoute: AuthenticatedAppRouteRouteWithChildren,
   AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,
-};
+}
 
 const AuthenticatedRouteRouteWithChildren =
-  AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren);
+  AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   CallbackRoute: CallbackRoute,
   LoginRoute: LoginRoute,
-};
+}
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
-  ._addFileTypes<FileRouteTypes>();
+  ._addFileTypes<FileRouteTypes>()
