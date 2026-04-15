@@ -4,7 +4,6 @@ import { EllipsisVertical } from 'lucide-react';
 import type { Collection, SourceConnection } from '@/shared/api';
 import {
   CollectionSearch,
-  CollectionSourceConnections,
   CollectionStatusBadge,
   useGetCollectionQueryOptions,
 } from '@/features/collections';
@@ -40,52 +39,14 @@ export function CollectionDetailPage({
       />
 
       <div className="px-4">
-        <div className="rounded-sm border border-border bg-foreground/5 p-5">
-          {hasSourceConnections ? (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-foreground">Sources</p>
-                <div className="flex flex-wrap items-center gap-3">
-                  <CollectionSourceConnections
-                    sourceConnections={sourceConnections}
-                  />
-                  <p className="text-sm text-muted-foreground">
-                    {sourceConnections.length} source connection
-                    {sourceConnections.length === 1 ? '' : 's'}
-                  </p>
-                </div>
-              </div>
-
-              <div>
-                <Button asChild variant="outline">
-                  <Link
-                    params={{ collectionId: collection.readable_id }}
-                    to="/collections/$collectionId/connect-source"
-                  >
-                    Add Source
-                  </Link>
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                This collection does not have any source connections yet.
-              </p>
-
-              <div>
-                <Button asChild>
-                  <Link
-                    params={{ collectionId: collection.readable_id }}
-                    to="/collections/$collectionId/connect-source"
-                  >
-                    Connect Source
-                  </Link>
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
+        <Button asChild variant="outline">
+          <Link
+            params={{ collectionId: collection.readable_id }}
+            to="/collections/$collectionId/connect-source"
+          >
+            Add Source
+          </Link>
+        </Button>
       </div>
     </section>
   );
