@@ -26,7 +26,6 @@ export function useSourceFilters({ sources }: { sources: Array<Source> }) {
     clearFilters,
     filteredSourceCount: filteredSources.length,
     filteredSources,
-    hasFilters: search.trim().length > 0 || Boolean(activeLabel),
     labelCounts,
     search,
     setActiveLabel,
@@ -84,6 +83,7 @@ function getSourceLabelCounts(sources: Array<Source>) {
   }
 
   return [...counts.entries()]
+    .filter(([_, count]) => count > 1)
     .map(([label, count]) => ({ count, label }))
     .sort((left, right) => left.label.localeCompare(right.label));
 }
