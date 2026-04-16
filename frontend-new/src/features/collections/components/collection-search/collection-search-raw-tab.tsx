@@ -1,6 +1,5 @@
 import * as React from 'react';
 import { IconCheck, IconCopy } from '@tabler/icons-react';
-import type { SearchV2Response } from '@/shared/api';
 import { useCopyToClipboard } from '@/shared/hooks/use-copy-to-clipboard';
 import { Button } from '@/shared/ui/button';
 import { CodeSnippet } from '@/shared/ui/code-snippet';
@@ -11,15 +10,15 @@ const RAW_RESPONSE_PREVIEW_LINE_LIMIT = 1_000;
 const RAW_RESPONSE_PREVIEW_CHARACTER_LIMIT = 80_000;
 
 export function CollectionSearchRawTabContent({
-  response,
+  payload,
 }: {
-  response: SearchV2Response;
+  payload: unknown;
 }) {
   const { copied, copy } = useCopyToClipboard();
   const [showFullResponse, setShowFullResponse] = React.useState(false);
   const rawResponse = React.useMemo(
-    () => JSON.stringify(response, null, 2),
-    [response],
+    () => JSON.stringify(payload, null, 2),
+    [payload],
   );
   const rawResponseLines = React.useMemo(
     () => rawResponse.split('\n'),
@@ -67,10 +66,6 @@ export function CollectionSearchRawTabContent({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <p className="font-mono text-xs text-muted-foreground uppercase">
-          Raw response
-        </p>
-
         <Button
           aria-label="Copy raw response"
           className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
@@ -87,7 +82,7 @@ export function CollectionSearchRawTabContent({
         </Button>
       </div>
 
-      <div className="max-h-96 overflow-auto rounded-sm border border-border bg-background/60 p-3">
+      <div className="max-h-96 overflow-auto rounded-sm">
         {usePlainText ? (
           <pre className="font-mono text-xs leading-5 break-words whitespace-pre-wrap text-foreground">
             {displayedResponse}

@@ -6,13 +6,15 @@ import {
 } from '@tanstack/react-query';
 import type { QueryClient } from '@tanstack/react-query';
 import {
-  classicSearchCollectionsReadableIdSearchClassicPostMutation,
+  classicSearchCollectionsReadableIdSearchClassicPostOptions,
   countCollectionsCountGetOptions,
   createCollectionsPostMutation,
   queryClient as defaultQueryClient,
   getCollectionsReadableIdGetOptions,
+  instantSearchCollectionsReadableIdSearchInstantPostOptions,
   listCollectionsGetOptions,
   matchQueryKey,
+  subscribeSearchAgenticStreamOptions,
   withOrganizationHeaders,
 } from '@/shared/api';
 import { useCurrentOrganizationId } from '@/shared/session';
@@ -21,7 +23,40 @@ type CollectionListParams = NonNullable<
   Parameters<typeof listCollectionsGetOptions>[0]
 >;
 
+type CollectionSearchParams = {
+  collectionId: string;
+  query: string;
+};
+
+type AgenticCollectionSearchParams = CollectionSearchParams & {
+  thinking?: boolean;
+};
+
+type ClassicCollectionSearchQueryOptions = NonNullable<
+  Parameters<
+    typeof classicSearchCollectionsReadableIdSearchClassicPostOptions
+  >[0]
+>;
+
+type InstantCollectionSearchQueryOptions = NonNullable<
+  Parameters<
+    typeof instantSearchCollectionsReadableIdSearchInstantPostOptions
+  >[0]
+>;
+
+type AgenticCollectionSearchStreamQueryOptions = NonNullable<
+  Parameters<typeof subscribeSearchAgenticStreamOptions>[0]
+>;
+
 type SearchParams = { search?: string };
+
+const collectionSearchQueryDefaults = {
+  refetchOnMount: false,
+  refetchOnReconnect: false,
+  refetchOnWindowFocus: false,
+  retry: false,
+  staleTime: Infinity,
+} as const;
 
 export function createCollectionMutationOptions(organizationId: string) {
   return createCollectionsPostMutation(
@@ -50,25 +85,79 @@ export function useCreateCollectionMutation() {
   });
 }
 
-export function classicCollectionSearchMutationOptions(organizationId: string) {
-  return classicSearchCollectionsReadableIdSearchClassicPostMutation(
-    withOrganizationHeaders({ organizationId }),
-  );
+export function classicCollectionSearchQueryOptions(
+  organizationId: string,
+  { collectionId, query }: CollectionSearchParams,
+) {
+  const params: ClassicCollectionSearchQueryOptions = {
+    body: { query },
+    path: {
+      readable_id: collectionId,
+    },
+  };
+
+  return queryOptions({
+    ...classicSearchCollectionsReadableIdSearchClassicPostOptions(
+      withOrganizationHeaders({ organizationId }, params),
+    ),
+    ...collectionSearchQueryDefaults,
+  });
 }
 
-export function useClassicCollectionSearchMutationOptions() {
+export function instantCollectionSearchQueryOptions(
+  organizationId: string,
+  { collectionId, query }: CollectionSearchParams,
+) {
+  const params: InstantCollectionSearchQueryOptions = {
+    body: { query },
+    path: {
+      readable_id: collectionId,
+    },
+  };
+
+  return queryOptions({
+    ...instantSearchCollectionsReadableIdSearchInstantPostOptions(
+      withOrganizationHeaders({ organizationId }, params),
+    ),
+    ...collectionSearchQueryDefaults,
+  });
+}
+
+export function agenticCollectionSearchStreamQueryOptions(
+  organizationId: string,
+  { collectionId, query, thinking }: AgenticCollectionSearchParams,
+) {
+  const params: AgenticCollectionSearchStreamQueryOptions = {
+    body: {
+      query,
+      thinking,
+    },
+    path: {
+      readable_id: collectionId,
+    },
+  };
+
+  return queryOptions({
+    ...subscribeSearchAgenticStreamOptions(
+      withOrganizationHeaders({ organizationId }, params),
+    ),
+    ...collectionSearchQueryDefaults,
+  });
+}
+
+export function useClassicCollectionSearchQueryOptions(
+  params: CollectionSearchParams | null,
+) {
   const currentOrganizationId = useCurrentOrganizationId();
 
   return React.useMemo(
-    () => classicCollectionSearchMutationOptions(currentOrganizationId),
-    [currentOrganizationId],
+    () =>
+      classicCollectionSearchQueryOptions(currentOrganizationId, {
+        collectionId: params?.collectionId ?? '',
+        query: params?.query ?? '',
+      }),
+    [currentOrganizationId, params?.collectionId, params?.query],
   );
-}
-
-export function useClassicCollectionSearchMutation() {
-  const mutationOptions = useClassicCollectionSearchMutationOptions();
-
-  return useMutation(mutationOptions);
 }
 
 export function listCollectionsQueryOptions(

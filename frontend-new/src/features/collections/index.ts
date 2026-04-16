@@ -8,12 +8,11 @@ export { CollectionSourceConnections } from './components/collection-source-conn
 export { CollectionStatusBadge } from './components/collection-status-badge';
 export { CreateCollectionDialogScreen } from './components/create-collection-dialog';
 export {
-  classicCollectionSearchMutationOptions,
+  classicCollectionSearchQueryOptions,
   collectionCountQueryOptions,
   createCollectionMutationOptions,
   ensureCollection,
-  useClassicCollectionSearchMutation,
-  useClassicCollectionSearchMutationOptions,
+  useClassicCollectionSearchQueryOptions,
   useCollectionCountQueryOptions,
   useCreateCollectionMutation,
   useCreateCollectionMutationOptions,
