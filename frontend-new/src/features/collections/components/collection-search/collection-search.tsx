@@ -2,15 +2,27 @@ import * as React from 'react';
 import { useForm } from '@tanstack/react-form';
 import { IconArrowRight, IconPlayerStopFilled } from '@tabler/icons-react';
 import * as z from 'zod';
-import { useClassicCollectionSearchMutation } from '../../api';
 import { CollectionSearchState } from './collection-search-state';
-import { getApiErrorMessage } from '@/shared/api';
+import {
+  collectionSearchTierLabels,
+  collectionSearchTierNames,
+  useCollectionSearchTiers,
+} from './use-collection-search-tiers';
+import type { CollectionSearchTabValue } from './collection-search-state';
+import type { CollectionSearchTierName } from './use-collection-search-tiers';
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
   InputGroupTextarea,
 } from '@/shared/ui/input-group';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select';
 
 const collectionSearchQuerySchema = z
   .string()
@@ -32,18 +44,15 @@ export function CollectionSearch({
   collectionId: string;
   disabled?: boolean;
 }) {
-  const classicSearchMutation = useClassicCollectionSearchMutation();
-  const requestAbort = useAbortController();
-  const isPending = classicSearchMutation.isPending;
-  const isSuccess = classicSearchMutation.isSuccess;
-  const response = classicSearchMutation.data;
-  const resultsCount = response?.results?.length ?? 0;
-  const submitError = isAbortError(classicSearchMutation.error)
-    ? undefined
-    : getApiErrorMessage(
-        classicSearchMutation.error,
-        'Search failed. Try again.',
-      );
+  const [activeTierName, setActiveTierName] =
+    React.useState<CollectionSearchTierName>('classic');
+  const [selectedTabsByTier, setSelectedTabsByTier] = React.useState<
+    Partial<Record<CollectionSearchTierName, CollectionSearchTabValue>>
+  >({});
+  const tiers = useCollectionSearchTiers({ collectionId });
+  const activeTier = tiers[activeTierName];
+  const isLoading = activeTier.state.status === 'loading';
+  const activeSelectedTab = selectedTabsByTier[activeTierName];
 
   const form = useForm({
     defaultValues: defaultFormValues,
@@ -54,20 +63,8 @@ export function CollectionSearch({
     },
     onSubmit: ({ value }) => {
       const { query } = collectionSearchFormSchema.parse(value);
-      const abortController = requestAbort.next();
 
-      classicSearchMutation.mutate(
-        {
-          body: { query },
-          path: { readable_id: collectionId },
-          signal: abortController.signal,
-        },
-        {
-          onSettled: () => {
-            requestAbort.clear(abortController);
-          },
-        },
-      );
+      activeTier.submit(query);
     },
   });
 
@@ -76,8 +73,39 @@ export function CollectionSearch({
   }, [form]);
 
   const handleCancel = React.useCallback(() => {
-    requestAbort.abort();
-  }, [requestAbort]);
+    activeTier.cancel();
+  }, [activeTier]);
+
+  const handleTierChange = React.useCallback(
+    (nextTierName: CollectionSearchTierName) => {
+      if (nextTierName === activeTierName) {
+        return;
+      }
+
+      if (activeTier.state.status === 'loading') {
+        activeTier.cancel();
+      }
+
+      setActiveTierName(nextTierName);
+    },
+    [activeTier, activeTierName],
+  );
+
+  const handleSelectedTabChange = React.useCallback(
+    (tab: CollectionSearchTabValue) => {
+      setSelectedTabsByTier((currentTabs) => {
+        if (currentTabs[activeTierName] === tab) {
+          return currentTabs;
+        }
+
+        return {
+          ...currentTabs,
+          [activeTierName]: tab,
+        };
+      });
+    },
+    [activeTierName],
+  );
 
   return (
     <div className="px-4">
@@ -102,10 +130,6 @@ export function CollectionSearch({
                       className="min-h-21 px-4 pt-4 pb-2 text-sm leading-5 placeholder:text-muted-foreground"
                       onBlur={field.handleBlur}
                       onChange={(event) => {
-                        if (classicSearchMutation.error) {
-                          classicSearchMutation.reset();
-                        }
-
                         field.handleChange(event.target.value);
                       }}
                       onKeyDown={(event) => {
@@ -119,7 +143,7 @@ export function CollectionSearch({
 
                         event.preventDefault();
 
-                        if (!disabled && !isPending && form.state.canSubmit) {
+                        if (!disabled && !isLoading && form.state.canSubmit) {
                           handleSubmit();
                         }
                       }}
@@ -132,17 +156,36 @@ export function CollectionSearch({
                 align="block-end"
                 className="w-full items-center justify-between gap-3"
               >
-                <div className="flex min-w-0 items-center gap-2">
-                  <div className="inline-flex h-7 items-center rounded-sm bg-background/60 px-2.5 font-mono text-xs font-medium text-foreground/80 ring-1 ring-foreground/10">
-                    Classic
-                  </div>
-                </div>
+                <Select
+                  disabled={disabled}
+                  value={activeTierName}
+                  onValueChange={(value) =>
+                    handleTierChange(value as CollectionSearchTierName)
+                  }
+                >
+                  <SelectTrigger
+                    size="sm"
+                    className="min-w-23 shrink-0 border-none dark:bg-transparent"
+                  >
+                    <SelectValue
+                      aria-label={collectionSearchTierLabels[activeTierName]}
+                    />
+                  </SelectTrigger>
+
+                  <SelectContent position="popper">
+                    {collectionSearchTierNames.map((tierName) => (
+                      <SelectItem key={tierName} value={tierName}>
+                        {collectionSearchTierLabels[tierName]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
 
                 <form.Subscribe selector={(state) => state.canSubmit}>
                   {(canSubmit) => {
                     const buttonClassName = 'size-9 rounded-xs';
 
-                    if (isPending) {
+                    if (isLoading) {
                       return (
                         <InputGroupButton
                           aria-label="Cancel search"
@@ -178,48 +221,12 @@ export function CollectionSearch({
         </form>
 
         <CollectionSearchState
-          isPending={isPending}
-          isSuccess={isSuccess}
-          response={response}
-          resultsCount={resultsCount}
-          submitError={submitError}
+          onSelectedTabChange={handleSelectedTabChange}
+          selectedTab={activeSelectedTab}
+          state={activeTier.state}
+          tierName={activeTierName}
         />
       </div>
     </div>
   );
-}
-
-function useAbortController() {
-  const controllerRef = React.useRef<AbortController | null>(null);
-
-  React.useEffect(() => {
-    return () => {
-      controllerRef.current?.abort();
-    };
-  }, []);
-
-  const next = React.useCallback(() => {
-    controllerRef.current?.abort();
-
-    const controller = new AbortController();
-    controllerRef.current = controller;
-
-    return controller;
-  }, []);
-
-  const abort = React.useCallback(() => {
-    controllerRef.current?.abort();
-  }, []);
-
-  const clear = React.useCallback((controller: AbortController) => {
-    if (controllerRef.current === controller) {
-      controllerRef.current = null;
-    }
-  }, []);
-
-  return { abort, clear, next };
-}
-
-function isAbortError(error: unknown) {
-  return error instanceof DOMException && error.name === 'AbortError';
 }

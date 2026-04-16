@@ -2,6 +2,7 @@ import * as z from 'zod';
 import { subscribeEntityStateSyncJobJobIdSubscribeStateGetQueryKey } from '../generated/@tanstack/react-query.gen';
 import { createStreamQueryOptions } from './create-stream-query-options';
 import { createValidatedSseStream } from './create-validated-sse-stream';
+import type { StreamConnectionStatus } from './stream-connection-status';
 import type { Options } from '../generated/sdk.gen';
 import type {
   SubscribeEntityStateSyncJobJobIdSubscribeStateGetData,
@@ -63,11 +64,7 @@ export const syncJobStateStreamEventSchema = z.discriminatedUnion('type', [
 export type SyncJobStateStreamEvent = z.infer<
   typeof syncJobStateStreamEventSchema
 >;
-export type SyncJobStateStreamConnectionStatus =
-  | 'connecting'
-  | 'streaming'
-  | 'closed'
-  | 'error';
+export type SyncJobStateStreamConnectionStatus = StreamConnectionStatus;
 export type TerminalSyncJobStatus = z.infer<typeof terminalSyncJobStatusSchema>;
 
 export interface SyncJobStateStreamState {

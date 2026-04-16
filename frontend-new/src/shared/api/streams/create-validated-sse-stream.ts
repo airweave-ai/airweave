@@ -9,6 +9,7 @@ interface CreateValidatedSseStreamParams<
 > {
   defaultSecurity?: Options<TData>['security'];
   isTerminal: (event: TEvent) => boolean;
+  method?: 'get' | 'post';
   options: Options<TData>;
   schema: z.ZodType<TEvent>;
   url: TData['url'];
@@ -20,6 +21,7 @@ export async function createValidatedSseStream<
 >({
   defaultSecurity,
   isTerminal,
+  method = 'get',
   options,
   schema,
   url,
@@ -27,7 +29,8 @@ export async function createValidatedSseStream<
   AsyncIterable<TEvent>
 > {
   const { client: requestClient, meta: _meta, ...requestOptions } = options;
-  const { stream } = await (requestClient ?? defaultClient).sse.get({
+  const client = requestClient ?? defaultClient;
+  const { stream } = await client.sse[method]({
     ...requestOptions,
     security: requestOptions.security ?? defaultSecurity,
     url,

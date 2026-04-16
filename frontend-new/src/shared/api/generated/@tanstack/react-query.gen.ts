@@ -2578,136 +2578,449 @@ export const updateCollectionsReadableIdPatchMutation = (
   return mutationOptions;
 };
 
+export const instantSearchCollectionsReadableIdSearchInstantPostQueryKey = (
+  options: Options<InstantSearchCollectionsReadableIdSearchInstantPostData>,
+) =>
+  createQueryKey(
+    'instantSearchCollectionsReadableIdSearchInstantPost',
+    options,
+    false,
+    ['collections'],
+  );
+
 /**
  * Instant Search
  *
  * Direct vector search.
  */
-export const instantSearchCollectionsReadableIdSearchInstantPostMutation = (
-  options?: Partial<
-    Options<InstantSearchCollectionsReadableIdSearchInstantPostData>
-  >,
-): UseMutationOptions<
-  InstantSearchCollectionsReadableIdSearchInstantPostResponse,
-  InstantSearchCollectionsReadableIdSearchInstantPostError,
-  Options<InstantSearchCollectionsReadableIdSearchInstantPostData>
-> => {
-  const mutationOptions: UseMutationOptions<
+export const instantSearchCollectionsReadableIdSearchInstantPostOptions = (
+  options: Options<InstantSearchCollectionsReadableIdSearchInstantPostData>,
+) =>
+  queryOptions<
     InstantSearchCollectionsReadableIdSearchInstantPostResponse,
     InstantSearchCollectionsReadableIdSearchInstantPostError,
-    Options<InstantSearchCollectionsReadableIdSearchInstantPostData>
-  > = {
-    mutationFn: async (fnOptions) => {
+    InstantSearchCollectionsReadableIdSearchInstantPostResponse,
+    ReturnType<
+      typeof instantSearchCollectionsReadableIdSearchInstantPostQueryKey
+    >
+  >({
+    queryFn: async ({ queryKey, signal }) => {
       const { data } =
         await instantSearchCollectionsReadableIdSearchInstantPost({
           ...options,
-          ...fnOptions,
+          ...queryKey[0],
+          signal,
           throwOnError: true,
         });
       return data;
     },
-  };
-  return mutationOptions;
-};
+    queryKey:
+      instantSearchCollectionsReadableIdSearchInstantPostQueryKey(options),
+  });
+
+export const instantSearchCollectionsReadableIdSearchInstantPostInfiniteQueryKey =
+  (
+    options: Options<InstantSearchCollectionsReadableIdSearchInstantPostData>,
+  ): QueryKey<
+    Options<InstantSearchCollectionsReadableIdSearchInstantPostData>
+  > =>
+    createQueryKey(
+      'instantSearchCollectionsReadableIdSearchInstantPost',
+      options,
+      true,
+    );
+
+/**
+ * Instant Search
+ *
+ * Direct vector search.
+ */
+export const instantSearchCollectionsReadableIdSearchInstantPostInfiniteOptions =
+  (options: Options<InstantSearchCollectionsReadableIdSearchInstantPostData>) =>
+    infiniteQueryOptions<
+      InstantSearchCollectionsReadableIdSearchInstantPostResponse,
+      InstantSearchCollectionsReadableIdSearchInstantPostError,
+      InfiniteData<InstantSearchCollectionsReadableIdSearchInstantPostResponse>,
+      QueryKey<
+        Options<InstantSearchCollectionsReadableIdSearchInstantPostData>
+      >,
+      | number
+      | Pick<
+          QueryKey<
+            Options<InstantSearchCollectionsReadableIdSearchInstantPostData>
+          >[0],
+          'body' | 'headers' | 'path' | 'query'
+        >
+    >(
+      // @ts-ignore
+      {
+        queryFn: async ({ pageParam, queryKey, signal }) => {
+          // @ts-ignore
+          const page: Pick<
+            QueryKey<
+              Options<InstantSearchCollectionsReadableIdSearchInstantPostData>
+            >[0],
+            'body' | 'headers' | 'path' | 'query'
+          > =
+            typeof pageParam === 'object'
+              ? pageParam
+              : {
+                  body: {
+                    limit: pageParam,
+                  },
+                };
+          const params = createInfiniteParams(queryKey, page);
+          const { data } =
+            await instantSearchCollectionsReadableIdSearchInstantPost({
+              ...options,
+              ...params,
+              signal,
+              throwOnError: true,
+            });
+          return data;
+        },
+        queryKey:
+          instantSearchCollectionsReadableIdSearchInstantPostInfiniteQueryKey(
+            options,
+          ),
+      },
+    );
+
+export const classicSearchCollectionsReadableIdSearchClassicPostQueryKey = (
+  options: Options<ClassicSearchCollectionsReadableIdSearchClassicPostData>,
+) =>
+  createQueryKey(
+    'classicSearchCollectionsReadableIdSearchClassicPost',
+    options,
+    false,
+    ['collections'],
+  );
 
 /**
  * Classic Search
  *
  * AI-optimized search.
  */
-export const classicSearchCollectionsReadableIdSearchClassicPostMutation = (
-  options?: Partial<
-    Options<ClassicSearchCollectionsReadableIdSearchClassicPostData>
-  >,
-): UseMutationOptions<
-  ClassicSearchCollectionsReadableIdSearchClassicPostResponse,
-  ClassicSearchCollectionsReadableIdSearchClassicPostError,
-  Options<ClassicSearchCollectionsReadableIdSearchClassicPostData>
-> => {
-  const mutationOptions: UseMutationOptions<
+export const classicSearchCollectionsReadableIdSearchClassicPostOptions = (
+  options: Options<ClassicSearchCollectionsReadableIdSearchClassicPostData>,
+) =>
+  queryOptions<
     ClassicSearchCollectionsReadableIdSearchClassicPostResponse,
     ClassicSearchCollectionsReadableIdSearchClassicPostError,
-    Options<ClassicSearchCollectionsReadableIdSearchClassicPostData>
-  > = {
-    mutationFn: async (fnOptions) => {
+    ClassicSearchCollectionsReadableIdSearchClassicPostResponse,
+    ReturnType<
+      typeof classicSearchCollectionsReadableIdSearchClassicPostQueryKey
+    >
+  >({
+    queryFn: async ({ queryKey, signal }) => {
       const { data } =
         await classicSearchCollectionsReadableIdSearchClassicPost({
           ...options,
-          ...fnOptions,
+          ...queryKey[0],
+          signal,
           throwOnError: true,
         });
       return data;
     },
-  };
-  return mutationOptions;
-};
+    queryKey:
+      classicSearchCollectionsReadableIdSearchClassicPostQueryKey(options),
+  });
+
+export const classicSearchCollectionsReadableIdSearchClassicPostInfiniteQueryKey =
+  (
+    options: Options<ClassicSearchCollectionsReadableIdSearchClassicPostData>,
+  ): QueryKey<
+    Options<ClassicSearchCollectionsReadableIdSearchClassicPostData>
+  > =>
+    createQueryKey(
+      'classicSearchCollectionsReadableIdSearchClassicPost',
+      options,
+      true,
+    );
+
+/**
+ * Classic Search
+ *
+ * AI-optimized search.
+ */
+export const classicSearchCollectionsReadableIdSearchClassicPostInfiniteOptions =
+  (options: Options<ClassicSearchCollectionsReadableIdSearchClassicPostData>) =>
+    infiniteQueryOptions<
+      ClassicSearchCollectionsReadableIdSearchClassicPostResponse,
+      ClassicSearchCollectionsReadableIdSearchClassicPostError,
+      InfiniteData<ClassicSearchCollectionsReadableIdSearchClassicPostResponse>,
+      QueryKey<
+        Options<ClassicSearchCollectionsReadableIdSearchClassicPostData>
+      >,
+      | number
+      | Pick<
+          QueryKey<
+            Options<ClassicSearchCollectionsReadableIdSearchClassicPostData>
+          >[0],
+          'body' | 'headers' | 'path' | 'query'
+        >
+    >(
+      // @ts-ignore
+      {
+        queryFn: async ({ pageParam, queryKey, signal }) => {
+          // @ts-ignore
+          const page: Pick<
+            QueryKey<
+              Options<ClassicSearchCollectionsReadableIdSearchClassicPostData>
+            >[0],
+            'body' | 'headers' | 'path' | 'query'
+          > =
+            typeof pageParam === 'object'
+              ? pageParam
+              : {
+                  body: {
+                    limit: pageParam,
+                  },
+                };
+          const params = createInfiniteParams(queryKey, page);
+          const { data } =
+            await classicSearchCollectionsReadableIdSearchClassicPost({
+              ...options,
+              ...params,
+              signal,
+              throwOnError: true,
+            });
+          return data;
+        },
+        queryKey:
+          classicSearchCollectionsReadableIdSearchClassicPostInfiniteQueryKey(
+            options,
+          ),
+      },
+    );
+
+export const agenticSearchCollectionsReadableIdSearchAgenticPostQueryKey = (
+  options: Options<AgenticSearchCollectionsReadableIdSearchAgenticPostData>,
+) =>
+  createQueryKey(
+    'agenticSearchCollectionsReadableIdSearchAgenticPost',
+    options,
+    false,
+    ['collections'],
+  );
 
 /**
  * Agentic Search
  *
  * Agent that iteratively searches, reads, navigates hierarchies, and collects results.
  */
-export const agenticSearchCollectionsReadableIdSearchAgenticPostMutation = (
-  options?: Partial<
-    Options<AgenticSearchCollectionsReadableIdSearchAgenticPostData>
-  >,
-): UseMutationOptions<
-  AgenticSearchCollectionsReadableIdSearchAgenticPostResponse,
-  AgenticSearchCollectionsReadableIdSearchAgenticPostError,
-  Options<AgenticSearchCollectionsReadableIdSearchAgenticPostData>
-> => {
-  const mutationOptions: UseMutationOptions<
+export const agenticSearchCollectionsReadableIdSearchAgenticPostOptions = (
+  options: Options<AgenticSearchCollectionsReadableIdSearchAgenticPostData>,
+) =>
+  queryOptions<
     AgenticSearchCollectionsReadableIdSearchAgenticPostResponse,
     AgenticSearchCollectionsReadableIdSearchAgenticPostError,
-    Options<AgenticSearchCollectionsReadableIdSearchAgenticPostData>
-  > = {
-    mutationFn: async (fnOptions) => {
+    AgenticSearchCollectionsReadableIdSearchAgenticPostResponse,
+    ReturnType<
+      typeof agenticSearchCollectionsReadableIdSearchAgenticPostQueryKey
+    >
+  >({
+    queryFn: async ({ queryKey, signal }) => {
       const { data } =
         await agenticSearchCollectionsReadableIdSearchAgenticPost({
           ...options,
-          ...fnOptions,
+          ...queryKey[0],
+          signal,
           throwOnError: true,
         });
       return data;
     },
-  };
-  return mutationOptions;
-};
+    queryKey:
+      agenticSearchCollectionsReadableIdSearchAgenticPostQueryKey(options),
+  });
+
+export const agenticSearchCollectionsReadableIdSearchAgenticPostInfiniteQueryKey =
+  (
+    options: Options<AgenticSearchCollectionsReadableIdSearchAgenticPostData>,
+  ): QueryKey<
+    Options<AgenticSearchCollectionsReadableIdSearchAgenticPostData>
+  > =>
+    createQueryKey(
+      'agenticSearchCollectionsReadableIdSearchAgenticPost',
+      options,
+      true,
+    );
+
+/**
+ * Agentic Search
+ *
+ * Agent that iteratively searches, reads, navigates hierarchies, and collects results.
+ */
+export const agenticSearchCollectionsReadableIdSearchAgenticPostInfiniteOptions =
+  (options: Options<AgenticSearchCollectionsReadableIdSearchAgenticPostData>) =>
+    infiniteQueryOptions<
+      AgenticSearchCollectionsReadableIdSearchAgenticPostResponse,
+      AgenticSearchCollectionsReadableIdSearchAgenticPostError,
+      InfiniteData<AgenticSearchCollectionsReadableIdSearchAgenticPostResponse>,
+      QueryKey<
+        Options<AgenticSearchCollectionsReadableIdSearchAgenticPostData>
+      >,
+      | number
+      | null
+      | Pick<
+          QueryKey<
+            Options<AgenticSearchCollectionsReadableIdSearchAgenticPostData>
+          >[0],
+          'body' | 'headers' | 'path' | 'query'
+        >
+    >(
+      // @ts-ignore
+      {
+        queryFn: async ({ pageParam, queryKey, signal }) => {
+          // @ts-ignore
+          const page: Pick<
+            QueryKey<
+              Options<AgenticSearchCollectionsReadableIdSearchAgenticPostData>
+            >[0],
+            'body' | 'headers' | 'path' | 'query'
+          > =
+            typeof pageParam === 'object'
+              ? pageParam
+              : {
+                  body: {
+                    limit: pageParam,
+                  },
+                };
+          const params = createInfiniteParams(queryKey, page);
+          const { data } =
+            await agenticSearchCollectionsReadableIdSearchAgenticPost({
+              ...options,
+              ...params,
+              signal,
+              throwOnError: true,
+            });
+          return data;
+        },
+        queryKey:
+          agenticSearchCollectionsReadableIdSearchAgenticPostInfiniteQueryKey(
+            options,
+          ),
+      },
+    );
+
+export const streamAgenticSearchCollectionsReadableIdSearchAgenticStreamPostQueryKey =
+  (
+    options: Options<StreamAgenticSearchCollectionsReadableIdSearchAgenticStreamPostData>,
+  ) =>
+    createQueryKey(
+      'streamAgenticSearchCollectionsReadableIdSearchAgenticStreamPost',
+      options,
+      false,
+      ['collections'],
+    );
 
 /**
  * Stream Agentic Search
  *
  * Streaming agentic search via Server-Sent Events. Returns real-time events as the agent searches.
  */
-export const streamAgenticSearchCollectionsReadableIdSearchAgenticStreamPostMutation =
+export const streamAgenticSearchCollectionsReadableIdSearchAgenticStreamPostOptions =
   (
-    options?: Partial<
-      Options<StreamAgenticSearchCollectionsReadableIdSearchAgenticStreamPostData>
-    >,
-  ): UseMutationOptions<
-    unknown,
-    StreamAgenticSearchCollectionsReadableIdSearchAgenticStreamPostError,
-    Options<StreamAgenticSearchCollectionsReadableIdSearchAgenticStreamPostData>
-  > => {
-    const mutationOptions: UseMutationOptions<
+    options: Options<StreamAgenticSearchCollectionsReadableIdSearchAgenticStreamPostData>,
+  ) =>
+    queryOptions<
       unknown,
       StreamAgenticSearchCollectionsReadableIdSearchAgenticStreamPostError,
-      Options<StreamAgenticSearchCollectionsReadableIdSearchAgenticStreamPostData>
-    > = {
-      mutationFn: async (fnOptions) => {
+      unknown,
+      ReturnType<
+        typeof streamAgenticSearchCollectionsReadableIdSearchAgenticStreamPostQueryKey
+      >
+    >({
+      queryFn: async ({ queryKey, signal }) => {
         const { data } =
           await streamAgenticSearchCollectionsReadableIdSearchAgenticStreamPost(
             {
               ...options,
-              ...fnOptions,
+              ...queryKey[0],
+              signal,
               throwOnError: true,
             },
           );
         return data;
       },
-    };
-    return mutationOptions;
-  };
+      queryKey:
+        streamAgenticSearchCollectionsReadableIdSearchAgenticStreamPostQueryKey(
+          options,
+        ),
+    });
+
+export const streamAgenticSearchCollectionsReadableIdSearchAgenticStreamPostInfiniteQueryKey =
+  (
+    options: Options<StreamAgenticSearchCollectionsReadableIdSearchAgenticStreamPostData>,
+  ): QueryKey<
+    Options<StreamAgenticSearchCollectionsReadableIdSearchAgenticStreamPostData>
+  > =>
+    createQueryKey(
+      'streamAgenticSearchCollectionsReadableIdSearchAgenticStreamPost',
+      options,
+      true,
+    );
+
+/**
+ * Stream Agentic Search
+ *
+ * Streaming agentic search via Server-Sent Events. Returns real-time events as the agent searches.
+ */
+export const streamAgenticSearchCollectionsReadableIdSearchAgenticStreamPostInfiniteOptions =
+  (
+    options: Options<StreamAgenticSearchCollectionsReadableIdSearchAgenticStreamPostData>,
+  ) =>
+    infiniteQueryOptions<
+      unknown,
+      StreamAgenticSearchCollectionsReadableIdSearchAgenticStreamPostError,
+      InfiniteData<unknown>,
+      QueryKey<
+        Options<StreamAgenticSearchCollectionsReadableIdSearchAgenticStreamPostData>
+      >,
+      | number
+      | null
+      | Pick<
+          QueryKey<
+            Options<StreamAgenticSearchCollectionsReadableIdSearchAgenticStreamPostData>
+          >[0],
+          'body' | 'headers' | 'path' | 'query'
+        >
+    >(
+      // @ts-ignore
+      {
+        queryFn: async ({ pageParam, queryKey, signal }) => {
+          // @ts-ignore
+          const page: Pick<
+            QueryKey<
+              Options<StreamAgenticSearchCollectionsReadableIdSearchAgenticStreamPostData>
+            >[0],
+            'body' | 'headers' | 'path' | 'query'
+          > =
+            typeof pageParam === 'object'
+              ? pageParam
+              : {
+                  body: {
+                    limit: pageParam,
+                  },
+                };
+          const params = createInfiniteParams(queryKey, page);
+          const { data } =
+            await streamAgenticSearchCollectionsReadableIdSearchAgenticStreamPost(
+              {
+                ...options,
+                ...params,
+                signal,
+                throwOnError: true,
+              },
+            );
+          return data;
+        },
+        queryKey:
+          streamAgenticSearchCollectionsReadableIdSearchAgenticStreamPostInfiniteQueryKey(
+            options,
+          ),
+      },
+    );
 
 export const oauthCallbackSourceConnectionsCallbackGetQueryKey = (
   options?: Options<OauthCallbackSourceConnectionsCallbackGetData>,
