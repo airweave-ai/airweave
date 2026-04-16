@@ -40,6 +40,7 @@ export function ConnectSourceConfigPage() {
           void navigate({
             params: { collectionId },
             to: '/collections/$collectionId',
+            viewTransition: true,
           })
         }
         sourceName={source.name}
