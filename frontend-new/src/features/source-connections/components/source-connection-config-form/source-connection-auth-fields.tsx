@@ -16,7 +16,14 @@ import type { SourceConnectionFormInput } from './source-connection-form-hook';
 import type { Source } from '@/shared/api';
 import { Button } from '@/shared/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
-import { FieldDescription, FieldTitle } from '@/shared/ui/field';
+import {
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+  FieldTitle,
+} from '@/shared/ui/field';
+import { Input } from '@/shared/ui/input';
+import { Separator } from '@/shared/ui/separator';
 import { Switch } from '@/shared/ui/switch';
 
 function getRedirectUri(
@@ -76,6 +83,8 @@ export const SourceConnectionAuthFields = withSourceConnectionForm({
           }
 
           if (selectedAuthMethod === 'oauth_browser') {
+            const redirectUri = getRedirectUri(authentication);
+            const hasCustomRedirectUri = redirectUri !== undefined;
             const oauthCredentialTitles = isOAuth1Source(source)
               ? {
                   key: 'Consumer Key',
@@ -133,20 +142,6 @@ export const SourceConnectionAuthFields = withSourceConnectionForm({
 
             return (
               <React.Fragment>
-                <form.Field name="authentication.redirect_uri">
-                  {(field) => (
-                    <SourceConnectionTextInput
-                      description="Optional callback URL override. Leave empty to use the default Airweave redirect."
-                      errors={field.state.meta.errors}
-                      id={field.name}
-                      onBlur={field.handleBlur}
-                      onChange={field.handleChange}
-                      title="Redirect URI"
-                      value={field.state.value ?? ''}
-                    />
-                  )}
-                </form.Field>
-
                 {source.requires_byoc ? (
                   <Alert className="gap-y-3 p-4">
                     <IconInfoCircle className="size-4" />
@@ -220,6 +215,69 @@ export const SourceConnectionAuthFields = withSourceConnectionForm({
                     {customOAuthCredentialFields}
                   </SelectionCard>
                 )}
+
+                <Separator />
+
+                <form.Field name="authentication.redirect_uri">
+                  {(field) => {
+                    const hasErrors = !field.state.meta.isValid;
+
+                    return (
+                      <div className="space-y-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <FieldLabel htmlFor={field.name}>
+                            {hasCustomRedirectUri
+                              ? 'Custom OAuth callback URL'
+                              : 'OAuth callback URL'}
+                          </FieldLabel>
+
+                          <Button
+                            type="button"
+                            variant="link"
+                            className="h-5"
+                            onClick={() => {
+                              field.handleChange(
+                                hasCustomRedirectUri ? undefined : '',
+                              );
+                            }}
+                          >
+                            {hasCustomRedirectUri
+                              ? 'Use default'
+                              : 'Use custom URL'}
+                          </Button>
+                        </div>
+
+                        <Input
+                          aria-invalid={hasErrors}
+                          disabled={!hasCustomRedirectUri}
+                          id={field.name}
+                          onBlur={field.handleBlur}
+                          onChange={(event) =>
+                            field.handleChange(event.target.value)
+                          }
+                          placeholder={
+                            hasCustomRedirectUri
+                              ? 'https://your-app.com/integrations/callback'
+                              : 'Default (managed by Airweave)'
+                          }
+                          value={
+                            hasCustomRedirectUri
+                              ? (field.state.value ?? '')
+                              : ''
+                          }
+                        />
+
+                        <FieldDescription className="text-balance">
+                          {hasCustomRedirectUri
+                            ? 'Must exactly match the redirect URL in your provider app settings. You are responsible for handling this callback.'
+                            : 'After authorization, providers redirect here so Airweave can finish the connection.'}
+                        </FieldDescription>
+
+                        <FieldError errors={field.state.meta.errors} />
+                      </div>
+                    );
+                  }}
+                </form.Field>
               </React.Fragment>
             );
           }

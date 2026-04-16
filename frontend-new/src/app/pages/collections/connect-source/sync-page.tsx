@@ -36,6 +36,7 @@ export function ConnectSourceSyncPage() {
           void navigate({
             params: { collectionId },
             to: '/collections/$collectionId',
+            viewTransition: true,
           })
         }
         sourceName={source.name}
@@ -55,6 +56,7 @@ export function ConnectSourceSyncPage() {
               void navigate({
                 params: { collectionId },
                 to: '/collections/$collectionId',
+                viewTransition: true,
               })
             }
             source={source}

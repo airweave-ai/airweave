@@ -41,7 +41,12 @@ const optionalTrimmedStringSchema = z
   });
 
 const oauthBrowserBaseAuthenticationSchema = z.object({
-  redirect_uri: optionalTrimmedStringSchema,
+  redirect_uri: z
+    .url({
+      protocol: /^https?$/,
+      error: 'Redirect URI must be a valid http:// or https:// URL',
+    })
+    .optional(),
 });
 
 const oauthBrowserManagedAuthenticationSchema =

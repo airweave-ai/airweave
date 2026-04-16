@@ -43,6 +43,7 @@ export function ConnectSourceAuthPage() {
       void navigate({
         params: { collectionId },
         to: '/collections/$collectionId',
+        viewTransition: true,
       }),
     [collectionId, navigate],
   );
@@ -134,6 +135,7 @@ export function ConnectSourceAuthErrorPage({ error }: ErrorComponentProps) {
       void navigate({
         params: { collectionId },
         to: '/collections/$collectionId',
+        viewTransition: true,
       }),
     [collectionId, navigate],
   );
