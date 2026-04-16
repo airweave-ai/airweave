@@ -14,7 +14,7 @@ from airweave.core.protocols.event_bus import EventBus
 from airweave.core.shared_models import SyncJobStatus, SyncPauseReason, SyncStatus
 from airweave.db.session import get_db_context
 from airweave.domains.access_control.pipeline import AccessControlPipeline
-from airweave.domains.sources.exceptions import SourceAuthError
+from airweave.domains.source_connections.types import ErrorClassification
 from airweave.domains.sources.exceptions.classifier import classify_error
 from airweave.domains.sync_pipeline.contexts import SyncContext
 from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
@@ -659,7 +659,8 @@ class SyncOrchestrator:
     async def _handle_sync_failure(self, error: Exception) -> None:
         """Handle sync failure by updating job status with error details."""
         error_message = get_error_message(error)
-        pause_reason = self._get_pause_reason(error)
+        classification = classify_error(error)
+        pause_reason = self._get_pause_reason(error, classification)
 
         # Expected graceful exits (usage exhausted, payment required, credential error)
         # are pauses, not unexpected errors — log at warning without tracebacks.
@@ -672,8 +673,6 @@ class SyncOrchestrator:
             self.sync_context.logger.error(
                 f"Sync job {self.sync_context.sync_job.id} failed: {error_message}", exc_info=True
             )
-
-        classification = classify_error(error)
 
         stats = self.runtime.entity_tracker.get_stats()
 
@@ -724,14 +723,17 @@ class SyncOrchestrator:
         )
 
     @staticmethod
-    def _get_pause_reason(error: Exception) -> SyncPauseReason | None:
+    def _get_pause_reason(
+        error: Exception,
+        classification: ErrorClassification,
+    ) -> SyncPauseReason | None:
         """Determine if an error warrants pausing the sync."""
-        if isinstance(error, SourceAuthError):
-            return SyncPauseReason.CREDENTIAL_ERROR
         if isinstance(error, UsageLimitExceededError):
             return SyncPauseReason.USAGE_EXHAUSTED
         if isinstance(error, PaymentRequiredError):
             return SyncPauseReason.PAYMENT_REQUIRED
+        if classification.category is not None:
+            return SyncPauseReason.CREDENTIAL_ERROR
         return None
 
     async def _handle_cancellation(self) -> None:
