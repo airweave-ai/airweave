@@ -21,6 +21,8 @@ import type {
   SyncJobDetails,
   SyncJobStatus,
 } from '@/shared/api';
+import { formatCount } from '@/shared/format/format-count';
+import { pluralize } from '@/shared/format/pluralize';
 import { getApiErrorMessage } from '@/shared/api';
 
 interface ConnectSourceSyncJobProgressProps {
@@ -180,7 +182,7 @@ function getProgressCardTitle(
 }
 
 function formatIndexedEntities(totalEntities: number) {
-  const label = totalEntities === 1 ? 'entity' : 'entities';
+  const label = pluralize(totalEntities, 'entity', 'entities');
   return `${formatCount(totalEntities)} ${label} indexed`;
 }
 
@@ -192,10 +194,6 @@ function getIndexedEntitiesPseudoProgress(totalEntities: number) {
   // Grow quickly at the start, then taper off so the bar feels alive without
   // implying an exact denominator we do not have from the backend.
   return Math.min(0.95, 1 - 1 / (1 + totalEntities * 0.15));
-}
-
-function formatCount(value: number) {
-  return new Intl.NumberFormat().format(value);
 }
 
 function formatStatusTimestamp(value?: string | null) {

@@ -3,6 +3,8 @@ import { Link } from '@tanstack/react-router';
 import { IconPlus } from '@tabler/icons-react';
 import { ConnectionsTabContent } from './connections-tab-content';
 import type { SourceConnectionListItem } from '@/shared/api';
+import { formatCount } from '@/shared/format/format-count';
+import { pluralize } from '@/shared/format/pluralize';
 import { Button } from '@/shared/ui/button';
 import {
   Card,
@@ -19,8 +21,6 @@ type CollectionDetailTabsCardProps = {
 };
 
 type CollectionDetailTab = 'connections' | 'events' | 'queries';
-
-const countFormatter = new Intl.NumberFormat();
 
 export function CollectionDetailTabsCard({
   collectionId,
@@ -42,13 +42,12 @@ export function CollectionDetailTabsCard({
             <CardTitle>Collection Details</CardTitle>
             <CardDescription className="flex items-center gap-1.5 font-mono">
               <span>
-                {formatCount(sourceCount)}{' '}
-                {sourceCount === 1 ? 'Source' : 'Sources'}
+                {formatCount(sourceCount)} {pluralize(sourceCount, 'Source')}
               </span>
               <span className="size-[3px] rounded-full bg-current" />
               <span>
                 {formatCount(entityCount)}{' '}
-                {entityCount === 1 ? 'Entity' : 'Entities'}
+                {pluralize(entityCount, 'Entity', 'Entities')}
               </span>
             </CardDescription>
           </div>
@@ -91,8 +90,4 @@ export function CollectionDetailTabsCard({
       </CardContent>
     </Card>
   );
-}
-
-function formatCount(value: number) {
-  return countFormatter.format(value);
 }
