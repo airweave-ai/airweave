@@ -1,4 +1,6 @@
 import { Search } from 'lucide-react';
+import { formatNumber } from '@/shared/format/format-number';
+import { pluralize } from '@/shared/format/pluralize';
 import { cn } from '@/shared/tailwind/cn';
 import { Badge } from '@/shared/ui/badge';
 import {
@@ -51,12 +53,13 @@ export function SourcePickerFilters({
           >
             {isLoading
               ? 'Loading...'
-              : `${filteredSourceCount} result${filteredSourceCount === 1 ? '' : 's'}`}
+              : `${formatNumber(filteredSourceCount)} ${pluralize(filteredSourceCount, 'result')}`}
           </InputGroupAddon>
         </InputGroup>
 
         <p className="font-mono text-sm text-muted-foreground">
-          {totalSourceCount} Source{totalSourceCount === 1 ? '' : 's'} Available
+          {formatNumber(totalSourceCount)}{' '}
+          {pluralize(totalSourceCount, 'Source')} Available
         </p>
       </div>
 

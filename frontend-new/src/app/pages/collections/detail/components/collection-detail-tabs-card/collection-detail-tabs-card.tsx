@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { IconPlus } from '@tabler/icons-react';
 import { ConnectionsTabContent } from './connections-tab-content';
 import type { SourceConnectionListItem } from '@/shared/api';
-import { formatCount } from '@/shared/format/format-count';
+import { formatNumber } from '@/shared/format/format-number';
 import { pluralize } from '@/shared/format/pluralize';
 import { Button } from '@/shared/ui/button';
 import {
@@ -42,11 +42,11 @@ export function CollectionDetailTabsCard({
             <CardTitle>Collection Details</CardTitle>
             <CardDescription className="flex items-center gap-1.5 font-mono">
               <span>
-                {formatCount(sourceCount)} {pluralize(sourceCount, 'Source')}
+                {formatNumber(sourceCount)} {pluralize(sourceCount, 'Source')}
               </span>
               <span className="size-[3px] rounded-full bg-current" />
               <span>
-                {formatCount(entityCount)}{' '}
+                {formatNumber(entityCount)}{' '}
                 {pluralize(entityCount, 'Entity', 'Entities')}
               </span>
             </CardDescription>

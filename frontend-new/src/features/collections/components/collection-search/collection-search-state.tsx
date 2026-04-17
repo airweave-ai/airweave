@@ -12,6 +12,8 @@ import type {
   CollectionSearchTierName,
   CollectionSearchTierState,
 } from './use-collection-search-tiers';
+import { formatNumber } from '@/shared/format/format-number';
+import { pluralize } from '@/shared/format/pluralize';
 import { useCopyToClipboard } from '@/shared/hooks/use-copy-to-clipboard';
 import { cn } from '@/shared/tailwind/cn';
 import { Button } from '@/shared/ui/button';
@@ -498,9 +500,9 @@ function formatReasoningEventForClipboard(
 }
 
 function formatDuration(durationMs: number) {
-  return `${durationMs.toLocaleString()}ms`;
+  return `${formatNumber(durationMs)}ms`;
 }
 
 function formatResultCount(count: number) {
-  return `${count} result${count === 1 ? '' : 's'}`;
+  return `${formatNumber(count)} ${pluralize(count, 'result')}`;
 }
