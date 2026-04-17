@@ -424,7 +424,7 @@ class SyncService(SyncServiceProtocol):
                         sync_id=sync.id,
                         target=SyncStatus.PAUSED,
                         ctx=ctx,
-                        reason=f"Credential error: {classification.category.value}",
+                        reason=f"{SyncPauseReason.CREDENTIAL_ERROR.value}: {classification.category.value}",
                         pause_reason=SyncPauseReason.CREDENTIAL_ERROR,
                     )
                 except Exception:
