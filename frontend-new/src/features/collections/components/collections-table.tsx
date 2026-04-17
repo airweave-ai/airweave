@@ -13,6 +13,8 @@ import { CollectionTooltipContent } from './collection-tooltip-content';
 import type { ColumnDef, RowSelectionState } from '@tanstack/react-table';
 import type { Collection } from '@/shared/api';
 import type { ReactNode } from 'react';
+import { formatCount } from '@/shared/format/format-count';
+import { pluralize } from '@/shared/format/pluralize';
 import { useCopyToClipboard } from '@/shared/hooks/use-copy-to-clipboard';
 import { cn } from '@/shared/tailwind/cn';
 import { Button } from '@/shared/ui/button';
@@ -136,8 +138,8 @@ export function CollectionsTable({
           <div className="flex items-center gap-3">
             <CollectionBulkActionsMenu collectionIds={selectedCollectionIds} />
             <span className="text-left">
-              {selectedCollectionsCount} Collection
-              {selectedCollectionsCount > 1 && 's'} selected
+              {formatCount(selectedCollectionsCount)}{' '}
+              {pluralize(selectedCollectionsCount, 'Collection')} selected
             </span>
           </div>
           <Button
