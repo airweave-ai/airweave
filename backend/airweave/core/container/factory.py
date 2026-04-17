@@ -1028,6 +1028,7 @@ def _create_sync_services(
         source_registry=source_registry,
         entity_count_repo=entity_count_repo,
         sync_job_repo=sync_job_repo,
+        sync_repo=sync_repo,
         auth_provider_registry=auth_provider_registry,
     )
 
