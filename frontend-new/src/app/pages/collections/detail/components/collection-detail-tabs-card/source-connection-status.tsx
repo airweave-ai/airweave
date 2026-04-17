@@ -30,7 +30,7 @@ export function SourceConnectionStatusHeader({
   const resolvedStatus = isSyncing ? 'syncing' : sourceConnection.status;
 
   return (
-    <div className="flex flex-row items-center gap-1">
+    <div className="flex flex-wrap items-center gap-1">
       <ConnectionStatusLabel>
         <ConnectionStatusIndicator status={resolvedStatus} />
         <span
@@ -41,12 +41,18 @@ export function SourceConnectionStatusHeader({
           {sourceConnectionStatusLabel[resolvedStatus]}
         </span>
       </ConnectionStatusLabel>
-      <Separator className="my-auto h-4" orientation="vertical" />
+      <Separator
+        className="my-auto hidden h-4 sm:block"
+        orientation="vertical"
+      />
       <ConnectionStatusLabel>
         <IconClock className="size-3" />
         {formatNextRun(sourceConnection.schedule?.next_run)}
       </ConnectionStatusLabel>
-      <Separator className="my-auto h-4" orientation="vertical" />
+      <Separator
+        className="my-auto hidden h-4 sm:block"
+        orientation="vertical"
+      />
       <ConnectionStatusLabel>
         <IconCloudCheck className="size-3" />
         Last sync:{' '}
@@ -58,7 +64,7 @@ export function SourceConnectionStatusHeader({
       <Button
         size="icon-sm"
         variant="ghost"
-        className="ml-1"
+        className="shrink-0 sm:ml-1"
         disabled={isSyncing}
         onClick={onSync}
       >
@@ -74,11 +80,17 @@ export function SourceConnectionStatusHeader({
 
 export function SourceConnectionStatusHeaderSkeleton() {
   return (
-    <div className="flex min-h-9 flex-row items-center gap-1">
+    <div className="flex min-h-9 flex-wrap items-center gap-1">
       <Skeleton className="h-8 w-28 rounded-sm" />
-      <Separator className="my-auto h-4" orientation="vertical" />
+      <Separator
+        className="my-auto hidden h-4 sm:block"
+        orientation="vertical"
+      />
       <Skeleton className="h-8 w-20 rounded-sm" />
-      <Separator className="my-auto h-4" orientation="vertical" />
+      <Separator
+        className="my-auto hidden h-4 sm:block"
+        orientation="vertical"
+      />
       <Skeleton className="h-8 w-36 rounded-sm" />
       <Skeleton className="ml-1 size-8 rounded-sm" />
     </div>
@@ -152,7 +164,11 @@ function hasTimezoneSuffix(value: string) {
 }
 
 function ConnectionStatusLabel({ children }: React.PropsWithChildren) {
-  return <span className="flex items-center gap-1.5 p-2">{children}</span>;
+  return (
+    <span className="flex min-w-0 items-center gap-1.5 p-2 whitespace-nowrap">
+      {children}
+    </span>
+  );
 }
 
 export function ConnectionStatusIndicator({

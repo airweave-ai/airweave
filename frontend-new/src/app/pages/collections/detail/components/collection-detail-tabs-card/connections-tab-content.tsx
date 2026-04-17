@@ -71,21 +71,26 @@ export function ConnectionsTabContent({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
-        <SourceConnectionSelect
-          selectedSourceConnectionId={selectedSourceConnectionSummary?.id}
-          sourceConnections={sourceConnections}
-          onSourceConnectionSelected={setSelectedSourceConnectionId}
-        />
-        {sourceConnectionQuery.isLoading ? (
-          <SourceConnectionStatusHeaderSkeleton />
-        ) : selectedSourceConnectionSummary && sourceConnection ? (
-          <SourceConnectionStatusHeader
-            isSyncing={isSyncing}
-            onSync={runSync}
-            sourceConnection={sourceConnection}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="min-w-0 flex-1 basis-64 lg:w-50 lg:flex-none">
+          <SourceConnectionSelect
+            selectedSourceConnectionId={selectedSourceConnectionSummary?.id}
+            sourceConnections={sourceConnections}
+            onSourceConnectionSelected={setSelectedSourceConnectionId}
           />
-        ) : null}
+        </div>
+
+        <div className="min-w-0 flex-1 basis-80 sm:flex sm:justify-end">
+          {sourceConnectionQuery.isLoading ? (
+            <SourceConnectionStatusHeaderSkeleton />
+          ) : selectedSourceConnectionSummary && sourceConnection ? (
+            <SourceConnectionStatusHeader
+              isSyncing={isSyncing}
+              onSync={runSync}
+              sourceConnection={sourceConnection}
+            />
+          ) : null}
+        </div>
       </div>
 
       <div className="flex min-h-77 flex-col justify-center">
@@ -242,7 +247,7 @@ function SourceConnectionSelect({
   if (!sourceConnections.length) {
     return (
       <Select disabled value="none">
-        <SelectTrigger className="min-w-50 border-none">
+        <SelectTrigger className="w-full min-w-0 border-none">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -257,7 +262,7 @@ function SourceConnectionSelect({
       value={selectedSourceConnectionId}
       onValueChange={onSourceConnectionSelected}
     >
-      <SelectTrigger className="min-w-50 border-none">
+      <SelectTrigger className="w-full min-w-0 border-none">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

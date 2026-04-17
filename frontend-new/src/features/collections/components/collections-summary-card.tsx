@@ -205,8 +205,7 @@ function CollectionListItem({
         <p className="font-mono text-xs leading-5 text-muted-foreground">
           {description ?? (
             <span className="flex items-center gap-1.5">
-              {formatNumber(sourceCount)}{' '}
-              {pluralize(sourceCount, 'Connection')}{' '}
+              {formatNumber(sourceCount)} {pluralize(sourceCount, 'Connection')}{' '}
               {/* TODO: replace with fetched number of entities */}
               <span className="size-[3px] rounded-full bg-current" /> 0{' '}
               {pluralize(0, 'Entity', 'Entities')}

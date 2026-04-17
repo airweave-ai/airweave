@@ -40,19 +40,21 @@ const defaultFormValues = {
 export function CollectionSearch({
   collectionId,
   disabled = false,
+  onTierChange,
+  tier,
 }: {
   collectionId: string;
   disabled?: boolean;
+  onTierChange: (tier: CollectionSearchTierName) => void;
+  tier: CollectionSearchTierName;
 }) {
-  const [activeTierName, setActiveTierName] =
-    React.useState<CollectionSearchTierName>('classic');
   const [selectedTabsByTier, setSelectedTabsByTier] = React.useState<
     Partial<Record<CollectionSearchTierName, CollectionSearchTabValue>>
   >({});
   const tiers = useCollectionSearchTiers({ collectionId });
-  const activeTier = tiers[activeTierName];
+  const activeTier = tiers[tier];
   const isLoading = activeTier.state.status === 'loading';
-  const activeSelectedTab = selectedTabsByTier[activeTierName];
+  const activeSelectedTab = selectedTabsByTier[tier];
 
   const form = useForm({
     defaultValues: defaultFormValues,
@@ -78,7 +80,7 @@ export function CollectionSearch({
 
   const handleTierChange = React.useCallback(
     (nextTierName: CollectionSearchTierName) => {
-      if (nextTierName === activeTierName) {
+      if (nextTierName === tier) {
         return;
       }
 
@@ -86,25 +88,25 @@ export function CollectionSearch({
         activeTier.cancel();
       }
 
-      setActiveTierName(nextTierName);
+      onTierChange(nextTierName);
     },
-    [activeTier, activeTierName],
+    [activeTier, onTierChange],
   );
 
   const handleSelectedTabChange = React.useCallback(
     (tab: CollectionSearchTabValue) => {
       setSelectedTabsByTier((currentTabs) => {
-        if (currentTabs[activeTierName] === tab) {
+        if (currentTabs[tier] === tab) {
           return currentTabs;
         }
 
         return {
           ...currentTabs,
-          [activeTierName]: tab,
+          [tier]: tab,
         };
       });
     },
-    [activeTierName],
+    [tier],
   );
 
   return (
@@ -157,18 +159,16 @@ export function CollectionSearch({
             >
               <Select
                 disabled={disabled}
-                value={activeTierName}
-                onValueChange={(value) =>
-                  handleTierChange(value as CollectionSearchTierName)
+                value={tier}
+                onValueChange={(value: CollectionSearchTierName) =>
+                  handleTierChange(value)
                 }
               >
                 <SelectTrigger
                   size="sm"
                   className="min-w-23 shrink-0 border-none dark:bg-transparent"
                 >
-                  <SelectValue
-                    aria-label={collectionSearchTierLabels[activeTierName]}
-                  />
+                  <SelectValue aria-label={collectionSearchTierLabels[tier]} />
                 </SelectTrigger>
 
                 <SelectContent position="popper">
@@ -223,7 +223,7 @@ export function CollectionSearch({
         onSelectedTabChange={handleSelectedTabChange}
         selectedTab={activeSelectedTab}
         state={activeTier.state}
-        tierName={activeTierName}
+        tierName={tier}
       />
     </div>
   );
