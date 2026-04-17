@@ -20,6 +20,8 @@ import { CollectionCountBadge } from './collection-count-badge';
 import { CollectionsSearchEmptyState } from './collections-search-empty-state';
 import type { Collection } from '@/shared/api';
 import type { ReactNode } from 'react';
+import { formatNumber } from '@/shared/format/format-number';
+import { pluralize } from '@/shared/format/pluralize';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardHeader } from '@/shared/ui/card';
@@ -203,9 +205,11 @@ function CollectionListItem({
         <p className="font-mono text-xs leading-5 text-muted-foreground">
           {description ?? (
             <span className="flex items-center gap-1.5">
-              {sourceCount} Connections{' '}
+              {formatNumber(sourceCount)}{' '}
+              {pluralize(sourceCount, 'Connection')}{' '}
               {/* TODO: replace with fetched number of entities */}
-              <span className="size-[3px] rounded-full bg-current" /> 0 Entities
+              <span className="size-[3px] rounded-full bg-current" /> 0{' '}
+              {pluralize(0, 'Entity', 'Entities')}
             </span>
           )}
         </p>

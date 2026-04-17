@@ -21,7 +21,7 @@ import type {
   SyncJobDetails,
   SyncJobStatus,
 } from '@/shared/api';
-import { formatCount } from '@/shared/format/format-count';
+import { formatNumber } from '@/shared/format/format-number';
 import { pluralize } from '@/shared/format/pluralize';
 import { getApiErrorMessage } from '@/shared/api';
 
@@ -155,7 +155,7 @@ function buildSyncErrorDetails({
     `Sync job ID: ${job.id}`,
     `Started: ${job.started_at ?? 'Unknown'}`,
     `Finished: ${job.completed_at ?? 'Unknown'}`,
-    `Entities before failure: ${formatCount(totalEntities)}`,
+    `Entities before failure: ${formatNumber(totalEntities)}`,
   ];
 
   if (error) {
@@ -183,7 +183,7 @@ function getProgressCardTitle(
 
 function formatIndexedEntities(totalEntities: number) {
   const label = pluralize(totalEntities, 'entity', 'entities');
-  return `${formatCount(totalEntities)} ${label} indexed`;
+  return `${formatNumber(totalEntities)} ${label} indexed`;
 }
 
 function getIndexedEntitiesPseudoProgress(totalEntities: number) {
