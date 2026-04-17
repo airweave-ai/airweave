@@ -49,8 +49,6 @@ const createCollectionFormSchema = z.object({
   name: z.string().trim().min(1, 'Collection name is required.'),
 });
 
-const createCollectionNameSchema = createCollectionFormSchema.shape.name;
-
 const defaultFormValues = {
   name: '',
 };
@@ -114,14 +112,9 @@ export function CreateCollectionDialogScreen({
             }}
           >
             <FieldGroup>
-              <form.Field
-                name="name"
-                validators={{
-                  onBlur: createCollectionNameSchema,
-                }}
-              >
+              <form.Field name="name">
                 {(field) => (
-                  <Field>
+                  <Field data-invalid={!field.state.meta.isValid}>
                     <FieldContent>
                       <FieldTitle>Collection Name</FieldTitle>
                     </FieldContent>
@@ -137,7 +130,7 @@ export function CreateCollectionDialogScreen({
                         field.handleChange(event.target.value);
                       }}
                       placeholder="Type your collection name here..."
-                      aria-invalid={field.state.meta.errors.length > 0}
+                      aria-invalid={!field.state.meta.isValid}
                     />
                     <FieldDescription>
                       Used in API and Connect session setup. You can rename this

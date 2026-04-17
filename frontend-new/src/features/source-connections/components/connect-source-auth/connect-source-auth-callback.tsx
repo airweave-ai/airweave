@@ -13,7 +13,7 @@ import {
 import { ConnectSourceAuthError } from './connect-source-auth-error';
 import type { SourceConnection } from '@/shared/api';
 import { getApiErrorMessage } from '@/shared/api';
-import { Loader } from '@/shared/components/loader';
+import { AirweaveLoader } from '@/shared/components/airweave-loader';
 
 interface ConnectSourceAuthCallbackProps {
   onClose: () => void;
@@ -155,7 +155,7 @@ export function ConnectSourceAuthCallback({
 
   return (
     <ConnectSourceStepLayoutContent className="flex items-center justify-center text-center">
-      <Loader>Finishing source authorization...</Loader>
+      <AirweaveLoader>Finishing source authorization...</AirweaveLoader>
     </ConnectSourceStepLayoutContent>
   );
 }

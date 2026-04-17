@@ -10,7 +10,9 @@ export function AppShell({ children }: PropsWithChildren) {
       <AppSidebar />
       <SidebarInset className="min-h-0 overflow-hidden">
         <AppHeader />
-        <div className="min-h-0 flex-1 overflow-auto">{children}</div>
+        <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+          {children}
+        </div>
         <AppDialog />
       </SidebarInset>
     </SidebarProvider>

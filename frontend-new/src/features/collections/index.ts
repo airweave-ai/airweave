@@ -3,7 +3,10 @@ export { CollectionCodeSnippetAside } from './components/collection-code-snippet
 export { CollectionSearch } from './components/collection-search';
 export type { CollectionSearchTierName } from './components/collection-search';
 export { CollectionFilterButtonGroup } from './components/collection-filter-button-group';
-export { CollectionsSearchEmptyState } from './components/collections-search-empty-state';
+export {
+  CollectionsEmptyState,
+  CollectionsNoSearchResultsState,
+} from './components/collections-empty-state';
 export { CollectionsTable } from './components/collections-table';
 export { CollectionCountBadge } from './components/collection-count-badge';
 export { CollectionSourceConnections } from './components/collection-source-connections';

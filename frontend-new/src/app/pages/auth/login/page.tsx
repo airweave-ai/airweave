@@ -1,4 +1,4 @@
-import { Loader } from '@/shared/components/loader';
+import { AirweaveLoader } from '@/shared/components/airweave-loader';
 
 type LoginPageProps = {
   organizationName?: string;
@@ -7,9 +7,9 @@ type LoginPageProps = {
 export function LoginPage(props: LoginPageProps) {
   if (props.organizationName) {
     return (
-      <Loader className="min-h-screen">{`You've been invited to join ${props.organizationName}`}</Loader>
+      <AirweaveLoader className="min-h-screen">{`You've been invited to join ${props.organizationName}`}</AirweaveLoader>
     );
   }
 
-  return <Loader className="min-h-screen">Redirecting to sign in</Loader>;
+  return <AirweaveLoader className="min-h-screen">Redirecting to sign in</AirweaveLoader>;
 }

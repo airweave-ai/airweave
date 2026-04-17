@@ -1,4 +1,4 @@
-import { Loader } from '@/shared/components/loader';
+import { AirweaveLoader } from '@/shared/components/airweave-loader';
 
 type AuthCallbackPageProps = {
   organizationName?: string;
@@ -6,8 +6,8 @@ type AuthCallbackPageProps = {
 
 export function AuthCallbackPage({ organizationName }: AuthCallbackPageProps) {
   return (
-    <Loader className="min-h-screen">
+    <AirweaveLoader className="min-h-screen">
       {organizationName ? 'Accepting invitation' : 'Finishing sign-in'}
-    </Loader>
+    </AirweaveLoader>
   );
 }

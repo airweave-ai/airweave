@@ -4,7 +4,7 @@ import { appSearchSchema } from '@/app/layouts/app-search';
 import { AppShell } from '@/app/layouts/app-shell';
 import { AppSessionProvider } from '@/app/providers/app-session-provider';
 import { ensureAppSession } from '@/features/app-session';
-import { Loader } from '@/shared/components/loader';
+import { AirweaveLoader } from '@/shared/components/airweave-loader';
 
 export const Route = createFileRoute('/_authenticated/_app')({
   beforeLoad: async ({ context }) => {
@@ -26,7 +26,7 @@ function LayoutComponent() {
   return (
     <AppSessionProvider>
       <AppShell>
-        <React.Suspense fallback={<Loader />}>
+        <React.Suspense fallback={<AirweaveLoader />}>
           <Outlet />
         </React.Suspense>
       </AppShell>
