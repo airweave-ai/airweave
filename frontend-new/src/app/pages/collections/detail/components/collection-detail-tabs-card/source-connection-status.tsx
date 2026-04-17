@@ -1,6 +1,7 @@
 import { format, intlFormatDistance, isValid, parseISO } from 'date-fns';
 import { IconClock, IconCloudCheck, IconRefresh } from '@tabler/icons-react';
 import type { SourceConnection, SourceConnectionListItem } from '@/shared/api';
+import { StatusDot } from '@/shared/components/status-dot';
 import { cn } from '@/shared/tailwind/cn';
 import { Button } from '@/shared/ui/button';
 import { Separator } from '@/shared/ui/separator';
@@ -176,15 +177,11 @@ export function ConnectionStatusIndicator({
 }: {
   status: SourceConnectionListItem['status'];
 }) {
-  return (
-    <span
-      className={cn(
-        'size-1.5 rounded-full bg-current text-muted-foreground shadow-[0_0_4px_currentColor]',
-        {
-          'text-green-400': ['active', 'syncing'].includes(status),
-          'text-destructive': ['pending_auth', 'error'].includes(status),
-        },
-      )}
-    />
-  );
+  const variant = ['active', 'syncing'].includes(status)
+    ? 'success'
+    : ['pending_auth', 'error'].includes(status)
+      ? 'destructive'
+      : 'muted';
+
+  return <StatusDot className="size-1.5" variant={variant} />;
 }

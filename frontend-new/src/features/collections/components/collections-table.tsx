@@ -13,6 +13,7 @@ import { CollectionTooltipContent } from './collection-tooltip-content';
 import type { ColumnDef, RowSelectionState } from '@tanstack/react-table';
 import type { Collection } from '@/shared/api';
 import type { ReactNode } from 'react';
+import { StatusDot } from '@/shared/components/status-dot';
 import { formatNumber } from '@/shared/format/format-number';
 import { pluralize } from '@/shared/format/pluralize';
 import { useCopyToClipboard } from '@/shared/hooks/use-copy-to-clipboard';
@@ -234,7 +235,7 @@ function CollectionStatusIndicator({ collection }: { collection: Collection }) {
         }
         className="flex size-8 items-center justify-center"
       >
-        <CollectionStatusDot healthy={hasConnections} />
+        <StatusDot variant={hasConnections ? 'success' : 'default'} />
       </TooltipTrigger>
       <CollectionTooltipContent
         sideOffset={8}
@@ -245,30 +246,12 @@ function CollectionStatusIndicator({ collection }: { collection: Collection }) {
         }
         title={
           <span className="inline-flex items-center gap-1">
-            <CollectionStatusDot healthy={hasConnections} />
+            <StatusDot variant={hasConnections ? 'success' : 'default'} />
             {statusTitle}
           </span>
         }
       />
     </Tooltip>
-  );
-}
-
-function CollectionStatusDot({
-  healthy,
-  className,
-}: {
-  healthy: boolean;
-  className?: string;
-}) {
-  return (
-    <span
-      className={cn(
-        'size-2 shrink-0 rounded-full bg-current shadow-[0_0_4px_currentColor]',
-        healthy ? 'text-green-400' : 'text-foreground',
-        className,
-      )}
-    />
   );
 }
 
