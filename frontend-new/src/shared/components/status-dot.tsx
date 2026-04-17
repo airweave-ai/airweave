@@ -1,13 +1,19 @@
 import * as React from 'react';
 import { cn } from '@/shared/tailwind/cn';
 
-type StatusDotVariant = 'default' | 'destructive' | 'muted' | 'success';
+type StatusDotVariant =
+  | 'default'
+  | 'destructive'
+  | 'muted'
+  | 'success'
+  | 'warning';
 
 const statusDotVariantClasses: Record<StatusDotVariant, string> = {
   default: 'text-foreground',
   destructive: 'text-destructive',
   muted: 'text-muted-foreground',
   success: 'text-green-400',
+  warning: 'text-orange-400',
 };
 
 export function StatusDot({

@@ -1,6 +1,6 @@
 import { format, intlFormatDistance, isValid, parseISO } from 'date-fns';
 import { IconClock, IconCloudCheck, IconRefresh } from '@tabler/icons-react';
-import type { SourceConnection, SourceConnectionListItem } from '@/shared/api';
+import type { SourceConnection, SourceConnectionStatus } from '@/shared/api';
 import { StatusDot } from '@/shared/components/status-dot';
 import { cn } from '@/shared/tailwind/cn';
 import { Button } from '@/shared/ui/button';
@@ -15,7 +15,7 @@ const sourceConnectionStatusLabel = {
   pending_auth: 'Source not connected',
   pending_sync: 'Sync not started',
   syncing: 'Syncing...',
-} satisfies Record<SourceConnectionListItem['status'], string>;
+} satisfies Record<SourceConnectionStatus, string>;
 
 type SourceConnectionStatusHeaderProps = {
   isSyncing?: boolean;
@@ -175,7 +175,7 @@ function ConnectionStatusLabel({ children }: React.PropsWithChildren) {
 export function ConnectionStatusIndicator({
   status,
 }: {
-  status: SourceConnectionListItem['status'];
+  status: SourceConnectionStatus;
 }) {
   const variant = ['active', 'syncing'].includes(status)
     ? 'success'
