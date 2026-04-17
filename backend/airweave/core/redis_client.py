@@ -58,6 +58,19 @@ class RedisClient:
 
     def _create_client(self, max_connections: int = 50) -> redis.Redis:
         """Create a Redis client with specified connection pool size."""
+        # Build optional TLS kwargs for managed Redis instances
+        # (e.g., GCP Memorystore, AWS ElastiCache, Azure Cache for Redis)
+        ssl_kwargs: dict = {}
+        if settings.REDIS_SSL:
+            ssl_kwargs["connection_class"] = redis.SSLConnection
+            if settings.REDIS_SSL_CERT_REQS:
+                ssl_kwargs["ssl_cert_reqs"] = settings.REDIS_SSL_CERT_REQS
+                ssl_kwargs["ssl_check_hostname"] = (
+                    settings.REDIS_SSL_CERT_REQS == "required"
+                )
+            if settings.REDIS_SSL_CA_CERTS:
+                ssl_kwargs["ssl_ca_certs"] = settings.REDIS_SSL_CA_CERTS
+
         # Create connection pool with proper configuration
         pool = redis.ConnectionPool(
             host=settings.REDIS_HOST,
@@ -72,6 +85,7 @@ class RedisClient:
             socket_connect_timeout=5,  # Add connection timeout
             socket_timeout=5,  # Add socket timeout
             retry_on_error=[ConnectionError, TimeoutError],  # Retry on these errors
+            **ssl_kwargs,
         )
 
         return redis.Redis(connection_pool=pool)
