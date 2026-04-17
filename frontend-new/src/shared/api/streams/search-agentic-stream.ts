@@ -153,6 +153,7 @@ export function subscribeSearchAgenticStreamOptions(
     initialValue: initialSearchAgenticStreamState,
     queryKey,
     reducer: reduceSearchAgenticStreamState,
+    staleTime: 'static',
     streamFn: ({ signal }) =>
       subscribeSearchAgenticStream({
         ...options,

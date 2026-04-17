@@ -21,12 +21,7 @@ export function CollectionSourceConnections({
 
   return (
     <Tooltip>
-      <TooltipTrigger
-        className={cn(
-          'flex min-w-26 items-center gap-1.5',
-          size === 'sm' && 'min-w-20',
-        )}
-      >
+      <TooltipTrigger className={cn('flex items-center gap-1.5')}>
         <div
           className={cn(
             'flex flex-1 -space-x-3',

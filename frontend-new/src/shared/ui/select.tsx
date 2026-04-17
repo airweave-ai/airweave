@@ -1,11 +1,6 @@
 import * as React from 'react';
 import { Select as SelectPrimitive } from 'radix-ui';
-import {
-  IconCheck,
-  IconChevronDown,
-  IconChevronUp,
-  IconSelector,
-} from '@tabler/icons-react';
+import { IconCheck, IconChevronDown, IconChevronUp } from '@tabler/icons-react';
 
 import { cn } from '@/shared/tailwind/cn';
 
@@ -54,7 +49,7 @@ function SelectTrigger({
     >
       {children}
       <SelectPrimitive.Icon asChild>
-        <IconSelector className="pointer-events-none size-4 text-muted-foreground" />
+        <IconChevronDown className="pointer-events-none size-4 text-muted-foreground" />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   );
@@ -63,7 +58,7 @@ function SelectTrigger({
 function SelectContent({
   className,
   children,
-  position = 'item-aligned',
+  position = 'popper',
   align = 'center',
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content>) {

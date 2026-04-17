@@ -1,6 +1,7 @@
 import { experimental_streamedQuery } from '@tanstack/query-core';
 import { queryOptions } from '@tanstack/react-query';
 import type { QueryFunctionContext } from '@tanstack/query-core';
+import type { StaleTime } from '@tanstack/react-query';
 
 interface CreateStreamQueryOptionsParams<
   TEvent,
@@ -11,7 +12,7 @@ interface CreateStreamQueryOptionsParams<
   queryKey: TQueryKey;
   reducer: (state: TData, event: TEvent) => TData;
   refetchMode?: 'append' | 'reset' | 'replace';
-  staleTime?: number;
+  staleTime?: StaleTime;
   streamFn: (
     context: QueryFunctionContext<TQueryKey>,
   ) => AsyncIterable<TEvent> | Promise<AsyncIterable<TEvent>>;
@@ -26,7 +27,7 @@ export function createStreamQueryOptions<
   queryKey,
   reducer,
   refetchMode = 'reset',
-  staleTime = Infinity,
+  staleTime = 0,
   streamFn,
 }: CreateStreamQueryOptionsParams<TEvent, TData, TQueryKey>) {
   return queryOptions<TData, Error, TData, TQueryKey>({

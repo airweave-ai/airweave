@@ -1,6 +1,6 @@
 import { Outlet, createFileRoute } from '@tanstack/react-router';
 import type { Collection } from '@/shared/api';
-import { CollectionDetailPage } from '@/app/pages/collections/detail-page';
+import { CollectionDetailPage } from '@/app/pages/collections/detail';
 import { ensureCollection } from '@/features/collections';
 
 export const Route = createFileRoute(
