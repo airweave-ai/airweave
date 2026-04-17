@@ -3,6 +3,7 @@ import { SearchX } from 'lucide-react';
 import { SourceCard } from '../source-card';
 import type { Source } from '@/shared/api';
 import { ErrorState } from '@/shared/components/error-state';
+import { LoadingState } from '@/shared/components/loading-state';
 import { Button } from '@/shared/ui/button';
 import {
   Empty,
@@ -12,7 +13,6 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/shared/ui/empty';
-import { Loader } from '@/shared/components/loader';
 
 interface SourcePickerResultsProps {
   error: unknown;
@@ -34,7 +34,7 @@ export function SourcePickerResults({
   search,
 }: SourcePickerResultsProps) {
   if (isLoading) {
-    return <Loader />;
+    return <LoadingState className="min-h-full" title="Loading sources..." />;
   }
 
   if (error) {

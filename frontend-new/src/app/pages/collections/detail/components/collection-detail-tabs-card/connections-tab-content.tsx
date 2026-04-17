@@ -14,6 +14,7 @@ import { useSourceConnectionSyncState } from './use-source-connection-sync-state
 import type { SourceConnection, SourceConnectionListItem } from '@/shared/api';
 import { getApiErrorMessage } from '@/shared/api';
 import { ErrorState } from '@/shared/components/error-state';
+import { LoadingState } from '@/shared/components/loading-state';
 import { SourceIcon } from '@/shared/components/source-icon';
 import {
   Alert,
@@ -39,7 +40,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/ui/select';
-import { Spinner } from '@/shared/ui/spinner';
 
 type ConnectionsTabContentProps = {
   collectionId: string;
@@ -140,19 +140,7 @@ function SourceConnectionEntitiesPanel({
   onResync: () => void;
 }) {
   if (query.isLoading) {
-    return (
-      <Empty>
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <Spinner className="size-4" />
-          </EmptyMedia>
-          <EmptyTitle>Loading…</EmptyTitle>
-          <EmptyDescription>
-            You can continue working while this completes.
-          </EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-    );
+    return <LoadingState />;
   }
 
   if (query.isError && !query.data) {

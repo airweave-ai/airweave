@@ -1,22 +1,25 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Plus, Search } from 'lucide-react';
+import { Plus } from 'lucide-react';
+import {
+  ListPage,
+  ListPageHeader,
+  ListPageSearch,
+  ListPageState,
+} from '@/app/pages/components';
 import type { CollectionsSearch } from './search';
 import { CreateCollectionButton } from '@/app/components/create-collection-button';
 import {
   CollectionCountBadge,
   CollectionFilterButtonGroup,
-  CollectionsSearchEmptyState,
+  CollectionsEmptyState,
+  CollectionsNoSearchResultsState,
   CollectionsTable,
   normalizeCollectionSearch,
   useListCollectionsQueryOptions,
 } from '@/features/collections';
-import { cn } from '@/shared/tailwind/cn';
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from '@/shared/ui/input-group';
-import { Spinner } from '@/shared/ui/spinner';
+import { getRouteApi } from '@tanstack/react-router';
+import { ErrorState } from '@/shared/components/error-state';
+import { LoadingState } from '@/shared/components/loading-state';
 
 type CollectionsPageProps = CollectionsSearch & {
   onSearchChange: (search: string | undefined) => void;
@@ -29,10 +32,13 @@ const collectionsPageFilters = [
   'Last Sync',
 ] as const;
 
+const routeApi = getRouteApi('/_authenticated/_app/collections/');
+
 export function CollectionsPage({
   search,
   onSearchChange,
 }: CollectionsPageProps) {
+  const navigate = routeApi.useNavigate();
   const normalizedSearch = normalizeCollectionSearch(search);
   const collectionsQueryOptions = useListCollectionsQueryOptions({
     search: normalizedSearch,
@@ -41,74 +47,80 @@ export function CollectionsPage({
     data: collections,
     error,
     isFetching,
+    refetch,
   } = useQuery({
     ...collectionsQueryOptions,
     placeholderData: keepPreviousData,
   });
 
-  const emptyState = error ? (
-    'Failed to load collections.'
-  ) : normalizedSearch && collections !== undefined ? (
-    <CollectionsSearchEmptyState
+  const emptyState = normalizedSearch ? (
+    <CollectionsNoSearchResultsState
       search={normalizedSearch}
       onClearSearch={() => onSearchChange(undefined)}
     />
   ) : (
-    'No collections found.'
+    <CollectionsEmptyState
+      onCreateCollection={() =>
+        navigate({
+          to: '.',
+          search: (prev) => ({
+            ...prev,
+            dialog: { type: 'create-collection' },
+          }),
+        })
+      }
+    />
   );
 
+  const stateBody = error ? (
+    <ErrorState
+      title="We couldn't load collections"
+      description="There was a problem loading the collections list for this organization."
+      onRetry={() => {
+        void refetch();
+      }}
+      retryLabel="Reload collections"
+    />
+  ) : !collections ? (
+    <LoadingState title="Loading collections..." />
+  ) : collections.length === 0 ? (
+    emptyState
+  ) : null;
+
   return (
-    <section className="space-y-5 px-16 py-4">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex items-center gap-1">
-          <h1 className="font-heading text-lg font-semibold text-foreground">
-            Collections
-          </h1>
-          <CollectionCountBadge />
-        </div>
+    <ListPage>
+      <ListPageHeader
+        title="Collections"
+        badge={<CollectionCountBadge />}
+        actions={
+          <>
+            {collectionsPageFilters.map((filter) => (
+              <CollectionFilterButtonGroup key={filter} label={filter} />
+            ))}
 
-        <div className="flex flex-wrap items-center gap-2">
-          {collectionsPageFilters.map((filter) => (
-            <CollectionFilterButtonGroup key={filter} label={filter} />
-          ))}
+            <CreateCollectionButton data-icon="inline-start">
+              <Plus />
+              Create Collection
+            </CreateCollectionButton>
+          </>
+        }
+      />
 
-          <CreateCollectionButton data-icon="inline-start">
-            <Plus />
-            Create Collection
-          </CreateCollectionButton>
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <InputGroup className="w-full">
-          <InputGroupAddon align="inline-start">
-            <Search className="size-4" />
-          </InputGroupAddon>
-          <InputGroupInput
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value || undefined)}
-            placeholder="Search collections by name or ID..."
-          />
-          <InputGroupAddon
-            align="inline-end"
-            aria-hidden={!isFetching}
-            className="w-8 justify-center"
-          >
-            <Spinner
-              className={cn(
-                'size-4 transition-opacity duration-150',
-                isFetching ? 'opacity-100 delay-150' : 'opacity-0 delay-0',
-              )}
-            />
-            <span className="sr-only">Loading collections</span>
-          </InputGroupAddon>
-        </InputGroup>
-
-        <CollectionsTable
-          collections={collections ?? []}
-          emptyState={emptyState}
+      <div className="flex min-h-0 flex-1 flex-col gap-2">
+        <ListPageSearch
+          value={search}
+          onChange={onSearchChange}
+          placeholder="Search collections by name or ID..."
+          isFetching={isFetching}
+          loadingLabel="Loading collections"
         />
+
+        {stateBody ? (
+          <ListPageState>{stateBody}</ListPageState>
+        ) : (
+          <CollectionsTable collections={collections!} className="min-h-0" />
+        )}
       </div>
-    </section>
+    </ListPage>
   );
 }

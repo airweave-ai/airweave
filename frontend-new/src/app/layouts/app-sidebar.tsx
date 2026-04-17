@@ -4,6 +4,7 @@ import {
   CreditCard,
   EllipsisVertical,
   Home,
+  KeyRound,
   LineChart,
   LogOut,
   Plus,
@@ -53,6 +54,7 @@ type NavigationItem = {
 const navigationItems: Array<NavigationItem> = [
   { label: 'Dashboard', icon: Home, to: '/' },
   { label: 'Collections', icon: AppWindow, to: '/collections', fuzzy: true },
+  { label: 'API Keys', icon: KeyRound, to: '/api-keys' },
 ];
 
 function SidebarIconFrame({ children }: { children: ReactNode }) {

@@ -3,13 +3,13 @@ import { router } from './router';
 import { AuthErrorPage } from '@/app/pages/auth/error';
 import { queryClient } from '@/shared/api';
 import { useAuth } from '@/shared/auth';
-import { Loader } from '@/shared/components/loader';
+import { AirweaveLoader } from '@/shared/components/airweave-loader';
 
 export function AppRouter() {
   const auth = useAuth();
 
   if (auth.status === 'loading') {
-    return <Loader className="min-h-screen" />;
+    return <AirweaveLoader className="min-h-screen" />;
   }
 
   if (auth.status === 'error') {

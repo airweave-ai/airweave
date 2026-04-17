@@ -1,9 +1,8 @@
 import * as React from 'react';
-
 import { AirweaveLogo } from '../ui/airweave-logo';
 import { cn } from '@/shared/tailwind/cn';
 
-export function Loader({
+export function AirweaveLoader({
   children,
   className,
   ...props

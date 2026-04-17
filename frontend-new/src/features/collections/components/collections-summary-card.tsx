@@ -17,7 +17,7 @@ import {
 } from './collection-source-connections';
 import { CollectionStatusBadge } from './collection-status-badge';
 import { CollectionCountBadge } from './collection-count-badge';
-import { CollectionsSearchEmptyState } from './collections-search-empty-state';
+import { CollectionsNoSearchResultsState } from './collections-empty-state';
 import type { Collection } from '@/shared/api';
 import type { ReactNode } from 'react';
 import { formatNumber } from '@/shared/format/format-number';
@@ -111,7 +111,7 @@ function CollectionsSummaryCardListContent({
 
   if (search && collections.length === 0) {
     return (
-      <CollectionsSearchEmptyState
+      <CollectionsNoSearchResultsState
         search={search}
         onClearSearch={onClearSearch}
       />
