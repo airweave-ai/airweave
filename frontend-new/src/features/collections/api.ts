@@ -55,7 +55,7 @@ const collectionSearchQueryDefaults = {
   refetchOnReconnect: false,
   refetchOnWindowFocus: false,
   retry: false,
-  staleTime: Infinity,
+  staleTime: 'static',
 } as const;
 
 export function createCollectionMutationOptions(organizationId: string) {

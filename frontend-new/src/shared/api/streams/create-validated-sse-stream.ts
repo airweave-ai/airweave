@@ -46,5 +46,11 @@ export async function createValidatedSseStream<
         return;
       }
     }
+
+    const isAborted = requestOptions.signal?.aborted ?? false;
+
+    if (!isAborted) {
+      throw new Error('SSE stream ended before a terminal event was received');
+    }
   })();
 }

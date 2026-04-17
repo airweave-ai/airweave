@@ -10,6 +10,7 @@ import {
   useGetSyncJobStateStreamQueryOptions,
   useRunSourceConnectionSyncMutation,
 } from '../../api';
+import { isActiveSyncJobStatus } from '../../lib/sync-job-status';
 import { ConnectSourceSyncAutoNavigateAction } from './connect-source-sync-auto-navigate-action';
 import { ConnectSourceSyncErrorState } from './connect-source-sync-error-state';
 import { ConnectSourceSyncHeader } from './connect-source-sync-header';
@@ -21,13 +22,6 @@ import type {
   SyncJobStatus,
 } from '@/shared/api';
 import { getApiErrorMessage } from '@/shared/api';
-
-const ACTIVE_SYNC_JOB_STATUSES = new Set<SyncJobStatus>([
-  'created',
-  'pending',
-  'running',
-  'cancelling',
-]);
 
 interface ConnectSourceSyncJobProgressProps {
   job: SyncJobDetails;
@@ -44,7 +38,7 @@ export function ConnectSourceSyncJobProgress({
   source,
   sourceConnection,
 }: ConnectSourceSyncJobProgressProps) {
-  const initialIsActiveJob = ACTIVE_SYNC_JOB_STATUSES.has(job.status);
+  const initialIsActiveJob = isActiveSyncJobStatus(job.status);
   const runSyncMutation = useRunSourceConnectionSyncMutation();
   const syncJobStateQueryOptions = useGetSyncJobStateStreamQueryOptions({
     jobId: job.id,

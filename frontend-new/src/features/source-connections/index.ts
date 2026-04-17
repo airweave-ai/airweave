@@ -1,4 +1,5 @@
 export { isBrowserOAuthMethod } from './lib/source-connection-auth-methods';
+export { isActiveSyncJobStatus } from './lib/sync-job-status';
 export {
   ensureSourceConnection,
   ensureSource,
@@ -11,6 +12,7 @@ export {
   useGetSyncJobStateStreamQueryOptions,
   useGetSourceQueryOptions,
   useRunSourceConnectionSyncMutation,
+  invalidateSourceConnectionQueries,
 } from './api';
 export {
   ConnectSourceAuthCallback,

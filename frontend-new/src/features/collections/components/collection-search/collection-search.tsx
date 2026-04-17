@@ -108,125 +108,123 @@ export function CollectionSearch({
   );
 
   return (
-    <div className="px-4">
-      <div className="space-y-3">
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            handleSubmit();
-          }}
-        >
-          <div className="space-y-2">
-            <InputGroup className="rounded-sm border-none">
-              <form.Field name="query">
-                {(field) => {
-                  const query = field.state.value;
+    <div className="space-y-4">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          handleSubmit();
+        }}
+      >
+        <div className="space-y-2">
+          <InputGroup className="rounded-sm border-none">
+            <form.Field name="query">
+              {(field) => {
+                const query = field.state.value;
 
-                  return (
-                    <InputGroupTextarea
-                      disabled={disabled}
-                      placeholder="Ask your agent a question..."
-                      value={query}
-                      className="min-h-21 px-4 pt-4 pb-2 text-sm leading-5 placeholder:text-muted-foreground"
-                      onBlur={field.handleBlur}
-                      onChange={(event) => {
-                        field.handleChange(event.target.value);
-                      }}
-                      onKeyDown={(event) => {
-                        if (
-                          event.key !== 'Enter' ||
-                          event.shiftKey ||
-                          event.nativeEvent.isComposing
-                        ) {
-                          return;
-                        }
+                return (
+                  <InputGroupTextarea
+                    disabled={disabled}
+                    placeholder="Ask your agent a question..."
+                    value={query}
+                    className="min-h-21 px-4 pt-4 pb-2 text-sm leading-5 placeholder:text-muted-foreground"
+                    onBlur={field.handleBlur}
+                    onChange={(event) => {
+                      field.handleChange(event.target.value);
+                    }}
+                    onKeyDown={(event) => {
+                      if (
+                        event.key !== 'Enter' ||
+                        event.shiftKey ||
+                        event.nativeEvent.isComposing
+                      ) {
+                        return;
+                      }
 
-                        event.preventDefault();
+                      event.preventDefault();
 
-                        if (!disabled && !isLoading && form.state.canSubmit) {
-                          handleSubmit();
-                        }
-                      }}
-                    />
-                  );
-                }}
-              </form.Field>
+                      if (!disabled && !isLoading && form.state.canSubmit) {
+                        handleSubmit();
+                      }
+                    }}
+                  />
+                );
+              }}
+            </form.Field>
 
-              <InputGroupAddon
-                align="block-end"
-                className="w-full items-center justify-between gap-3"
+            <InputGroupAddon
+              align="block-end"
+              className="w-full items-center justify-between gap-3 px-4 pb-4"
+            >
+              <Select
+                disabled={disabled}
+                value={activeTierName}
+                onValueChange={(value) =>
+                  handleTierChange(value as CollectionSearchTierName)
+                }
               >
-                <Select
-                  disabled={disabled}
-                  value={activeTierName}
-                  onValueChange={(value) =>
-                    handleTierChange(value as CollectionSearchTierName)
-                  }
+                <SelectTrigger
+                  size="sm"
+                  className="min-w-23 shrink-0 border-none dark:bg-transparent"
                 >
-                  <SelectTrigger
-                    size="sm"
-                    className="min-w-23 shrink-0 border-none dark:bg-transparent"
-                  >
-                    <SelectValue
-                      aria-label={collectionSearchTierLabels[activeTierName]}
-                    />
-                  </SelectTrigger>
+                  <SelectValue
+                    aria-label={collectionSearchTierLabels[activeTierName]}
+                  />
+                </SelectTrigger>
 
-                  <SelectContent position="popper">
-                    {collectionSearchTierNames.map((tierName) => (
-                      <SelectItem key={tierName} value={tierName}>
-                        {collectionSearchTierLabels[tierName]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SelectContent position="popper">
+                  {collectionSearchTierNames.map((tierName) => (
+                    <SelectItem key={tierName} value={tierName}>
+                      {collectionSearchTierLabels[tierName]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-                <form.Subscribe selector={(state) => state.canSubmit}>
-                  {(canSubmit) => {
-                    const buttonClassName = 'size-9 rounded-xs';
+              <form.Subscribe selector={(state) => state.canSubmit}>
+                {(canSubmit) => {
+                  const buttonClassName = 'size-9 rounded-xs';
 
-                    if (isLoading) {
-                      return (
-                        <InputGroupButton
-                          aria-label="Cancel search"
-                          disabled={disabled}
-                          size="icon-sm"
-                          type="button"
-                          variant="destructive"
-                          className={buttonClassName}
-                          onClick={handleCancel}
-                        >
-                          <IconPlayerStopFilled className="size-4" />
-                        </InputGroupButton>
-                      );
-                    }
-
+                  if (isLoading) {
                     return (
                       <InputGroupButton
-                        aria-label="Search collection"
-                        disabled={disabled || !canSubmit}
+                        aria-label="Cancel search"
+                        disabled={disabled}
                         size="icon-sm"
-                        type="submit"
-                        variant="default"
+                        type="button"
+                        variant="destructive"
                         className={buttonClassName}
+                        onClick={handleCancel}
                       >
-                        <IconArrowRight className="size-4" />
+                        <IconPlayerStopFilled className="size-4" />
                       </InputGroupButton>
                     );
-                  }}
-                </form.Subscribe>
-              </InputGroupAddon>
-            </InputGroup>
-          </div>
-        </form>
+                  }
 
-        <CollectionSearchState
-          onSelectedTabChange={handleSelectedTabChange}
-          selectedTab={activeSelectedTab}
-          state={activeTier.state}
-          tierName={activeTierName}
-        />
-      </div>
+                  return (
+                    <InputGroupButton
+                      aria-label="Search collection"
+                      disabled={disabled || !canSubmit}
+                      size="icon-sm"
+                      type="submit"
+                      variant="default"
+                      className={buttonClassName}
+                    >
+                      <IconArrowRight className="size-4" />
+                    </InputGroupButton>
+                  );
+                }}
+              </form.Subscribe>
+            </InputGroupAddon>
+          </InputGroup>
+        </div>
+      </form>
+
+      <CollectionSearchState
+        onSelectedTabChange={handleSelectedTabChange}
+        selectedTab={activeSelectedTab}
+        state={activeTier.state}
+        tierName={activeTierName}
+      />
     </div>
   );
 }

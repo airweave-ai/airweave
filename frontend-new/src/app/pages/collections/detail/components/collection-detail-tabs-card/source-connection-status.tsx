@@ -1,0 +1,174 @@
+import { format, intlFormatDistance, isValid, parseISO } from 'date-fns';
+import { IconClock, IconCloudCheck, IconRefresh } from '@tabler/icons-react';
+import type { SourceConnection, SourceConnectionListItem } from '@/shared/api';
+import { cn } from '@/shared/tailwind/cn';
+import { Button } from '@/shared/ui/button';
+import { Separator } from '@/shared/ui/separator';
+import { Skeleton } from '@/shared/ui/skeleton';
+import { Spinner } from '@/shared/ui/spinner';
+
+const sourceConnectionStatusLabel = {
+  active: 'Sync completed',
+  error: 'Sync failed',
+  inactive: 'Sync disabled',
+  pending_auth: 'Source not connected',
+  pending_sync: 'Sync not started',
+  syncing: 'Syncing...',
+} satisfies Record<SourceConnectionListItem['status'], string>;
+
+type SourceConnectionStatusHeaderProps = {
+  isSyncing?: boolean;
+  onSync: () => void;
+  sourceConnection: Pick<SourceConnection, 'status' | 'schedule' | 'sync'>;
+};
+
+export function SourceConnectionStatusHeader({
+  isSyncing = false,
+  onSync,
+  sourceConnection,
+}: SourceConnectionStatusHeaderProps) {
+  const resolvedStatus = isSyncing ? 'syncing' : sourceConnection.status;
+
+  return (
+    <div className="flex flex-row items-center gap-1">
+      <ConnectionStatusLabel>
+        <ConnectionStatusIndicator status={resolvedStatus} />
+        <span
+          className={cn('font-mono capitalize', {
+            'text-destructive': resolvedStatus === 'error',
+          })}
+        >
+          {sourceConnectionStatusLabel[resolvedStatus]}
+        </span>
+      </ConnectionStatusLabel>
+      <Separator className="my-auto h-4" orientation="vertical" />
+      <ConnectionStatusLabel>
+        <IconClock className="size-3" />
+        {formatNextRun(sourceConnection.schedule?.next_run)}
+      </ConnectionStatusLabel>
+      <Separator className="my-auto h-4" orientation="vertical" />
+      <ConnectionStatusLabel>
+        <IconCloudCheck className="size-3" />
+        Last sync:{' '}
+        <LastSyncValue
+          isSyncing={isSyncing}
+          startedAt={sourceConnection.sync?.last_job?.started_at}
+        />
+      </ConnectionStatusLabel>
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        className="ml-1"
+        disabled={isSyncing}
+        onClick={onSync}
+      >
+        {isSyncing ? (
+          <Spinner className="size-4" />
+        ) : (
+          <IconRefresh className="size-4" />
+        )}
+      </Button>
+    </div>
+  );
+}
+
+export function SourceConnectionStatusHeaderSkeleton() {
+  return (
+    <div className="flex min-h-9 flex-row items-center gap-1">
+      <Skeleton className="h-8 w-28 rounded-sm" />
+      <Separator className="my-auto h-4" orientation="vertical" />
+      <Skeleton className="h-8 w-20 rounded-sm" />
+      <Separator className="my-auto h-4" orientation="vertical" />
+      <Skeleton className="h-8 w-36 rounded-sm" />
+      <Skeleton className="ml-1 size-8 rounded-sm" />
+    </div>
+  );
+}
+
+function LastSyncValue({
+  isSyncing,
+  startedAt,
+}: {
+  isSyncing: boolean;
+  startedAt: string | null | undefined;
+}) {
+  if (isSyncing) {
+    return <span className="text-muted-foreground">Syncing...</span>;
+  }
+
+  return formatLastSync(startedAt);
+}
+
+function formatNextRun(nextRun: string | null | undefined) {
+  if (!nextRun) {
+    return 'None';
+  }
+
+  const date = parseDateValue(nextRun);
+
+  if (!date) {
+    return nextRun;
+  }
+
+  return `At ${format(date, 'h:mm a')}`;
+}
+
+function formatLastSync(completedAt: string | null | undefined) {
+  if (!completedAt) {
+    return 'Never';
+  }
+
+  const date = parseDateValue(completedAt);
+
+  if (!date) {
+    return completedAt;
+  }
+
+  return intlFormatDistance(date, new Date(), {
+    numeric: 'auto',
+    style: 'short',
+  });
+}
+
+function parseDateValue(value: string) {
+  const normalizedValue = hasTimezoneSuffix(value) ? value : `${value}Z`;
+  const parsedIsoDate = parseISO(normalizedValue);
+
+  if (isValid(parsedIsoDate)) {
+    return parsedIsoDate;
+  }
+
+  const parsedDate = new Date(normalizedValue);
+
+  if (isValid(parsedDate)) {
+    return parsedDate;
+  }
+
+  return null;
+}
+
+function hasTimezoneSuffix(value: string) {
+  return /(?:Z|[+-]\d{2}:\d{2})$/.test(value);
+}
+
+function ConnectionStatusLabel({ children }: React.PropsWithChildren) {
+  return <span className="flex items-center gap-1.5 p-2">{children}</span>;
+}
+
+export function ConnectionStatusIndicator({
+  status,
+}: {
+  status: SourceConnectionListItem['status'];
+}) {
+  return (
+    <span
+      className={cn(
+        'size-1.5 rounded-full bg-current text-muted-foreground shadow-[0_0_4px_currentColor]',
+        {
+          'text-green-400': ['active', 'syncing'].includes(status),
+          'text-destructive': ['pending_auth', 'error'].includes(status),
+        },
+      )}
+    />
+  );
+}
