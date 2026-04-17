@@ -119,6 +119,8 @@ export interface SourceConnection {
   // Sync details
   sync?: Record<string, any>;
   sync_id?: string;
+  sync_status?: string;
+  sync_pause_reason?: 'credential_error' | 'usage_exhausted' | 'payment_required' | 'manual' | null;
   organization_id?: string;
   connection_id?: string;
   created_by_email?: string;

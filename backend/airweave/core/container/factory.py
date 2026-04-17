@@ -132,6 +132,7 @@ from airweave.domains.syncs.jobs.state_machine import SyncJobStateMachine
 from airweave.domains.syncs.repository import SyncRepository
 from airweave.domains.syncs.service import SyncService
 from airweave.domains.syncs.state_machine import SyncStateMachine
+from airweave.domains.syncs.subscribers.billing_unpause import BillingUnpauseSubscriber
 from airweave.domains.temporal.client import get_cached_client as get_cached_temporal_client
 from airweave.domains.temporal.schedule_service import TemporalScheduleService
 from airweave.domains.temporal.service import TemporalWorkflowService
@@ -189,9 +190,9 @@ def create_container(settings: Settings) -> Container:
     endpoint_verifier = HttpEndpointVerifier()
 
     # -----------------------------------------------------------------
-    # Billing services
+    # Billing repos (created early; services created after event_bus)
     # -----------------------------------------------------------------
-    billing_services = _create_billing_services(settings)
+    billing_repos = _create_billing_repos(settings)
 
     # -----------------------------------------------------------------
     # Identity provider (Auth0 / Null)
@@ -213,8 +214,8 @@ def create_container(settings: Settings) -> Container:
     # -----------------------------------------------------------------
     # Usage domain — checker (read) + ledger (write), both singletons
     # -----------------------------------------------------------------
-    usage_checker = _create_usage_checker(settings, billing_services, source_deps, user_org_repo)
-    usage_ledger = _create_usage_ledger(settings, billing_services)
+    usage_checker = _create_usage_checker(settings, billing_repos, source_deps, user_org_repo)
+    usage_ledger = _create_usage_ledger(settings, billing_repos)
     # -----------------------------------------------------------------
     # Webhook service (composes admin + verifier for API layer)
     # -----------------------------------------------------------------
@@ -256,6 +257,11 @@ def create_container(settings: Settings) -> Container:
         usage_ledger=usage_ledger,
         context_cache=context_cache,
     )
+
+    # -----------------------------------------------------------------
+    # Billing services (created after event_bus for event publishing)
+    # -----------------------------------------------------------------
+    billing_services = _create_billing_services(billing_repos, event_bus)
 
     # -----------------------------------------------------------------
     # Organization domain service
@@ -408,6 +414,14 @@ def create_container(settings: Settings) -> Container:
         temporal_schedule_service=sync_deps["temporal_schedule_service"],
         sync_factory=sync_factory,
     )
+
+    # BillingUnpauseSubscriber — unpauses usage-exhausted syncs on new billing period
+    billing_unpause = BillingUnpauseSubscriber(
+        sync_service=sync_service,
+        org_repo=billing_repos["org_repo"],
+    )
+    for pattern in billing_unpause.EVENT_PATTERNS:
+        event_bus.subscribe(pattern, billing_unpause.handle)
 
     # -----------------------------------------------------------------
     # Source connection sub-services (need sync_service)
@@ -914,55 +928,62 @@ def _create_payment_gateway(settings: Settings) -> PaymentGatewayProtocol:
     return NullPaymentGateway()
 
 
-def _create_billing_services(settings: Settings) -> dict:
-    """Create billing service and webhook processor with shared dependencies."""
-    from airweave.domains.billing.operations import BillingOperations
+def _create_billing_repos(settings: Settings) -> dict:
+    """Create billing repositories and payment gateway (no event_bus needed)."""
     from airweave.domains.billing.repository import (
         BillingPeriodRepository,
         OrganizationBillingRepository,
         WebhookEventRepository,
     )
-    from airweave.domains.billing.service import BillingService
-    from airweave.domains.billing.webhook_processor import BillingWebhookProcessor
     from airweave.domains.organizations.repository import OrganizationRepository
     from airweave.domains.usage.repository import UsageRepository
 
     payment_gateway = _create_payment_gateway(settings)
-    billing_repo = OrganizationBillingRepository()
-    period_repo = BillingPeriodRepository()
-    org_repo = OrganizationRepository()
-    usage_repo = UsageRepository()
+    return {
+        "payment_gateway": payment_gateway,
+        "billing_repo": OrganizationBillingRepository(),
+        "period_repo": BillingPeriodRepository(),
+        "org_repo": OrganizationRepository(),
+        "usage_repo": UsageRepository(),
+        "webhook_event_repo": WebhookEventRepository(),
+    }
+
+
+def _create_billing_services(billing_repos: dict, event_bus: EventBus) -> dict:
+    """Create billing service and webhook processor (requires event_bus)."""
+    from airweave.domains.billing.operations import BillingOperations
+    from airweave.domains.billing.service import BillingService
+    from airweave.domains.billing.webhook_processor import BillingWebhookProcessor
+
     billing_ops = BillingOperations(
-        billing_repo=billing_repo,
-        period_repo=period_repo,
-        usage_repo=usage_repo,
-        payment_gateway=payment_gateway,
+        billing_repo=billing_repos["billing_repo"],
+        period_repo=billing_repos["period_repo"],
+        usage_repo=billing_repos["usage_repo"],
+        payment_gateway=billing_repos["payment_gateway"],
+        event_bus=event_bus,
     )
 
     billing_service = BillingService(
-        payment_gateway=payment_gateway,
-        billing_repo=billing_repo,
-        period_repo=period_repo,
+        payment_gateway=billing_repos["payment_gateway"],
+        billing_repo=billing_repos["billing_repo"],
+        period_repo=billing_repos["period_repo"],
         billing_ops=billing_ops,
-        org_repo=org_repo,
+        org_repo=billing_repos["org_repo"],
     )
-    webhook_event_repo = WebhookEventRepository()
     billing_webhook = BillingWebhookProcessor(
-        payment_gateway=payment_gateway,
-        billing_repo=billing_repo,
-        period_repo=period_repo,
+        payment_gateway=billing_repos["payment_gateway"],
+        billing_repo=billing_repos["billing_repo"],
+        period_repo=billing_repos["period_repo"],
         billing_ops=billing_ops,
-        org_repo=org_repo,
-        webhook_event_repo=webhook_event_repo,
+        org_repo=billing_repos["org_repo"],
+        webhook_event_repo=billing_repos["webhook_event_repo"],
     )
 
     return {
         "billing_service": billing_service,
         "billing_webhook": billing_webhook,
         "billing_ops": billing_ops,
-        "payment_gateway": payment_gateway,
-        "billing_repo": billing_repo,
-        "period_repo": period_repo,
+        **billing_repos,
     }
 
 
@@ -1007,6 +1028,7 @@ def _create_sync_services(
         source_registry=source_registry,
         entity_count_repo=entity_count_repo,
         sync_job_repo=sync_job_repo,
+        sync_repo=sync_repo,
         auth_provider_registry=auth_provider_registry,
     )
 

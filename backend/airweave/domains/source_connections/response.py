@@ -28,6 +28,7 @@ from airweave.domains.source_connections.protocols import (
 from airweave.domains.source_connections.types import SourceConnectionStats
 from airweave.domains.sources.protocols import SourceRegistryProtocol
 from airweave.domains.syncs.jobs.protocols import SyncJobRepositoryProtocol
+from airweave.domains.syncs.protocols import SyncRepositoryProtocol
 from airweave.models.source_connection import SourceConnection
 from airweave.models.sync_job import SyncJob
 from airweave.schemas.source_connection import (
@@ -84,6 +85,7 @@ class ResponseBuilder(ResponseBuilderProtocol):
         source_registry: SourceRegistryProtocol,
         entity_count_repo: EntityCountRepositoryProtocol,
         sync_job_repo: SyncJobRepositoryProtocol,
+        sync_repo: SyncRepositoryProtocol,
         auth_provider_registry: Optional["AuthProviderRegistryProtocol"] = None,
     ) -> None:
         """Initialize with all dependencies."""
@@ -93,6 +95,7 @@ class ResponseBuilder(ResponseBuilderProtocol):
         self._source_registry = source_registry
         self._entity_count_repo = entity_count_repo
         self._sync_job_repo = sync_job_repo
+        self._sync_repo = sync_repo
         self._auth_provider_registry = auth_provider_registry
 
     # ------------------------------------------------------------------
@@ -111,6 +114,14 @@ class ResponseBuilder(ResponseBuilderProtocol):
     ) -> SourceConnectionSchema:
         """Build complete SourceConnection response from an ORM object."""
         sync_details = await self._build_sync_details(db, source_conn, ctx)
+
+        sync_status = None
+        sync_pause_reason = None
+        if source_conn.sync_id:
+            sync_model = await self._sync_repo.get_without_connections(db, source_conn.sync_id, ctx)
+            if sync_model:
+                sync_status = sync_model.status
+                sync_pause_reason = sync_model.pause_reason
 
         last_job_status = None
         last_job_error_category = None
@@ -150,6 +161,8 @@ class ResponseBuilder(ResponseBuilderProtocol):
             schedule=schedule,
             sync=sync_details,
             sync_id=source_conn.sync_id,
+            sync_status=sync_status,
+            sync_pause_reason=sync_pause_reason,
             entities=entities,
             error_category=last_job_error_category,
             error_message=_GENERIC_ERROR_MESSAGES.get(last_job_error_category, None)
