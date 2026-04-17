@@ -463,6 +463,16 @@ class FirefliesAuthConfig(APIKeyAuthConfig):
     """
 
 
+class FathomAuthConfig(APIKeyAuthConfig):
+    """Fathom authentication credentials schema.
+
+    API key from https://fathom.video/settings/api (requires team plan).
+    A single team-level API key provides access to all team members' recordings.
+    """
+
+    pass
+
+
 class ElasticsearchAuthConfig(AuthConfig):
     """Elasticsearch authentication credentials schema."""
 
