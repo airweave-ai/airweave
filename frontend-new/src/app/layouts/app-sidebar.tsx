@@ -52,7 +52,7 @@ type NavigationItem = {
 
 const navigationItems: Array<NavigationItem> = [
   { label: 'Dashboard', icon: Home, to: '/' },
-  { label: 'Collections', icon: AppWindow, to: '/collections' },
+  { label: 'Collections', icon: AppWindow, to: '/collections', fuzzy: true },
 ];
 
 function SidebarIconFrame({ children }: { children: ReactNode }) {

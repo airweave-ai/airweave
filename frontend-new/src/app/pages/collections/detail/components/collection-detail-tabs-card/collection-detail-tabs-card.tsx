@@ -37,8 +37,8 @@ export function CollectionDetailTabsCard({
   return (
     <Card className="rounded-sm bg-foreground/5 ring-0">
       <CardHeader>
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-0.5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1 basis-56 space-y-0.5">
             <CardTitle>Collection Details</CardTitle>
             <CardDescription className="flex items-center gap-1.5 font-mono">
               <span>
@@ -52,22 +52,22 @@ export function CollectionDetailTabsCard({
             </CardDescription>
           </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+          <div className="flex min-w-0 flex-1 basis-72 flex-wrap items-center justify-start gap-2 sm:justify-end">
             <Tabs
-              className="w-full sm:w-auto"
+              className="min-w-0 flex-1 basis-64 lg:max-w-80"
               value={selectedTab}
               onValueChange={(value) =>
                 setSelectedTab(value as CollectionDetailTab)
               }
             >
-              <TabsList className="w-full sm:w-80">
+              <TabsList className="w-full">
                 <TabsTrigger value="connections">Connections</TabsTrigger>
                 <TabsTrigger value="events">Events</TabsTrigger>
                 <TabsTrigger value="queries">Queries</TabsTrigger>
               </TabsList>
             </Tabs>
 
-            <Button asChild variant="secondary">
+            <Button asChild variant="secondary" className="shrink-0">
               <Link
                 params={{ collectionId }}
                 to="/collections/$collectionId/connect-source"

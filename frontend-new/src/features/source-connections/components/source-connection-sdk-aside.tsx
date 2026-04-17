@@ -1,32 +1,27 @@
 import * as React from 'react';
-import { IconCheck, IconChevronDown, IconCopy } from '@tabler/icons-react';
+import { IconChevronDown } from '@tabler/icons-react';
 import { sourceConnectionSdkSnippets } from '../lib/source-connection-sdk-snippets';
-import { GetIdeReadySnippetButton } from './get-ide-ready-snippet-button';
 import { OAuthFlowDiagram } from './oauth-flow-diagram';
 import type {
   SourceConnectionSdkLanguage,
   SourceConnectionSdkSnippet,
 } from '../lib/source-connection-sdk-snippets';
+import {
+  CodeSnippetAside,
+  CodeSnippetAsideContent,
+  CodeSnippetAsideLanguageSelect,
+  CodeSnippetAsideSection,
+  CopyCodeSnippetButton,
+  codeSnippetLanguageOptions,
+} from '@/shared/components/code-snippet-aside';
+import { GetIdeReadySnippetButton } from '@/shared/components/get-ide-ready-snippet-button';
 import { useCopyToClipboard } from '@/shared/hooks/use-copy-to-clipboard';
-import { Button } from '@/shared/ui/button';
 import { CodeSnippet } from '@/shared/ui/code-snippet';
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/shared/ui/collapsible';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/shared/ui/select';
-
-const SDK_LANGUAGE_OPTIONS = [
-  { label: 'Python', value: 'python' },
-  { label: 'Node.js', value: 'node' },
-];
 
 const CONFIG_SNIPPETS = sourceConnectionSdkSnippets.config satisfies Record<
   SourceConnectionSdkLanguage,
@@ -95,7 +90,7 @@ function SourceConnectionSdkAside({
   const activeSnippet = snippets[language];
 
   return (
-    <div className="flex min-h-0 flex-col text-card-foreground lg:h-full">
+    <CodeSnippetAside>
       <Collapsible className="group shrink-0 border-b border-border">
         <CollapsibleTrigger className="flex h-11 w-full items-center gap-3 px-4 text-left">
           <p className="font-mono text-xs font-medium text-muted-foreground uppercase">
@@ -109,45 +104,19 @@ function SourceConnectionSdkAside({
         </CollapsibleContent>
       </Collapsible>
 
-      <div className="px-4 py-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-        <SdkSnippetSection
+      <CodeSnippetAsideContent>
+        <CodeSnippetAsideSection
           actions={
             <>
-              <Select
+              <CodeSnippetAsideLanguageSelect
+                options={codeSnippetLanguageOptions}
                 value={language}
-                onValueChange={(nextLanguage: SourceConnectionSdkLanguage) =>
-                  setLanguage(nextLanguage)
-                }
-              >
-                <SelectTrigger
-                  aria-label="Select code language"
-                  size="sm"
-                  className="!h-5.5 dark:bg-transparent"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-
-                <SelectContent position="popper">
-                  {SDK_LANGUAGE_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
+                onValueChange={setLanguage}
+              />
+              <CopyCodeSnippetButton
+                copied={copied}
                 onClick={() => void copy(activeSnippet.requestCode)}
-              >
-                {copied ? (
-                  <IconCheck className="size-3.5" />
-                ) : (
-                  <IconCopy className="size-3.5" />
-                )}
-                <span className="sr-only">Copy request snippet</span>
-              </Button>
+              />
             </>
           }
           label="Request"
@@ -157,46 +126,20 @@ function SourceConnectionSdkAside({
             code={activeSnippet.requestCode}
             language={language === 'python' ? 'python' : 'typescript'}
           />
-        </SdkSnippetSection>
+        </CodeSnippetAsideSection>
 
-        <SdkSnippetSection label="Response">
+        <CodeSnippetAsideSection label="Response">
           <CodeSnippet
             className="text-card-foreground"
             code={activeSnippet.responseCode}
             language={language === 'python' ? 'python' : 'typescript'}
           />
-        </SdkSnippetSection>
-      </div>
+        </CodeSnippetAsideSection>
+      </CodeSnippetAsideContent>
 
-      <div className="shrink-0 p-6">
+      <div className="shrink-0 px-4 pt-3 pb-6">
         <GetIdeReadySnippetButton />
       </div>
-    </div>
-  );
-}
-
-function SdkSnippetSection({
-  actions,
-  children,
-  label,
-}: {
-  actions?: React.ReactNode;
-  children: React.ReactNode;
-  label: string;
-}) {
-  return (
-    <section className="space-y-3 border-b border-border py-4 first:pt-0 last:border-b-0 last:pb-0">
-      <div className="flex items-center justify-between gap-3">
-        <p className="font-mono text-xs font-medium text-muted-foreground uppercase">
-          {label}
-        </p>
-
-        {actions ? (
-          <div className="flex items-center gap-2">{actions}</div>
-        ) : null}
-      </div>
-
-      {children}
-    </section>
+    </CodeSnippetAside>
   );
 }
