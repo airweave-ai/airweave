@@ -1,21 +1,29 @@
 import * as React from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { mutationOptions, useMutation } from '@tanstack/react-query';
 import type { QueryClient } from '@tanstack/react-query';
 import {
   createSourceConnectionsPostMutation,
   getSourceConnectionsSourceConnectionIdGetOptions,
   listSourceConnectionsGetOptions,
-  matchQueryKey,
   reinitiateOauthSourceConnectionsSourceConnectionIdReinitiateOauthPostMutation,
   verifyOauthSourceConnectionsSourceConnectionIdVerifyOauthPostMutation,
   withOrganizationHeaders,
 } from '@/shared/api';
 import { useCurrentOrganizationId } from '@/shared/session';
 
+export const sourceConnectionInvalidationTags = [
+  'source-connections',
+  'collections',
+] as const;
+
 export function createSourceConnectionMutationOptions(organizationId: string) {
-  return createSourceConnectionsPostMutation(
-    withOrganizationHeaders({ organizationId }),
-  );
+  return mutationOptions({
+    ...createSourceConnectionsPostMutation(withOrganizationHeaders({ organizationId })),
+    meta: {
+      errorToast: false,
+      invalidateTags: sourceConnectionInvalidationTags,
+    },
+  });
 }
 
 type GetSourceConnectionParams = NonNullable<
@@ -97,7 +105,7 @@ export function ensureSourceConnection({
   organizationId: string;
   sourceConnectionId: string;
 }) {
-  return queryClient.ensureQueryData(
+  return queryClient.fetchQuery(
     getSourceConnectionQueryOptions(organizationId, { sourceConnectionId }),
   );
 }
@@ -146,21 +154,6 @@ export function useCreateSourceConnectionMutationOptions() {
 }
 
 export function useCreateSourceConnectionMutation() {
-  const queryClient = useQueryClient();
-  const mutationOptions = useCreateSourceConnectionMutationOptions();
-
-  return useMutation({
-    ...mutationOptions,
-    onSuccess: async () => {
-      await invalidateSourceConnectionQueries(queryClient);
-    },
-  });
-}
-
-export async function invalidateSourceConnectionQueries(
-  queryClient: QueryClient,
-) {
-  await queryClient.invalidateQueries({
-    predicate: matchQueryKey({ tags: ['source-connections', 'collections'] }),
-  });
+  const options = useCreateSourceConnectionMutationOptions();
+  return useMutation(options);
 }

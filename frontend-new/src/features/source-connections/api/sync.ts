@@ -1,6 +1,6 @@
 import * as React from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { invalidateSourceConnectionQueries } from './source-connections';
+import { mutationOptions, useMutation } from '@tanstack/react-query';
+import { sourceConnectionInvalidationTags } from './source-connections';
 import type { SubscribeSyncJobStateStreamOptions } from '@/shared/api';
 import {
   cancelJobSourceConnectionsSourceConnectionIdJobsJobIdCancelPostMutation,
@@ -81,9 +81,14 @@ export function useGetSyncJobStateStreamQueryOptions(params: SyncJobIdParams) {
 }
 
 export function runSourceConnectionSyncMutationOptions(organizationId: string) {
-  return runSourceConnectionsSourceConnectionIdRunPostMutation(
-    withOrganizationHeaders({ organizationId }),
-  );
+  return mutationOptions({
+    ...runSourceConnectionsSourceConnectionIdRunPostMutation(
+      withOrganizationHeaders({ organizationId }),
+    ),
+    meta: {
+      invalidateTags: sourceConnectionInvalidationTags,
+    },
+  });
 }
 
 export function useRunSourceConnectionSyncMutationOptions() {
@@ -96,23 +101,21 @@ export function useRunSourceConnectionSyncMutationOptions() {
 }
 
 export function useRunSourceConnectionSyncMutation() {
-  const queryClient = useQueryClient();
-  const mutationOptions = useRunSourceConnectionSyncMutationOptions();
-
-  return useMutation({
-    ...mutationOptions,
-    onSuccess: async () => {
-      await invalidateSourceConnectionQueries(queryClient);
-    },
-  });
+  const options = useRunSourceConnectionSyncMutationOptions();
+  return useMutation(options);
 }
 
 export function cancelSourceConnectionSyncJobMutationOptions(
   organizationId: string,
 ) {
-  return cancelJobSourceConnectionsSourceConnectionIdJobsJobIdCancelPostMutation(
-    withOrganizationHeaders({ organizationId }),
-  );
+  return mutationOptions({
+    ...cancelJobSourceConnectionsSourceConnectionIdJobsJobIdCancelPostMutation(
+      withOrganizationHeaders({ organizationId }),
+    ),
+    meta: {
+      invalidateTags: sourceConnectionInvalidationTags,
+    },
+  });
 }
 
 export function useCancelSourceConnectionSyncJobMutationOptions() {
@@ -125,13 +128,6 @@ export function useCancelSourceConnectionSyncJobMutationOptions() {
 }
 
 export function useCancelSourceConnectionSyncJobMutation() {
-  const queryClient = useQueryClient();
-  const mutationOptions = useCancelSourceConnectionSyncJobMutationOptions();
-
-  return useMutation({
-    ...mutationOptions,
-    onSuccess: async () => {
-      await invalidateSourceConnectionQueries(queryClient);
-    },
-  });
+  const options = useCancelSourceConnectionSyncJobMutationOptions();
+  return useMutation(options);
 }

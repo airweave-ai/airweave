@@ -2,7 +2,7 @@ import * as z from 'zod';
 import type { Query } from '@tanstack/react-query';
 
 type QueryKeyFilters = {
-  tags: Array<string>;
+  tags: ReadonlyArray<string>;
 };
 
 const queryKeyWithTagsSchema = z.object({

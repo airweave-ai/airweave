@@ -25,7 +25,6 @@ export {
   listCollectionsQueryOptions,
   useListCollectionsQueryOptions,
   useGetCollectionQueryOptions,
-  invalidateCollectionQueries,
   prefetchCollectionCount,
   ensureCollectionCount,
   ensureListCollections,

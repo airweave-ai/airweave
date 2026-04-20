@@ -1,9 +1,8 @@
 import * as React from 'react';
 import { IconExclamationCircle, IconRefresh } from '@tabler/icons-react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import {
-  invalidateSourceConnectionQueries,
-  useGetSourceConnectionQueryOptions,
+  sourceConnectionInvalidationTags,
   useReinitiateSourceConnectionOAuthMutationOptions,
 } from '../../api';
 import {
@@ -26,6 +25,7 @@ interface ConnectSourceAuthErrorProps {
   description: React.ReactNode;
   hints: Array<string>;
   onBack: () => void;
+  onReauthorized?: () => Promise<void> | void;
   sourceConnectionId?: string;
   sourceName: string;
   title: string;
@@ -36,6 +36,7 @@ export function ConnectSourceAuthError({
   description,
   hints,
   onBack,
+  onReauthorized,
   sourceConnectionId,
   sourceName,
   title,
@@ -72,6 +73,7 @@ export function ConnectSourceAuthError({
         <ReconnectActions
           backLabel={backLabel}
           onBack={onBack}
+          onReauthorized={onReauthorized}
           sourceConnectionId={sourceConnectionId}
           sourceName={sourceName}
         />
@@ -91,23 +93,25 @@ export function ConnectSourceAuthError({
 function ReconnectActions({
   backLabel,
   onBack,
+  onReauthorized,
   sourceConnectionId,
   sourceName,
 }: {
   backLabel?: string;
   onBack: () => void;
+  onReauthorized?: () => Promise<void> | void;
   sourceConnectionId: string;
   sourceName: string;
 }) {
-  const queryClient = useQueryClient();
   const reauthorizeMutationOptions =
     useReinitiateSourceConnectionOAuthMutationOptions();
-  const sourceConnectionQueryOptions = useGetSourceConnectionQueryOptions({
-    sourceConnectionId,
-  });
 
   const reauthorizeMutation = useMutation({
     ...reauthorizeMutationOptions,
+    meta: {
+      errorToast: false,
+      invalidateTags: sourceConnectionInvalidationTags,
+    },
     onSuccess: async (nextSourceConnection) => {
       const nextClaimToken = nextSourceConnection.auth.claim_token;
 
@@ -117,11 +121,7 @@ function ReconnectActions({
         clearConnectSourceAuthClaimToken(sourceConnectionId);
       }
 
-      queryClient.setQueryData(
-        sourceConnectionQueryOptions.queryKey,
-        nextSourceConnection,
-      );
-      await invalidateSourceConnectionQueries(queryClient);
+      await onReauthorized?.();
     },
   });
 

@@ -1,8 +1,7 @@
 import * as React from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import {
-  invalidateSourceConnectionQueries,
-  useGetSourceConnectionQueryOptions,
+  sourceConnectionInvalidationTags,
   useVerifySourceConnectionOAuthMutationOptions,
 } from '../../api';
 import { ConnectSourceStepLayoutContent } from '../connect-source-step-layout';
@@ -28,11 +27,7 @@ export function ConnectSourceAuthCallback({
   sourceConnection,
   sourceConnectionId,
 }: ConnectSourceAuthCallbackProps) {
-  const queryClient = useQueryClient();
   const verifyMutationOptions = useVerifySourceConnectionOAuthMutationOptions();
-  const sourceConnectionQueryOptions = useGetSourceConnectionQueryOptions({
-    sourceConnectionId,
-  });
   const claimToken = React.useMemo(
     () => getConnectSourceAuthClaimToken(sourceConnectionId),
     [sourceConnectionId],
@@ -41,13 +36,12 @@ export function ConnectSourceAuthCallback({
 
   const verifyMutation = useMutation({
     ...verifyMutationOptions,
+    meta: {
+      errorToast: false,
+      invalidateTags: sourceConnectionInvalidationTags,
+    },
     onSuccess: async (verifiedSourceConnection) => {
       clearConnectSourceAuthClaimToken(sourceConnectionId);
-      queryClient.setQueryData(
-        sourceConnectionQueryOptions.queryKey,
-        verifiedSourceConnection,
-      );
-      await invalidateSourceConnectionQueries(queryClient);
       await onVerified(verifiedSourceConnection);
     },
   });

@@ -1,20 +1,16 @@
 import * as React from 'react';
-import {
-  mutationOptions,
-  useMutation,
-  useQueryClient,
-  type QueryClient,
-} from '@tanstack/react-query';
+import { mutationOptions, useMutation } from '@tanstack/react-query';
+import type { QueryClient } from '@tanstack/react-query';
 import {
   createApiKeyApiKeysPostMutation,
-  matchQueryKey,
-  queryClient as defaultQueryClient,
-  readApiKeysApiKeysGetOptions,
-  withOrganizationHeaders,
   deleteApiKeyApiKeysDeleteMutation,
+  readApiKeysApiKeysGetOptions,
   rotateApiKeyApiKeysIdRotatePostMutation,
+  withOrganizationHeaders,
 } from '@/shared/api';
 import { useCurrentOrganizationId } from '@/shared/session';
+
+const apiKeyInvalidationTags = ['api-keys'] as const;
 
 export function listApiKeysQueryOptions(organizationId: string) {
   return readApiKeysApiKeysGetOptions(
@@ -41,89 +37,80 @@ export function ensureListApiKeys({
   return queryClient.ensureQueryData(listApiKeysQueryOptions(organizationId));
 }
 
-export function createApiKeyMutationOptions(
-  organizationId: string,
-  queryClient = defaultQueryClient,
-) {
+export function createApiKeyMutationOptions(organizationId: string) {
   return mutationOptions({
     ...createApiKeyApiKeysPostMutation(
       withOrganizationHeaders({ organizationId }),
     ),
-    onSuccess: () => invalidateApiKeyQueries(queryClient),
+    meta: {
+      errorToast: 'Could not create API key.',
+      invalidateTags: apiKeyInvalidationTags,
+    },
   });
 }
 
 export function useCreateApiKeyMutationOptions() {
   const currentOrganizationId = useCurrentOrganizationId();
-  const queryClient = useQueryClient();
 
   return React.useMemo(
-    () => createApiKeyMutationOptions(currentOrganizationId, queryClient),
+    () => createApiKeyMutationOptions(currentOrganizationId),
     [currentOrganizationId],
   );
 }
 
 export function useCreateApiKeyMutation() {
-  const mutationOptions = useCreateApiKeyMutationOptions();
-  return useMutation(mutationOptions);
+  const options = useCreateApiKeyMutationOptions();
+  return useMutation(options);
 }
 
-export function deleteApiKeyMutationOptions(
-  organizationId: string,
-  queryClient = defaultQueryClient,
-) {
+export function deleteApiKeyMutationOptions(organizationId: string) {
   return mutationOptions({
     ...deleteApiKeyApiKeysDeleteMutation(
       withOrganizationHeaders({ organizationId }),
     ),
-    onSuccess: () => invalidateApiKeyQueries(queryClient),
+    meta: {
+      errorToast: 'Could not delete API key.',
+      invalidateTags: apiKeyInvalidationTags,
+    },
   });
 }
 
 export function useDeleteApiKeyMutationOptions() {
   const currentOrganizationId = useCurrentOrganizationId();
-  const queryClient = useQueryClient();
 
   return React.useMemo(
-    () => deleteApiKeyMutationOptions(currentOrganizationId, queryClient),
+    () => deleteApiKeyMutationOptions(currentOrganizationId),
     [currentOrganizationId],
   );
 }
 
 export function useDeleteApiKeyMutation() {
-  const mutationOptions = useDeleteApiKeyMutationOptions();
-  return useMutation(mutationOptions);
+  const options = useDeleteApiKeyMutationOptions();
+  return useMutation(options);
 }
 
-export function rotateApiKeyMutationOptions(
-  organizationId: string,
-  queryClient = defaultQueryClient,
-) {
+export function rotateApiKeyMutationOptions(organizationId: string) {
   return mutationOptions({
     ...rotateApiKeyApiKeysIdRotatePostMutation(
       withOrganizationHeaders({ organizationId }),
     ),
-    onSuccess: () => invalidateApiKeyQueries(queryClient),
+    meta: {
+      errorToast: 'Could not rotate API key.',
+      invalidateTags: apiKeyInvalidationTags,
+    },
   });
 }
 
 export function useRotateApiKeyMutationOptions() {
   const currentOrganizationId = useCurrentOrganizationId();
-  const queryClient = useQueryClient();
 
   return React.useMemo(
-    () => rotateApiKeyMutationOptions(currentOrganizationId, queryClient),
+    () => rotateApiKeyMutationOptions(currentOrganizationId),
     [currentOrganizationId],
   );
 }
 
 export function useRotateApiKeyMutation() {
-  const mutationOptions = useRotateApiKeyMutationOptions();
-  return useMutation(mutationOptions);
-}
-
-export async function invalidateApiKeyQueries(queryClient: QueryClient) {
-  await queryClient.invalidateQueries({
-    predicate: matchQueryKey({ tags: ['api-keys'] }),
-  });
+  const options = useRotateApiKeyMutationOptions();
+  return useMutation(options);
 }

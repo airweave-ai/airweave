@@ -1,9 +1,9 @@
 export {
   createSourceConnectionMutationOptions,
   ensureSourceConnection,
-  invalidateSourceConnectionQueries,
   listSourceConnectionsQueryOptions,
   reinitiateSourceConnectionOAuthMutationOptions,
+  sourceConnectionInvalidationTags,
   useCreateSourceConnectionMutation,
   useCreateSourceConnectionMutationOptions,
   useGetSourceConnectionQueryOptions,

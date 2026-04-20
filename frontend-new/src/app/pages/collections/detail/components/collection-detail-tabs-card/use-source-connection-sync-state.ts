@@ -1,9 +1,10 @@
 import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { SourceConnection } from '@/shared/api';
+import { invalidateQueriesByTags } from '@/shared/api';
 import {
-  invalidateSourceConnectionQueries,
   isActiveSyncJobStatus,
+  sourceConnectionInvalidationTags,
   useGetSyncJobStateStreamQueryOptions,
   useRunSourceConnectionSyncMutation,
 } from '@/features/source-connections';
@@ -41,7 +42,7 @@ export function useSourceConnectionSyncState({
       return;
     }
 
-    void invalidateSourceConnectionQueries(queryClient);
+    void invalidateQueriesByTags(queryClient, sourceConnectionInvalidationTags);
   }, [queryClient, sourceConnectionId, syncJobStateQuery.data?.finalStatus]);
 
   const handleRunSync = React.useCallback(() => {
