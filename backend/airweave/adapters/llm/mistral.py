@@ -13,10 +13,12 @@ import time
 from typing import Any, TypeVar
 
 from mistralai import Mistral
+from mistralai.models import AssistantMessageContent
 from mistralai.models.jsonschema import JSONSchema
 from mistralai.models.responseformat import ResponseFormat
 from mistralai.models.textchunk import TextChunk
 from mistralai.models.thinkchunk import ThinkChunk
+from mistralai.types.basemodel import Unset
 from pydantic import BaseModel
 
 from airweave.adapters.llm.base import BaseLLM
@@ -87,15 +89,14 @@ class MistralLLM(BaseLLM):
         )
         api_time = time.monotonic() - api_start
 
-        raw_content = response.choices[0].message.content
-        if not raw_content:
+        # Empty body (including ThinkChunk-only content for reasoning models)
+        # is transient: retry often clears a momentary truncation on the API side.
+        content = _extract_text(response.choices[0].message.content)
+        if not content:
             raise LLMTransientError(
                 "Mistral returned empty response content",
                 provider=self._name,
             )
-
-        # Extract text, ignoring thinking chunks for structured output
-        content = _extract_text(raw_content)
 
         if response.usage:
             self._logger.debug(
@@ -215,46 +216,44 @@ class MistralLLM(BaseLLM):
 # ── Module-level helpers ───────────────────────────────────────────────
 
 
-def _extract_text(raw_content: Any) -> str:
+def _extract_text(raw_content: AssistantMessageContent | Unset | None) -> str:
     """Extract text from content, which may be a string or list of typed chunks."""
+    if not isinstance(raw_content, (str, list)):
+        return ""
+
     if isinstance(raw_content, str):
         return raw_content
 
-    # List of content chunks — collect only text chunks
-    text_parts: list[str] = []
-    if isinstance(raw_content, list):
-        for chunk in raw_content:
-            if isinstance(chunk, TextChunk):
-                text_parts.append(chunk.text)
-
-    return "\n".join(text_parts) if text_parts else str(raw_content)
+    text_parts = [chunk.text for chunk in raw_content if isinstance(chunk, TextChunk)]
+    return "\n".join(text_parts)
 
 
-def _extract_text_and_thinking(raw_content: Any) -> tuple[str | None, str | None]:
+def _extract_text_and_thinking(
+    raw_content: AssistantMessageContent | Unset | None,
+) -> tuple[str | None, str | None]:
     """Extract text and thinking from content chunks.
 
     Mistral reasoning models (Magistral, Mistral Small 4 with reasoning_effort)
     return ThinkChunk blocks alongside TextChunk blocks in the content array.
     ThinkChunk.thinking is a list of TextChunk/ReferenceChunk sub-items.
     """
-    if raw_content is None:
+    if not isinstance(raw_content, (str, list)):
         return None, None
 
     if isinstance(raw_content, str):
-        return raw_content if raw_content else None, None
+        return raw_content or None, None
 
     text_parts: list[str] = []
     thinking_parts: list[str] = []
 
-    if isinstance(raw_content, list):
-        for chunk in raw_content:
-            if isinstance(chunk, ThinkChunk):
-                # ThinkChunk.thinking is List[Union[TextChunk, ReferenceChunk]]
-                for sub in chunk.thinking:
-                    if isinstance(sub, TextChunk):
-                        thinking_parts.append(sub.text)
-            elif isinstance(chunk, TextChunk):
-                text_parts.append(chunk.text)
+    for chunk in raw_content:
+        if isinstance(chunk, ThinkChunk):
+            # ThinkChunk.thinking is List[Union[TextChunk, ReferenceChunk]]
+            for sub in chunk.thinking:
+                if isinstance(sub, TextChunk):
+                    thinking_parts.append(sub.text)
+        elif isinstance(chunk, TextChunk):
+            text_parts.append(chunk.text)
 
     text = "\n".join(text_parts) if text_parts else None
     thinking_text = "\n".join(thinking_parts) if thinking_parts else None
