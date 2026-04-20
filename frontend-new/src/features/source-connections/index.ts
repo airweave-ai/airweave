@@ -3,8 +3,9 @@ export { isActiveSyncJobStatus } from './lib/sync-job-status';
 export {
   ensureSourceConnection,
   ensureSource,
-  prefetchSources,
   listSourceConnectionsQueryOptions,
+  prefetchSources,
+  sourceConnectionInvalidationTags,
   useCancelSourceConnectionSyncJobMutation,
   useGetSourceConnectionJobsQueryOptions,
   useGetSourceConnectionQueryOptions,
@@ -12,7 +13,6 @@ export {
   useGetSyncJobStateStreamQueryOptions,
   useGetSourceQueryOptions,
   useRunSourceConnectionSyncMutation,
-  invalidateSourceConnectionQueries,
 } from './api';
 export {
   ConnectSourceAuthCallback,

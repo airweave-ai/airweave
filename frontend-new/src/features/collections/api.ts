@@ -1,5 +1,6 @@
 import * as React from 'react';
 import {
+  mutationOptions,
   queryOptions,
   useMutation,
   useQueryClient,
@@ -13,11 +14,12 @@ import {
   getCollectionsReadableIdGetOptions,
   instantSearchCollectionsReadableIdSearchInstantPostOptions,
   listCollectionsGetOptions,
-  matchQueryKey,
   subscribeSearchAgenticStreamOptions,
   withOrganizationHeaders,
 } from '@/shared/api';
 import { useCurrentOrganizationId } from '@/shared/session';
+
+const collectionInvalidationTags = ['collections'] as const;
 
 type CollectionListParams = NonNullable<
   Parameters<typeof listCollectionsGetOptions>[0]
@@ -59,9 +61,13 @@ const collectionSearchQueryDefaults = {
 } as const;
 
 export function createCollectionMutationOptions(organizationId: string) {
-  return createCollectionsPostMutation(
-    withOrganizationHeaders({ organizationId }),
-  );
+  return mutationOptions({
+    ...createCollectionsPostMutation(withOrganizationHeaders({ organizationId })),
+    meta: {
+      errorToast: false,
+      invalidateTags: collectionInvalidationTags,
+    },
+  });
 }
 
 export function useCreateCollectionMutationOptions() {
@@ -74,15 +80,8 @@ export function useCreateCollectionMutationOptions() {
 }
 
 export function useCreateCollectionMutation() {
-  const queryClient = useQueryClient();
-  const mutationOptions = useCreateCollectionMutationOptions();
-
-  return useMutation({
-    ...mutationOptions,
-    onSuccess: async () => {
-      await invalidateCollectionQueries(queryClient);
-    },
-  });
+  const options = useCreateCollectionMutationOptions();
+  return useMutation(options);
 }
 
 export function classicCollectionSearchQueryOptions(
@@ -307,10 +306,4 @@ export function ensureCollection({
   return queryClient.ensureQueryData(
     getCollectionQueryOptions(organizationId, { collectionId }),
   );
-}
-
-export async function invalidateCollectionQueries(queryClient: QueryClient) {
-  await queryClient.invalidateQueries({
-    predicate: matchQueryKey({ tags: ['collections'] }),
-  });
 }

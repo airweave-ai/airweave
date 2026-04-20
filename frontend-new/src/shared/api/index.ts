@@ -4,6 +4,7 @@ export {
   hasApiErrorDetail,
   parseApiErrorWithDetail,
 } from './errors';
+export { invalidateQueriesByTags } from './invalidate-queries-by-tags';
 export { QueryClientProvider, queryClient } from './query-client';
 export type { OrganizationScope } from './organization-scope';
 export * from './streams';
