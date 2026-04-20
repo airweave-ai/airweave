@@ -10,7 +10,7 @@ from airweave.api.context import ApiContext
 from airweave.core import credentials
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.exceptions import InvalidInputError, InvalidStateError, NotFoundException
-from airweave.core.shared_models import ConnectionStatus, IntegrationType
+from airweave.core.shared_models import ConnectionStatus, FeatureFlag, IntegrationType
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.auth_provider.protocols import (
     AuthProviderRegistryProtocol,
@@ -52,8 +52,17 @@ class AuthProviderService(AuthProviderServiceProtocol):
         return result
 
     async def list_metadata(self, *, ctx: ApiContext) -> list[AuthProviderMetadata]:
-        """List auth provider metadata from registry."""
-        return [self._entry_to_metadata(entry) for entry in self._registry.list_all()]
+        """List auth provider metadata from registry.
+
+        Entries gated by a feature flag are excluded unless the organization
+        has that flag enabled.
+        """
+        enabled_features = ctx.organization.enabled_features or []
+        return [
+            self._entry_to_metadata(entry)
+            for entry in self._registry.list_all()
+            if not self._is_hidden_by_feature_flag(entry, enabled_features)
+        ]
 
     async def get_metadata(self, *, short_name: str, ctx: ApiContext) -> AuthProviderMetadata:
         """Get auth provider metadata by short name from registry."""
@@ -387,6 +396,19 @@ class AuthProviderService(AuthProviderServiceProtocol):
             modified_at=connection.modified_at,
             masked_client_id=masked_client_id,
         )
+
+    @staticmethod
+    def _is_hidden_by_feature_flag(
+        entry: AuthProviderRegistryEntry, enabled_features: list[FeatureFlag]
+    ) -> bool:
+        """Return True if the entry requires a feature flag the org doesn't have."""
+        if not entry.feature_flag:
+            return False
+        try:
+            required = FeatureFlag(entry.feature_flag)
+            return required not in enabled_features
+        except ValueError:
+            return False
 
     @staticmethod
     def _entry_to_metadata(entry: AuthProviderRegistryEntry) -> AuthProviderMetadata:

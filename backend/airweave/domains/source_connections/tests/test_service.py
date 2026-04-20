@@ -10,31 +10,30 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
+from airweave.api.context import ApiContext
 from airweave.core.datetime_utils import utc_now
 from airweave.core.exceptions import NotFoundException
-
-from airweave.api.context import ApiContext
 from airweave.core.logging import logger
 from airweave.core.shared_models import AuthMethod, SourceConnectionStatus, SyncJobStatus
 from airweave.domains.auth_provider.fake import FakeAuthProviderRegistry
 from airweave.domains.collections.fakes.repository import FakeCollectionRepository
 from airweave.domains.connections.fakes.repository import FakeConnectionRepository
 from airweave.domains.oauth.fakes.repository import FakeOAuthRedirectSessionRepository
+from airweave.domains.source_connections.fakes.create import FakeSourceConnectionCreateService
+from airweave.domains.source_connections.fakes.delete import FakeSourceConnectionDeletionService
 from airweave.domains.source_connections.fakes.repository import (
     FakeSourceConnectionRepository,
 )
 from airweave.domains.source_connections.fakes.response import FakeResponseBuilder
+from airweave.domains.source_connections.fakes.update import FakeSourceConnectionUpdateService
 from airweave.domains.source_connections.service import SourceConnectionService
 from airweave.domains.source_connections.types import LastJobInfo, SourceConnectionStats
 from airweave.domains.sources.fakes.registry import FakeSourceRegistry
-from airweave.domains.source_connections.fakes.delete import FakeSourceConnectionDeletionService
-from airweave.domains.source_connections.fakes.create import FakeSourceConnectionCreateService
-from airweave.domains.source_connections.fakes.update import FakeSourceConnectionUpdateService
-from airweave.domains.syncs.fakes.lifecycle_service import FakeSyncLifecycleService
+from airweave.domains.syncs.fakes.service import FakeSyncService
 from airweave.schemas.organization import Organization
 from airweave.schemas.source_connection import AuthenticationMethod, SourceConnectionListItem
 
@@ -99,7 +98,8 @@ def _build_service(
         source_registry=FakeSourceRegistry(),
         auth_provider_registry=FakeAuthProviderRegistry(),
         response_builder=FakeResponseBuilder(),
-        sync_lifecycle=FakeSyncLifecycleService(),
+        sync_service=FakeSyncService(),
+        event_bus=AsyncMock(),
         create_service=FakeSourceConnectionCreateService(),
         update_service=FakeSourceConnectionUpdateService(),
         deletion_service=FakeSourceConnectionDeletionService(),
@@ -399,3 +399,293 @@ async def test_get_redirect_url_missing_code_raises():
     svc = _build_service()
     with pytest.raises(NotFoundException, match="Authorization link expired or invalid"):
         await svc.get_redirect_url(AsyncMock(), code="nonexistent")
+
+
+# ---------------------------------------------------------------------------
+# Sync lifecycle proxies: run, get_jobs, cancel_job, count_by_organization
+# ---------------------------------------------------------------------------
+
+SYNC_ID = uuid4()
+SC_ID = uuid4()
+JOB_ID = uuid4()
+CONN_ID = uuid4()
+COL_READABLE_ID = "test-col-abc"
+
+
+def _make_source_conn(
+    *,
+    id: UUID = SC_ID,
+    sync_id: UUID = SYNC_ID,
+    connection_id: UUID = CONN_ID,
+    readable_collection_id: str = COL_READABLE_ID,
+):
+    sc = MagicMock()
+    sc.id = id
+    sc.sync_id = sync_id
+    sc.connection_id = connection_id
+    sc.readable_collection_id = readable_collection_id
+    return sc
+
+
+def _make_collection(readable_id: str = COL_READABLE_ID):
+    col = MagicMock()
+    col.id = uuid4()
+    col.name = "Test Collection"
+    col.readable_id = readable_id
+    col.organization_id = ORG_ID
+    return col
+
+
+def _make_connection(id: UUID = CONN_ID):
+    conn = MagicMock()
+    conn.id = id
+    conn.short_name = "github"
+    conn.name = "GitHub"
+    return conn
+
+
+def _make_sync_schema():
+    return MagicMock(spec_set=["id", "status"])
+
+
+def _make_sync_job_schema(*, sync_id: UUID = SYNC_ID, job_id: UUID = JOB_ID):
+    job = MagicMock()
+    job.id = job_id
+    job.sync_id = sync_id
+    job.status = SyncJobStatus.PENDING
+    job.started_at = None
+    job.completed_at = None
+    job.error = None
+    job.error_category = None
+    job.entities_inserted = 0
+    job.entities_updated = 0
+    job.entities_deleted = 0
+    job.entities_skipped = 0
+    return job
+
+
+def _build_run_service(
+    sc_repo=None,
+    sync_service=None,
+    collection_repo=None,
+    connection_repo=None,
+    event_bus=None,
+):
+    return SourceConnectionService(
+        sc_repo=sc_repo or FakeSourceConnectionRepository(),
+        collection_repo=collection_repo or FakeCollectionRepository(),
+        connection_repo=connection_repo or FakeConnectionRepository(),
+        redirect_session_repo=FakeOAuthRedirectSessionRepository(),
+        source_registry=FakeSourceRegistry(),
+        auth_provider_registry=FakeAuthProviderRegistry(),
+        response_builder=FakeResponseBuilder(),
+        sync_service=sync_service or FakeSyncService(),
+        event_bus=event_bus or AsyncMock(),
+        create_service=FakeSourceConnectionCreateService(),
+        update_service=FakeSourceConnectionUpdateService(),
+        deletion_service=FakeSourceConnectionDeletionService(),
+    )
+
+
+class _RecordingFakeSyncService(FakeSyncService):
+    """Records keyword arguments passed to trigger_run for assertions."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.last_trigger_run: Optional[dict] = None
+
+    async def trigger_run(
+        self,
+        db,
+        *,
+        sync_id,
+        collection,
+        connection,
+        ctx,
+        force_full_sync: bool = False,
+    ):
+        self.last_trigger_run = {
+            "sync_id": sync_id,
+            "collection": collection,
+            "connection": connection,
+            "force_full_sync": force_full_sync,
+        }
+        return await super().trigger_run(
+            db,
+            sync_id=sync_id,
+            collection=collection,
+            connection=connection,
+            ctx=ctx,
+            force_full_sync=force_full_sync,
+        )
+
+
+async def test_run_triggers_workflow_and_returns_job():
+    sc = _make_source_conn()
+    sc_repo = FakeSourceConnectionRepository()
+    sc_repo.seed(SC_ID, sc)
+
+    sync_svc = _RecordingFakeSyncService()
+    sync_svc.set_trigger_run_result(_make_sync_schema(), _make_sync_job_schema())
+
+    event_bus = AsyncMock()
+
+    svc = _build_run_service(
+        sc_repo=sc_repo,
+        sync_service=sync_svc,
+        event_bus=event_bus,
+    )
+
+    col_id = uuid4()
+    col_schema = MagicMock(id=col_id, readable_id="col-x")
+    col_schema.name = "Col"
+    conn_schema = MagicMock(short_name="github")
+    svc._resolve_collection = AsyncMock(return_value=col_schema)
+    svc._resolve_connection = AsyncMock(return_value=conn_schema)
+
+    result = await svc.run(AsyncMock(), id=SC_ID, ctx=_make_ctx())
+
+    assert result.id == JOB_ID
+    assert result.source_connection_id == SC_ID
+    assert result.status == SyncJobStatus.PENDING
+    assert sync_svc.last_trigger_run is not None
+    assert sync_svc.last_trigger_run["sync_id"] == SYNC_ID
+    assert sync_svc.last_trigger_run["collection"] is col_schema
+    assert sync_svc.last_trigger_run["connection"] is conn_schema
+    assert sync_svc.last_trigger_run["force_full_sync"] is False
+
+
+async def test_run_event_failure_propagates():
+    sc = _make_source_conn()
+    sc_repo = FakeSourceConnectionRepository()
+    sc_repo.seed(SC_ID, sc)
+
+    sync_svc = FakeSyncService()
+    sync_svc.set_trigger_run_result(_make_sync_schema(), _make_sync_job_schema())
+
+    event_bus = AsyncMock()
+    event_bus.publish.side_effect = RuntimeError("event bus down")
+
+    svc = _build_run_service(sc_repo=sc_repo, sync_service=sync_svc, event_bus=event_bus)
+    col_schema = MagicMock(id=uuid4(), readable_id="col-x")
+    col_schema.name = "Col"
+    svc._resolve_collection = AsyncMock(return_value=col_schema)
+    svc._resolve_connection = AsyncMock(return_value=MagicMock(short_name="github"))
+
+    with pytest.raises(RuntimeError, match="event bus down"):
+        await svc.run(AsyncMock(), id=SC_ID, ctx=_make_ctx())
+
+
+async def test_run_not_found_raises():
+    svc = _build_run_service()
+    with pytest.raises(NotFoundException, match="Source connection not found"):
+        await svc.run(AsyncMock(), id=uuid4(), ctx=_make_ctx())
+
+
+async def test_get_jobs_returns_mapped_jobs():
+    sc = _make_source_conn()
+    sc_repo = FakeSourceConnectionRepository()
+    sc_repo.seed(SC_ID, sc)
+
+    sync_svc = FakeSyncService()
+    j1 = _make_sync_job_schema(job_id=uuid4())
+    j1.entities_inserted = 42
+    j1.entities_updated = 3
+    j2 = _make_sync_job_schema(job_id=uuid4())
+    sync_svc.seed_jobs(SYNC_ID, [j1, j2])
+
+    svc = _build_run_service(sc_repo=sc_repo, sync_service=sync_svc)
+    jobs = await svc.get_jobs(AsyncMock(), id=SC_ID, ctx=_make_ctx())
+
+    assert len(jobs) == 2
+    assert jobs[0].source_connection_id == SC_ID
+    assert jobs[0].entities_inserted == 42
+    assert jobs[0].entities_updated == 3
+    assert jobs[1].source_connection_id == SC_ID
+    assert jobs[1].entities_inserted == 0
+
+
+async def test_get_jobs_not_found_raises():
+    svc = _build_run_service()
+    with pytest.raises(NotFoundException, match="Source connection not found"):
+        await svc.get_jobs(AsyncMock(), id=uuid4(), ctx=_make_ctx())
+
+
+async def test_cancel_job_delegates_to_sync_service():
+    sync_svc = FakeSyncService()
+    job = _make_sync_job_schema(sync_id=SYNC_ID)
+    sync_svc.set_cancel_result(job)
+
+    svc = _build_run_service(sync_service=sync_svc)
+    result = await svc.cancel_job(
+        AsyncMock(), source_connection_id=SC_ID, job_id=JOB_ID, ctx=_make_ctx()
+    )
+    assert result.id == JOB_ID
+
+
+async def test_run_with_force_full_sync():
+    sc = _make_source_conn()
+    sc_repo = FakeSourceConnectionRepository()
+    sc_repo.seed(SC_ID, sc)
+
+    sync_svc = _RecordingFakeSyncService()
+    sync_svc.set_trigger_run_result(_make_sync_schema(), _make_sync_job_schema())
+
+    svc = _build_run_service(sc_repo=sc_repo, sync_service=sync_svc)
+    col_schema = MagicMock(id=uuid4(), readable_id="col-x")
+    col_schema.name = "Col"
+    svc._resolve_collection = AsyncMock(return_value=col_schema)
+    svc._resolve_connection = AsyncMock(return_value=MagicMock(short_name="github"))
+
+    result = await svc.run(AsyncMock(), id=SC_ID, ctx=_make_ctx(), force_full_sync=True)
+    assert result.id == JOB_ID
+    assert ("validate_force_full_sync", SYNC_ID) in sync_svc._calls
+    assert sync_svc.last_trigger_run is not None
+    assert sync_svc.last_trigger_run["force_full_sync"] is True
+
+
+async def test_resolve_collection_not_found():
+    sc = _make_source_conn()
+    sc_repo = FakeSourceConnectionRepository()
+    sc_repo.seed(SC_ID, sc)
+
+    col_repo = FakeCollectionRepository()
+    svc = _build_run_service(sc_repo=sc_repo, collection_repo=col_repo)
+
+    with pytest.raises(NotFoundException, match="Collection not found"):
+        await svc._resolve_collection(AsyncMock(), sc, _make_ctx())
+
+
+async def test_resolve_collection_no_readable_id():
+    sc = _make_source_conn(readable_collection_id=None)
+    svc = _build_run_service()
+
+    with pytest.raises(NotFoundException, match="has no readable_collection_id"):
+        await svc._resolve_collection(AsyncMock(), sc, _make_ctx())
+
+
+async def test_resolve_connection_not_found():
+    sc = _make_source_conn()
+    sc_repo = FakeSourceConnectionRepository()
+    sc_repo.seed(SC_ID, sc)
+
+    conn_repo = FakeConnectionRepository()
+    svc = _build_run_service(sc_repo=sc_repo, connection_repo=conn_repo)
+
+    with pytest.raises(NotFoundException, match="not found"):
+        await svc._resolve_connection(AsyncMock(), sc, _make_ctx())
+
+
+async def test_resolve_connection_no_connection_id():
+    sc = _make_source_conn(connection_id=None)
+    svc = _build_run_service()
+
+    with pytest.raises(NotFoundException, match="has no connection_id"):
+        await svc._resolve_connection(AsyncMock(), sc, _make_ctx())
+
+
+async def test_count_by_organization():
+    sc_repo = FakeSourceConnectionRepository()
+    svc = _build_run_service(sc_repo=sc_repo)
+    count = await svc.count_by_organization(AsyncMock(), organization_id=ORG_ID)
+    assert count == 0

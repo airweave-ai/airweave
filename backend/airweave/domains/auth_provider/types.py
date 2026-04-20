@@ -24,6 +24,9 @@ class AuthProviderRegistryEntry(BaseRegistryEntry):
     # Settings dashboard URL
     settings_url: str = ""
 
+    # Feature flag gating
+    feature_flag: str | None = None
+
 
 class AuthProviderMetadata(BaseRegistryEntry):
     """Public auth provider metadata returned by API endpoints."""

@@ -35,7 +35,11 @@ class SyncJobRepositoryProtocol(Protocol):
         ...
 
     async def get_all_by_sync_id(
-        self, db: AsyncSession, sync_id: UUID, ctx: BaseContext
+        self,
+        db: AsyncSession,
+        sync_id: UUID,
+        ctx: BaseContext,
+        limit: Optional[int] = None,
     ) -> List[SyncJob]:
         """Get all jobs for a specific sync."""
         ...

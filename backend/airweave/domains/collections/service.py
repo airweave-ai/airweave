@@ -21,7 +21,7 @@ from airweave.domains.collections.protocols import (
 )
 from airweave.domains.embedders.protocols import DenseEmbedderRegistryProtocol
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
-from airweave.domains.syncs.protocols import SyncLifecycleServiceProtocol
+from airweave.domains.syncs.protocols import SyncServiceProtocol
 from airweave.models.collection import Collection
 from airweave.schemas.collection import SourceConnectionSummary
 
@@ -33,7 +33,7 @@ class CollectionService(CollectionServiceProtocol):
         self,
         collection_repo: CollectionRepositoryProtocol,
         sc_repo: SourceConnectionRepositoryProtocol,
-        sync_lifecycle: SyncLifecycleServiceProtocol,
+        sync_service: SyncServiceProtocol,
         event_bus: EventBus,
         settings: Settings,
         deployment_metadata_repo: VectorDbDeploymentMetadataRepositoryProtocol,
@@ -42,7 +42,7 @@ class CollectionService(CollectionServiceProtocol):
         """Initialize with injected dependencies."""
         self._collection_repo = collection_repo
         self._sc_repo = sc_repo
-        self._sync_lifecycle = sync_lifecycle
+        self._sync_service = sync_service
         self._event_bus = event_bus
         self._settings = settings
         self._deployment_metadata_repo = deployment_metadata_repo
@@ -179,34 +179,31 @@ class CollectionService(CollectionServiceProtocol):
         if db_obj is None:
             raise CollectionNotFoundError(readable_id)
 
-        collection_id = db_obj.id
-        organization_id = ctx.organization.id
-
         # Snapshot while session is fresh (teardown expires all objects via db.expire_all)
         result = self._to_response(db_obj)
 
         # Collect sync IDs before CASCADE removes them
         sync_ids = await self._sc_repo.get_sync_ids_for_collection(
-            db, organization_id=organization_id, readable_collection_id=result.readable_id
+            db, organization_id=ctx.organization.id, readable_collection_id=result.readable_id
         )
 
-        # Cancel running workflows and wait for workers to stop
-        await self._sync_lifecycle.teardown_syncs_for_collection(
-            db,
-            sync_ids=sync_ids,
-            collection_id=collection_id,
-            organization_id=organization_id,
-            ctx=ctx,
-        )
+        for sid in sync_ids:
+            await self._sync_service.delete(
+                db,
+                sync_id=sid,
+                collection_id=result.id,
+                organization_id=ctx.organization.id,
+                ctx=ctx,
+            )
 
         # CASCADE-delete the collection and all child objects
-        await self._collection_repo.remove(db, id=collection_id, ctx=ctx)
+        await self._collection_repo.remove(db, id=result.id, ctx=ctx)
 
         # Publish event
         try:
             await self._event_bus.publish(
                 CollectionLifecycleEvent.deleted(
-                    organization_id=organization_id,
+                    organization_id=ctx.organization.id,
                     collection_id=result.id,
                     collection_name=result.name,
                     collection_readable_id=result.readable_id,

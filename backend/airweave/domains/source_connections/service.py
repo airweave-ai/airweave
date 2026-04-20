@@ -1,13 +1,17 @@
 """Service for source connections."""
 
+from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.datetime_utils import utc_now
+from airweave.core.events.sync import SyncLifecycleEvent
 from airweave.core.exceptions import NotFoundException
+from airweave.core.protocols.event_bus import EventBus
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
 from airweave.domains.collections.protocols import CollectionRepositoryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
@@ -21,7 +25,7 @@ from airweave.domains.source_connections.protocols import (
     SourceConnectionUpdateServiceProtocol,
 )
 from airweave.domains.sources.protocols import SourceRegistryProtocol
-from airweave.domains.syncs.protocols import SyncLifecycleServiceProtocol
+from airweave.domains.syncs.protocols import SyncServiceProtocol
 from airweave.models.source_connection import SourceConnection
 from airweave.schemas.source_connection import (
     SourceConnection as SourceConnectionSchema,
@@ -32,6 +36,14 @@ from airweave.schemas.source_connection import (
     SourceConnectionListItem,
     SourceConnectionUpdate,
 )
+
+
+def _duration_seconds(
+    started_at: Optional[datetime], completed_at: Optional[datetime]
+) -> Optional[float]:
+    if started_at and completed_at:
+        return (completed_at - started_at).total_seconds()
+    return None
 
 
 class SourceConnectionService(SourceConnectionServiceProtocol):
@@ -49,7 +61,8 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         auth_provider_registry: AuthProviderRegistryProtocol,
         # Helpers
         response_builder: ResponseBuilderProtocol,
-        sync_lifecycle: SyncLifecycleServiceProtocol,
+        sync_service: SyncServiceProtocol,
+        event_bus: EventBus,
         # Sub-services
         create_service: SourceConnectionCreateServiceProtocol,
         update_service: SourceConnectionUpdateServiceProtocol,
@@ -62,7 +75,8 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         self.source_registry = source_registry
         self.auth_provider_registry = auth_provider_registry
         self.response_builder = response_builder
-        self._sync_lifecycle = sync_lifecycle
+        self._sync_service = sync_service
+        self._event_bus = event_bus
         self._create_service = create_service
         self._update_service = update_service
         self._deletion_service = deletion_service
@@ -142,7 +156,8 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         return await self._deletion_service.delete(db, id=id, ctx=ctx)
 
     # ------------------------------------------------------------------
-    # Sync lifecycle proxies
+    # Sync lifecycle proxies — resolve source_connection → sync_id, then
+    # delegate to the unified SyncService and map results.
     # ------------------------------------------------------------------
 
     async def run(
@@ -154,7 +169,52 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         force_full_sync: bool = False,
     ) -> SourceConnectionJob:
         """Trigger a sync run for this source connection."""
-        return await self._sync_lifecycle.run(db, id=id, ctx=ctx, force_full_sync=force_full_sync)
+        source_conn = await self._resolve_source_connection(db, id, ctx)
+        sync_id = source_conn.sync_id
+        assert sync_id is not None
+
+        if force_full_sync:
+            await self._sync_service.validate_force_full_sync(db, sync_id, ctx)
+
+        collection = await self._resolve_collection(db, source_conn, ctx)
+        connection = await self._resolve_connection(db, source_conn, ctx)
+
+        sync, sync_job = await self._sync_service.trigger_run(
+            db,
+            sync_id=sync_id,
+            collection=collection,
+            connection=connection,
+            ctx=ctx,
+            force_full_sync=force_full_sync,
+        )
+
+        await self._event_bus.publish(
+            SyncLifecycleEvent.pending(
+                organization_id=ctx.organization.id,
+                source_connection_id=id,
+                sync_job_id=sync_job.id,
+                sync_id=sync_id,
+                collection_id=collection.id,
+                source_type=connection.short_name,
+                collection_name=collection.name,
+                collection_readable_id=collection.readable_id,
+            )
+        )
+
+        return SourceConnectionJob(
+            id=sync_job.id,
+            source_connection_id=id,
+            status=sync_job.status,
+            started_at=sync_job.started_at,
+            completed_at=sync_job.completed_at,
+            duration_seconds=_duration_seconds(sync_job.started_at, sync_job.completed_at),
+            entities_inserted=sync_job.entities_inserted or 0,
+            entities_updated=sync_job.entities_updated or 0,
+            entities_deleted=sync_job.entities_deleted or 0,
+            entities_failed=sync_job.entities_skipped or 0,
+            error=sync_job.error,
+            error_category=sync_job.error_category,
+        )
 
     async def get_jobs(
         self,
@@ -165,7 +225,29 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         limit: int = 100,
     ) -> List[SourceConnectionJob]:
         """List sync jobs for this source connection."""
-        return await self._sync_lifecycle.get_jobs(db, id=id, ctx=ctx, limit=limit)
+        source_conn = await self._resolve_source_connection(db, id, ctx)
+        sync_id = source_conn.sync_id
+        assert sync_id is not None
+
+        jobs = await self._sync_service.get_jobs(db, sync_id=sync_id, ctx=ctx, limit=limit)
+
+        return [
+            SourceConnectionJob(
+                id=j.id,
+                source_connection_id=id,
+                status=j.status,
+                started_at=j.started_at,
+                completed_at=j.completed_at,
+                duration_seconds=_duration_seconds(j.started_at, j.completed_at),
+                entities_inserted=j.entities_inserted or 0,
+                entities_updated=j.entities_updated or 0,
+                entities_deleted=j.entities_deleted or 0,
+                entities_failed=j.entities_skipped or 0,
+                error=j.error,
+                error_category=j.error_category,
+            )
+            for j in jobs
+        ]
 
     async def cancel_job(
         self,
@@ -176,8 +258,21 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         ctx: ApiContext,
     ) -> SourceConnectionJob:
         """Cancel a running sync job."""
-        return await self._sync_lifecycle.cancel_job(
-            db, source_connection_id=source_connection_id, job_id=job_id, ctx=ctx
+        sync_job = await self._sync_service.cancel_job(db, job_id=job_id, ctx=ctx)
+
+        return SourceConnectionJob(
+            id=sync_job.id,
+            source_connection_id=source_connection_id,
+            status=sync_job.status,
+            started_at=sync_job.started_at,
+            completed_at=sync_job.completed_at,
+            duration_seconds=_duration_seconds(sync_job.started_at, sync_job.completed_at),
+            entities_inserted=sync_job.entities_inserted or 0,
+            entities_updated=sync_job.entities_updated or 0,
+            entities_deleted=sync_job.entities_deleted or 0,
+            entities_failed=sync_job.entities_skipped or 0,
+            error=sync_job.error,
+            error_category=sync_job.error_category,
         )
 
     async def get_sync_id(self, db: AsyncSession, *, id: UUID, ctx: ApiContext) -> dict:
@@ -194,15 +289,50 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
         return await self.sc_repo.count_by_organization(db, organization_id)
 
     async def get_redirect_url(self, db: AsyncSession, *, code: str) -> str:
-        """Resolve a short redirect code to its final OAuth authorization URL.
-
-        The redirect session is atomically consumed (deleted) on lookup,
-        enforcing one-time use per CASA Requirement #23.
-        """
+        """Resolve a short redirect code to its final OAuth authorization URL."""
         redirect_info = await self._redirect_session_repo.consume(db, code=code)
         if not redirect_info:
             raise NotFoundException("Authorization link expired or invalid")
-        # Check expiry *after* consume so expired tokens can't be replayed.
         if redirect_info.expires_at <= utc_now():
             raise NotFoundException("Authorization link expired or invalid")
         return redirect_info.final_url
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    async def _resolve_source_connection(
+        self, db: AsyncSession, id: UUID, ctx: ApiContext
+    ) -> SourceConnection:
+        """Get a source connection and validate it has an associated sync."""
+        source_conn = await self.sc_repo.get(db, id=id, ctx=ctx)
+        if not source_conn:
+            raise NotFoundException("Source connection not found")
+        if not source_conn.sync_id:
+            raise NotFoundException("No sync found for this source connection")
+        return source_conn
+
+    async def _resolve_collection(
+        self, db: AsyncSession, source_conn: SourceConnection, ctx: ApiContext
+    ) -> schemas.CollectionRecord:
+        """Resolve the CollectionRecord schema for a source connection."""
+        readable_id = source_conn.readable_collection_id
+        if not readable_id:
+            raise NotFoundException(
+                f"Source connection {source_conn.id} has no readable_collection_id"
+            )
+        collection = await self.collection_repo.get_by_readable_id(db, str(readable_id), ctx)
+        if not collection:
+            raise NotFoundException("Collection not found")
+        return schemas.CollectionRecord.model_validate(collection, from_attributes=True)
+
+    async def _resolve_connection(
+        self, db: AsyncSession, source_conn: SourceConnection, ctx: ApiContext
+    ) -> schemas.Connection:
+        """Resolve the Connection schema (not SourceConnection) for a source connection."""
+        if not source_conn.connection_id:
+            raise NotFoundException(f"Source connection {source_conn.id} has no connection_id")
+        conn = await self.connection_repo.get(db, source_conn.connection_id, ctx)
+        if not conn:
+            raise NotFoundException(f"Connection {source_conn.connection_id} not found")
+        return schemas.Connection.model_validate(conn, from_attributes=True)

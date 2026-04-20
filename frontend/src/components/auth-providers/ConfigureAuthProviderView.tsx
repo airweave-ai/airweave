@@ -81,19 +81,6 @@ export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps>
     const navigate = useNavigate();
     const { fetchAuthProviderConnections } = useAuthProvidersStore();
 
-    // Log component lifecycle
-    useEffect(() => {
-        console.log('🌟 [ConfigureAuthProviderView] Component mounted:', {
-            authProviderName,
-            authProviderShortName,
-            viewData
-        });
-
-        return () => {
-            console.log('💥 [ConfigureAuthProviderView] Component unmounting');
-        };
-    }, []);
-
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [loading, setLoading] = useState(true);
     const [authProviderDetails, setAuthProviderDetails] = useState<any>(null);
@@ -104,11 +91,6 @@ export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps>
     // Image error state for secure fallbacks
     const [airweaveImageError, setAirweaveImageError] = useState(false);
     const [authProviderImageError, setAuthProviderImageError] = useState(false);
-
-    // Log loading state changes
-    useEffect(() => {
-        console.log('⏳ [ConfigureAuthProviderView] Loading state:', loading);
-    }, [loading]);
 
     // Default name for the connection
     const defaultConnectionName = authProviderName ? `My ${authProviderName} Connection` : "My Connection";
@@ -157,30 +139,18 @@ export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps>
 
     // Fetch auth provider details
     useEffect(() => {
-        console.log('🔍 [ConfigureAuthProviderView] Auth provider details effect triggered:', {
-            authProviderShortName,
-            currentLoading: loading
-        });
-
         if (!authProviderShortName) {
-            console.log('⚠️ [ConfigureAuthProviderView] No authProviderShortName, skipping fetch');
             setLoading(false);
             return;
         }
 
         const fetchDetails = async () => {
-            console.log('🚀 [ConfigureAuthProviderView] Starting to fetch auth provider details');
             setLoading(true);
             try {
                 const response = await apiClient.get(`/auth-providers/detail/${authProviderShortName}`);
-                console.log('📡 [ConfigureAuthProviderView] Auth provider details response:', response.ok);
 
                 if (response.ok) {
                     const data = await response.json();
-                    console.log('✅ [ConfigureAuthProviderView] Auth provider details loaded:', {
-                        hasAuthFields: !!data.auth_fields,
-                        fieldsCount: data.auth_fields?.fields?.length || 0
-                    });
                     setAuthProviderDetails(data);
 
                     // Initialize auth field values
@@ -195,16 +165,13 @@ export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps>
                     }
                 } else {
                     const errorText = await response.text();
-                    console.error('❌ [ConfigureAuthProviderView] Failed to load auth provider details:', errorText);
                     throw new Error(`Failed to load auth provider details: ${errorText}`);
                 }
             } catch (error) {
-                console.error("Error fetching auth provider details:", error);
                 if (onError) {
                     onError(error instanceof Error ? error : new Error(String(error)), authProviderName);
                 }
             } finally {
-                console.log('🏁 [ConfigureAuthProviderView] Setting loading to false');
                 setLoading(false);
             }
         };
@@ -391,16 +358,7 @@ export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps>
                 duration: 5000,
             });
 
-            // Navigate to detail view BEFORE refreshing connections
-            console.log('🎯 [ConfigureAuthProviderView] Connection created successfully:', {
-                connectionId: connection.id,
-                readableId: connection.readable_id,
-                name: connection.name,
-                shortName: connection.short_name
-            });
-
             if (onNext) {
-                console.log('🚀 [ConfigureAuthProviderView] Calling onNext to navigate to detail view');
                 onNext({
                     authProviderConnectionId: connection.readable_id,
                     authProviderName: authProviderName,  // Use the original auth provider name, not connection name
@@ -408,17 +366,11 @@ export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps>
                     isNewConnection: true  // Flag to indicate this is a new connection
                 });
 
-                // Refresh connections after navigation - testing without delay
-                console.log('📡 [ConfigureAuthProviderView] Refreshing auth provider connections after navigation');
                 fetchAuthProviderConnections();
             } else {
-                console.warn('⚠️ [ConfigureAuthProviderView] onNext is not defined!');
-                // If no onNext, refresh immediately
                 await fetchAuthProviderConnections();
             }
         } catch (error) {
-            console.error("Error creating auth provider connection:", error);
-
             // Extract error message from the response
             let errorMessage = "Failed to create connection";
             if (error instanceof Error) {
@@ -650,6 +602,37 @@ export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps>
                                                     </TooltipTrigger>
                                                     <TooltipContent>
                                                         <p>Opens {authProviderShortName === 'composio' ? 'Composio platform to retrieve your API credentials' : 'Pipedream settings to retrieve your client ID and secret'}</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            </TooltipProvider>
+                                        )}
+                                        {authProviderShortName === 'custom' && (
+                                            <TooltipProvider>
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <button
+                                                            type="button"
+                                                            className={cn(
+                                                                "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+                                                                "border",
+                                                                isDark
+                                                                    ? "bg-gray-800/50 border-gray-700 text-gray-300 hover:bg-gray-700 hover:text-white"
+                                                                    : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                                                            )}
+                                                        >
+                                                            <Key className="w-3 h-3" />
+                                                            View endpoint contract
+                                                        </button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="bottom" className="max-w-sm p-3">
+                                                        <div className="space-y-1.5 text-xs">
+                                                            <p className="font-medium">Your endpoint must implement:</p>
+                                                            <p><span className="font-mono">GET {'{base_url}'}</span> — return 2xx (used for validation)</p>
+                                                            <p><span className="font-mono">GET {'{base_url}/{source_connection_id}'}</span> — return JSON credentials</p>
+                                                            <p>Response: <span className="font-mono">{`{"access_token": "..."}`}</span> or <span className="font-mono">{`{"api_key": "..."}`}</span></p>
+                                                            <p>Auth: <span className="font-mono">X-API-Key</span> header sent with every request</p>
+                                                            <p>No refresh_token needed — Airweave re-fetches automatically</p>
+                                                        </div>
                                                     </TooltipContent>
                                                 </Tooltip>
                                             </TooltipProvider>

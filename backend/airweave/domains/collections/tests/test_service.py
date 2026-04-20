@@ -28,7 +28,7 @@ from airweave.domains.embedders.types import DenseEmbedderEntry
 from airweave.domains.source_connections.fakes.repository import (
     FakeSourceConnectionRepository,
 )
-from airweave.domains.syncs.fakes.lifecycle_service import FakeSyncLifecycleService
+from airweave.domains.syncs.fakes.service import FakeSyncService
 from airweave.models.collection import Collection
 from airweave.schemas.organization import Organization
 
@@ -132,7 +132,7 @@ def _fake_dense_registry() -> FakeDenseEmbedderRegistry:
 def _build_service(
     collection_repo=None,
     sc_repo=None,
-    sync_lifecycle=None,
+    sync_service=None,
     event_bus=None,
     settings=None,
     deployment_metadata_repo=None,
@@ -141,7 +141,7 @@ def _build_service(
     return CollectionService(
         collection_repo=collection_repo or FakeCollectionRepository(),
         sc_repo=sc_repo or FakeSourceConnectionRepository(),
-        sync_lifecycle=sync_lifecycle or FakeSyncLifecycleService(),
+        sync_service=sync_service or FakeSyncService(),
         event_bus=event_bus or _FakeEventBus(),
         settings=settings or _fake_settings(),
         deployment_metadata_repo=deployment_metadata_repo
@@ -388,7 +388,7 @@ async def test_delete_full_flow():
     """delete() gathers sync IDs, calls teardown, cascade-deletes, publishes event."""
     repo = FakeCollectionRepository()
     sc_repo = FakeSourceConnectionRepository()
-    sync_lifecycle = FakeSyncLifecycleService()
+    sync_service = FakeSyncService()
     event_bus = _FakeEventBus()
 
     col = _collection()
@@ -402,7 +402,7 @@ async def test_delete_full_flow():
     svc = _build_service(
         collection_repo=repo,
         sc_repo=sc_repo,
-        sync_lifecycle=sync_lifecycle,
+        sync_service=sync_service,
         event_bus=event_bus,
     )
 
@@ -410,13 +410,13 @@ async def test_delete_full_flow():
 
     assert result is not None
 
-    # Verify teardown was called with correct args
-    teardown_calls = [c for c in sync_lifecycle._calls if c[0] == "teardown_syncs_for_collection"]
-    assert len(teardown_calls) == 1
-    _, _, sync_ids, coll_id, org_id, _ = teardown_calls[0]
-    assert set(sync_ids) == {sync_id_1, sync_id_2}
-    assert coll_id == COLLECTION_ID
-    assert org_id == ORG_ID
+    # Verify one delete per sync ID: ("delete", sync_id, collection_id, organization_id)
+    delete_calls = [c for c in sync_service._calls if c[0] == "delete"]
+    assert len(delete_calls) == 2
+    assert {c[1] for c in delete_calls} == {sync_id_1, sync_id_2}
+    for c in delete_calls:
+        assert c[2] == COLLECTION_ID  # collection_id
+        assert c[3] == ORG_ID  # organization_id
 
     # Verify cascade delete was called
     remove_calls = [c for c in repo._calls if c[0] == "remove"]
@@ -438,10 +438,10 @@ async def test_delete_not_found():
 
 @pytest.mark.asyncio
 async def test_delete_no_syncs():
-    """delete() works when collection has no syncs — teardown called with empty list."""
+    """delete() works when collection has no syncs — no sync delete calls (empty gather)."""
     repo = FakeCollectionRepository()
     sc_repo = FakeSourceConnectionRepository()
-    sync_lifecycle = FakeSyncLifecycleService()
+    sync_service = FakeSyncService()
     event_bus = _FakeEventBus()
 
     col = _collection()
@@ -452,7 +452,7 @@ async def test_delete_no_syncs():
     svc = _build_service(
         collection_repo=repo,
         sc_repo=sc_repo,
-        sync_lifecycle=sync_lifecycle,
+        sync_service=sync_service,
         event_bus=event_bus,
     )
 
@@ -460,7 +460,5 @@ async def test_delete_no_syncs():
 
     assert result is not None
 
-    teardown_calls = [c for c in sync_lifecycle._calls if c[0] == "teardown_syncs_for_collection"]
-    assert len(teardown_calls) == 1
-    _, _, sync_ids, _, _, _ = teardown_calls[0]
-    assert sync_ids == []
+    delete_calls = [c for c in sync_service._calls if c[0] == "delete"]
+    assert len(delete_calls) == 0

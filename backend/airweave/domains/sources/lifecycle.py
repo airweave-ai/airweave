@@ -7,7 +7,7 @@ credential services.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union, cast
 from uuid import UUID
 
 if TYPE_CHECKING:
@@ -22,10 +22,11 @@ from airweave.core.context import BaseContext
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger, LoggerConfigurator
 from airweave.core.shared_models import FeatureFlag
-from airweave.domains.auth_provider._base import BaseAuthProvider
+from airweave.domains.auth_provider._base import AUTH_PROVIDER_OPTIONAL_FIELDS, BaseAuthProvider
 from airweave.domains.auth_provider.exceptions import (
     AuthProviderAccountNotFoundError,
     AuthProviderAuthError,
+    AuthProviderError,
 )
 from airweave.domains.auth_provider.protocols import AuthProviderRegistryProtocol
 from airweave.domains.connections.protocols import ConnectionRepositoryProtocol
@@ -40,11 +41,6 @@ from airweave.domains.sources.exceptions import (
     SourceNotFoundError,
     SourceValidationError,
 )
-from airweave.domains.sources.token_providers.exceptions import (
-    TokenCredentialsInvalidError,
-    TokenExpiredError,
-    TokenProviderAccountGoneError,
-)
 from airweave.domains.sources.protocols import (
     SourceLifecycleServiceProtocol,
     SourceRegistryProtocol,
@@ -52,6 +48,11 @@ from airweave.domains.sources.protocols import (
 from airweave.domains.sources.rate_limiting.service import SourceRateLimiter
 from airweave.domains.sources.token_providers.auth_provider import AuthProviderTokenProvider
 from airweave.domains.sources.token_providers.credential import DirectCredentialProvider
+from airweave.domains.sources.token_providers.exceptions import (
+    TokenCredentialsInvalidError,
+    TokenExpiredError,
+    TokenProviderAccountGoneError,
+)
 from airweave.domains.sources.token_providers.oauth import OAuthTokenProvider
 from airweave.domains.sources.token_providers.static import StaticTokenProvider
 from airweave.domains.sources.types import AuthConfig, SourceConnectionData, SourceRegistryEntry
@@ -128,13 +129,19 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         )
 
         # 2. Get auth configuration (credentials + proxy setup)
-        auth_config = await self._get_auth_configuration(
-            db=db,
-            source_connection_data=source_connection_data,
-            ctx=ctx,
-            logger=logger,
-            access_token=access_token,
-        )
+        try:
+            auth_config = await self._get_auth_configuration(
+                db=db,
+                source_connection_data=source_connection_data,
+                ctx=cast(ApiContext, ctx),
+                logger=logger,
+                access_token=access_token,
+            )
+        except AuthProviderError as exc:
+            raise SourceValidationError(
+                short_name=source_connection_data.short_name,
+                reason=f"auth provider error: {exc}",
+            ) from exc
 
         # 3. Resolve auth provider
         token_provider = await self._resolve_token_provider(
@@ -328,15 +335,12 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             )
 
         # Case 2: Auth provider connection
-        if (
-            source_connection_data.readable_auth_provider_id
-            and source_connection_data.auth_provider_config
-        ):
+        if source_connection_data.readable_auth_provider_id:
             return await self._get_auth_provider_configuration(
                 db=db,
                 source_connection_data=source_connection_data,
                 readable_auth_provider_id=source_connection_data.readable_auth_provider_id,
-                auth_provider_config=source_connection_data.auth_provider_config,
+                auth_provider_config=source_connection_data.auth_provider_config or {},
                 ctx=ctx,
                 logger=logger,
             )
@@ -369,11 +373,13 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             logger=logger,
         )
 
-        # Get runtime auth fields from the source registry (precomputed at startup)
+        # Get runtime auth fields from the source registry (precomputed at startup).
+        # Auth providers handle token refresh, so OAuth lifecycle fields
+        # (refresh_token, client_id, client_secret) are always optional.
         short_name = source_connection_data.short_name
         entry = self._source_registry.get(short_name)
         auth_fields_all = entry.runtime_auth_all_fields
-        auth_fields_optional = entry.runtime_auth_optional_fields
+        auth_fields_optional = entry.runtime_auth_optional_fields | AUTH_PROVIDER_OPTIONAL_FIELDS
 
         source_config_field_mappings = self._build_source_config_field_mappings(
             source_connection_data
@@ -384,6 +390,7 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             source_auth_config_fields=auth_fields_all,
             optional_fields=auth_fields_optional,
             source_config_field_mappings=source_config_field_mappings or None,
+            source_connection_id=source_connection_data.source_connection_id,
         )
 
         if auth_result.source_config:
@@ -630,6 +637,17 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
         if access_token is not None:
             return StaticTokenProvider(access_token, source_short_name=short_name)
 
+        # Auth provider takes priority — ensures errors are classified correctly
+        # regardless of whether the source uses OAuth or direct auth.
+        if auth_provider_instance:
+            return AuthProviderTokenProvider(
+                auth_provider_instance=auth_provider_instance,
+                source_short_name=short_name,
+                source_registry=self._source_registry,
+                logger=logger,
+                source_connection_id=source_connection_data.source_connection_id,
+            )
+
         entry = self._source_registry.get(short_name)
         source_credentials = self._normalize_credentials(source_credentials, entry, logger)
 
@@ -641,14 +659,6 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             return DirectCredentialProvider(source_credentials, source_short_name=short_name)
 
         try:
-            if auth_provider_instance:
-                return AuthProviderTokenProvider(
-                    auth_provider_instance=auth_provider_instance,
-                    source_short_name=short_name,
-                    source_registry=self._source_registry,
-                    logger=logger,
-                )
-
             # Sources that support both OAuth and API key auth (e.g. calcom, coda)
             # may have structured credentials without access_token when using
             # API key mode — route those to DirectCredentialProvider.

@@ -54,11 +54,19 @@ class FakeSyncJobRepository:
         return [j for j in jobs if j.status in ("PENDING", "RUNNING", "CANCELLING")]
 
     async def get_all_by_sync_id(
-        self, db: AsyncSession, sync_id: UUID, ctx: ApiContext
+        self,
+        db: AsyncSession,
+        sync_id: UUID,
+        ctx: ApiContext,
+        limit: Optional[int] = None,
     ) -> List[SyncJob]:
-        """Return all seeded jobs for the sync."""
-        self._calls.append(("get_all_by_sync_id", db, sync_id, ctx))
-        return self._by_sync.get(sync_id, [])
+        """Return all seeded jobs for the sync (newest first; optional limit)."""
+        self._calls.append(("get_all_by_sync_id", db, sync_id, ctx, limit))
+        jobs = list(self._by_sync.get(sync_id, []))
+        jobs.sort(key=lambda j: j.created_at, reverse=True)
+        if limit is not None:
+            jobs = jobs[:limit]
+        return jobs
 
     async def create(
         self,
