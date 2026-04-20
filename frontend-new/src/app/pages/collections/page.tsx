@@ -1,12 +1,13 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
+import { getRouteApi } from '@tanstack/react-router';
+import type { CollectionsSearch } from './search';
 import {
   ListPage,
   ListPageHeader,
   ListPageSearch,
   ListPageState,
 } from '@/app/pages/components';
-import type { CollectionsSearch } from './search';
 import { CreateCollectionButton } from '@/app/components/create-collection-button';
 import {
   CollectionCountBadge,
@@ -14,12 +15,11 @@ import {
   CollectionsEmptyState,
   CollectionsNoSearchResultsState,
   CollectionsTable,
-  normalizeCollectionSearch,
   useListCollectionsQueryOptions,
 } from '@/features/collections';
-import { getRouteApi } from '@tanstack/react-router';
 import { ErrorState } from '@/shared/components/error-state';
 import { LoadingState } from '@/shared/components/loading-state';
+import { normalizeSearchQuery } from '@/shared/search/normalize-search-query';
 
 type CollectionsPageProps = CollectionsSearch & {
   onSearchChange: (search: string | undefined) => void;
@@ -39,7 +39,7 @@ export function CollectionsPage({
   onSearchChange,
 }: CollectionsPageProps) {
   const navigate = routeApi.useNavigate();
-  const normalizedSearch = normalizeCollectionSearch(search);
+  const normalizedSearch = normalizeSearchQuery(search);
   const collectionsQueryOptions = useListCollectionsQueryOptions({
     search: normalizedSearch,
   });

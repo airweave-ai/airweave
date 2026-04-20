@@ -6,14 +6,14 @@ import {
 } from '@/app/pages/collections';
 import {
   ensureListCollections,
-  normalizeCollectionSearch,
   prefetchCollectionCount,
 } from '@/features/collections';
+import { normalizeSearchQuery } from '@/shared/search/normalize-search-query';
 
 export const Route = createFileRoute('/_authenticated/_app/collections/')({
   component: RouteComponent,
   loaderDeps: ({ search }) => ({
-    search: normalizeCollectionSearch(search.search),
+    search: normalizeSearchQuery(search.search),
   }),
   loader: async ({ context, deps }) => {
     const collectionListPromise = ensureListCollections({

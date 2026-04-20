@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Outlet } from '@tanstack/react-router';
 import { ApiKeysPage } from '@/app/pages/api-keys';
 import { ensureListApiKeys } from '@/features/api-keys';
 
@@ -15,5 +15,10 @@ export const Route = createFileRoute('/_authenticated/_app/api-keys')({
 });
 
 function RouteComponent() {
-  return <ApiKeysPage />;
+  return (
+    <>
+      <ApiKeysPage />
+      <Outlet />
+    </>
+  );
 }

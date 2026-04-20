@@ -21,6 +21,7 @@ import type {
   SyncJobDetails,
   SyncJobStatus,
 } from '@/shared/api';
+import { formatUtcTimestamp } from '@/shared/format/date';
 import { formatNumber } from '@/shared/format/format-number';
 import { pluralize } from '@/shared/format/pluralize';
 import { getApiErrorMessage } from '@/shared/api';
@@ -69,7 +70,7 @@ export function ConnectSourceSyncJobProgress({
         <ConnectSourceSyncHeader source={source} variant="error" />
         <ConnectSourceSyncErrorState
           title={status === 'failed' ? 'Last sync failed' : 'Sync cancelled'}
-          timestamp={formatStatusTimestamp(job.completed_at ?? job.started_at)}
+          timestamp={formatUtcTimestamp(job.completed_at ?? job.started_at) ?? undefined}
           description={
             status === 'failed' ? (
               <>
@@ -194,27 +195,4 @@ function getIndexedEntitiesPseudoProgress(totalEntities: number) {
   // Grow quickly at the start, then taper off so the bar feels alive without
   // implying an exact denominator we do not have from the backend.
   return Math.min(0.95, 1 - 1 / (1 + totalEntities * 0.15));
-}
-
-function formatStatusTimestamp(value?: string | null) {
-  if (!value) {
-    return undefined;
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return undefined;
-  }
-
-  return new Intl.DateTimeFormat('en-US', {
-    day: 'numeric',
-    hour: '2-digit',
-    hour12: false,
-    minute: '2-digit',
-    month: 'short',
-    timeZone: 'UTC',
-    timeZoneName: 'short',
-    year: 'numeric',
-  }).format(date);
 }

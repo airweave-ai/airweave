@@ -1,5 +1,7 @@
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { IconPlus } from '@tabler/icons-react';
+import { Link } from '@tanstack/react-router';
 import {
   ListPage,
   ListPageHeader,
@@ -10,23 +12,18 @@ import {
   ApiKeysEmptyState,
   ApiKeysNoSearchResultsState,
   ApiKeysTable,
+  useFilteredApiKeys,
   useListApiKeysQueryOptions,
 } from '@/features/api-keys';
 import { ErrorState } from '@/shared/components/error-state';
 import { LoadingState } from '@/shared/components/loading-state';
-import { Badge } from '@/shared/ui/badge';
+import { normalizeSearchQuery } from '@/shared/search/normalize-search-query';
 import { Button } from '@/shared/ui/button';
-
-function normalizeApiKeySearch(search: string | undefined) {
-  const normalizedSearch = search?.trim().toLowerCase();
-
-  return normalizedSearch || undefined;
-}
+import { CountBadge } from '@/shared/components/count-badge';
 
 export function ApiKeysPage() {
   const [search, setSearch] = React.useState<string | undefined>(undefined);
   const deferredSearch = React.useDeferredValue(search);
-  const handleCreateApiKey = React.useCallback(() => {}, []);
   const apiKeysQueryOptions = useListApiKeysQueryOptions();
   const {
     data: apiKeys,
@@ -34,29 +31,8 @@ export function ApiKeysPage() {
     isFetching,
     refetch,
   } = useQuery(apiKeysQueryOptions);
-  const normalizedSearch = normalizeApiKeySearch(deferredSearch);
-  const filteredApiKeys = React.useMemo(() => {
-    if (!apiKeys) {
-      return [];
-    }
-
-    if (!normalizedSearch) {
-      return apiKeys;
-    }
-
-    return apiKeys.filter((apiKey) => {
-      const searchableText = [
-        apiKey.id,
-        apiKey.decrypted_key,
-        apiKey.created_by_email,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-
-      return searchableText.includes(normalizedSearch);
-    });
-  }, [apiKeys, normalizedSearch]);
+  const normalizedSearch = normalizeSearchQuery(deferredSearch);
+  const filteredApiKeys = useFilteredApiKeys(apiKeys, normalizedSearch);
 
   const emptyState = normalizedSearch ? (
     <ApiKeysNoSearchResultsState
@@ -64,7 +40,16 @@ export function ApiKeysPage() {
       onClearSearch={() => setSearch(undefined)}
     />
   ) : (
-    <ApiKeysEmptyState onCreateApiKey={handleCreateApiKey} />
+    <ApiKeysEmptyState
+      action={
+        <Button asChild variant="outline">
+          <Link to="/api-keys/create">
+            <IconPlus />
+            Create API Key
+          </Link>
+        </Button>
+      }
+    />
   );
 
   const stateBody = error ? (
@@ -86,19 +71,13 @@ export function ApiKeysPage() {
     <ListPage>
       <ListPageHeader
         title="API Keys"
-        badge={
-          !error ? (
-            <Badge
-              variant="secondary"
-              className="text-[0.625rem] text-muted-foreground"
-            >
-              {apiKeys?.length ?? 0}
-            </Badge>
-          ) : null
-        }
+        badge={!error ? <CountBadge>{apiKeys?.length ?? 0}</CountBadge> : null}
         actions={
-          <Button onClick={handleCreateApiKey} type="button">
-            Create API Key
+          <Button asChild>
+            <Link to="/api-keys/create">
+              <IconPlus />
+              Create API Key
+            </Link>
           </Button>
         }
       />

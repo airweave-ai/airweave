@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useCollectionCountQueryOptions } from '../api';
-import { Badge } from '@/shared/ui/badge';
 import { Skeleton } from '@/shared/ui/skeleton';
+import { CountBadge } from '@/shared/components/count-badge';
 
 export function CollectionCountBadge() {
   const collectionCountQueryOptions = useCollectionCountQueryOptions();
@@ -19,14 +19,7 @@ export function CollectionCountBadge() {
     return null;
   }
 
-  return (
-    <Badge
-      variant="secondary"
-      className="text-[0.625rem] text-muted-foreground"
-    >
-      {collectionCount}
-    </Badge>
-  );
+  return <CountBadge>{collectionCount}</CountBadge>;
 }
 
 function CollectionCountSkeleton() {
