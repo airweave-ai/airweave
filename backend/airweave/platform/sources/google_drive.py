@@ -77,6 +77,8 @@ class GoogleDriveSource(BaseSource):
     while maintaining proper organization and access permissions.
     """
 
+    drive_id_filter: Optional[str] = None
+
     @classmethod
     async def create(
         cls,
@@ -195,7 +197,7 @@ class GoogleDriveSource(BaseSource):
         params: Dict[str, Any] = {
             "supportsAllDrives": "true",
         }
-        if getattr(self, "drive_id_filter", None):
+        if self.drive_id_filter:
             params["driveId"] = self.drive_id_filter
         data = await self._get(url, params=params)
         token = data.get("startPageToken")
@@ -210,7 +212,7 @@ class GoogleDriveSource(BaseSource):
         for use after the stream completes.
         """
         url = "https://www.googleapis.com/drive/v3/changes"
-        drive_id_filter = getattr(self, "drive_id_filter", None)
+        drive_id_filter = self.drive_id_filter
         params: Dict[str, Any] = {
             "pageToken": start_token,
             "includeRemoved": "true",
@@ -1027,7 +1029,7 @@ class GoogleDriveSource(BaseSource):
             patterns: List[str] = getattr(self, "include_patterns", []) or []
             self.logger.debug(f"Include patterns: {patterns}")
 
-            drive_id_filter: Optional[str] = getattr(self, "drive_id_filter", None)
+            drive_id_filter: Optional[str] = self.drive_id_filter
 
             drive_objs: List[Dict[str, Any]] = []
             try:

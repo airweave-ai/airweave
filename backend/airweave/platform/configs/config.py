@@ -1,7 +1,7 @@
 """Configuration classes for platform components."""
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import Field, field_validator
 
@@ -355,7 +355,7 @@ class GoogleDriveConfig(SourceConfig):
 
     @field_validator("drive_id", mode="before")
     @classmethod
-    def _normalize_drive_id(cls, value):
+    def _normalize_drive_id(cls, value: Any) -> Any:
         """Treat empty strings as None so defaults kick in."""
         if isinstance(value, str):
             stripped = value.strip()
