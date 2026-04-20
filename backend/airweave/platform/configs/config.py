@@ -332,6 +332,17 @@ class GoogleDocsConfig(SourceConfig):
 class GoogleDriveConfig(SourceConfig):
     """Google Drive configuration schema."""
 
+    drive_id: Optional[str] = Field(
+        default=None,
+        title="Shared Drive ID",
+        description=(
+            "If set, only sync files from this specific shared drive "
+            "(and skip 'My Drive'). You can find the drive ID in the Google Drive URL "
+            "when viewing a shared drive. Leave empty to sync all drives the account "
+            "has access to, plus 'My Drive'."
+        ),
+    )
+
     include_patterns: list[str] = Field(
         default=[],
         title="Include Patterns",
@@ -341,6 +352,15 @@ class GoogleDriveConfig(SourceConfig):
             "Separate multiple patterns with commas. If empty, all files are included."
         ),
     )
+
+    @field_validator("drive_id", mode="before")
+    @classmethod
+    def _normalize_drive_id(cls, value):
+        """Treat empty strings as None so defaults kick in."""
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return value
 
     @field_validator("include_patterns", mode="before")
     @classmethod
