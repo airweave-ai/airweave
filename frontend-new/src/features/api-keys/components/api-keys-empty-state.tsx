@@ -41,17 +41,13 @@ export function ApiKeysNoSearchResultsState({
 }
 
 export function ApiKeysEmptyState({
-  onCreateApiKey,
+  action,
 }: {
-  onCreateApiKey?: () => void;
+  action?: ReactNode;
 }) {
   return (
     <ApiKeysEmptyStateCard
-      action={
-        <Button onClick={onCreateApiKey} type="button" variant="outline">
-          Create API Key
-        </Button>
-      }
+      action={action}
       description="API keys let you authenticate requests to the Airweave API. Create your first API key to get started."
       icon={IconKey}
       title="No API keys yet"

@@ -1,6 +1,7 @@
 import * as React from 'react';
 
 import type { Source } from '@/shared/api';
+import { normalizeSearchQuery } from '@/shared/search/normalize-search-query';
 
 export function useSourceFilters({ sources }: { sources: Array<Source> }) {
   const [search, setSearch] = React.useState('');
@@ -34,10 +35,6 @@ export function useSourceFilters({ sources }: { sources: Array<Source> }) {
   };
 }
 
-function normalizeSourceSearch(search?: string) {
-  return search?.trim().toLowerCase() || '';
-}
-
 function filterSources({
   activeLabel,
   search,
@@ -47,7 +44,7 @@ function filterSources({
   search?: string;
   sources: Array<Source>;
 }) {
-  const normalizedSearch = normalizeSourceSearch(search);
+  const normalizedSearch = normalizeSearchQuery(search)?.toLowerCase() || '';
 
   return [...sources]
     .filter((source) => {

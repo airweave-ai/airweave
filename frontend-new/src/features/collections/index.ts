@@ -30,4 +30,3 @@ export {
   ensureCollectionCount,
   ensureListCollections,
 } from './api';
-export { normalizeCollectionSearch } from './utils';

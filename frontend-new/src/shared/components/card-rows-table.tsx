@@ -47,7 +47,7 @@ export function CardRowsTable<TData extends RowData>({
                 <TableHead
                   key={header.id}
                   className={cn(
-                    'h-10 px-3 text-xs font-medium tracking-wide text-muted-foreground',
+                    'h-10 px-3 font-mono text-xs font-medium text-muted-foreground',
                     getHeaderCellClassName?.(header),
                   )}
                 >

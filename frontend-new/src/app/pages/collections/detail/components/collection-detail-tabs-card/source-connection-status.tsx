@@ -1,7 +1,7 @@
-import { format, intlFormatDistance, isValid, parseISO } from 'date-fns';
 import { IconClock, IconCloudCheck, IconRefresh } from '@tabler/icons-react';
 import type { SourceConnection, SourceConnectionStatus } from '@/shared/api';
 import { StatusDot } from '@/shared/components/status-dot';
+import { formatRelativeDate, formatTime } from '@/shared/format/date';
 import { cn } from '@/shared/tailwind/cn';
 import { Button } from '@/shared/ui/button';
 import { Separator } from '@/shared/ui/separator';
@@ -117,13 +117,9 @@ function formatNextRun(nextRun: string | null | undefined) {
     return 'None';
   }
 
-  const date = parseDateValue(nextRun);
+  const formattedTime = formatTime(nextRun);
 
-  if (!date) {
-    return nextRun;
-  }
-
-  return `At ${format(date, 'h:mm a')}`;
+  return formattedTime ? `At ${formattedTime}` : nextRun;
 }
 
 function formatLastSync(completedAt: string | null | undefined) {
@@ -131,37 +127,12 @@ function formatLastSync(completedAt: string | null | undefined) {
     return 'Never';
   }
 
-  const date = parseDateValue(completedAt);
-
-  if (!date) {
-    return completedAt;
-  }
-
-  return intlFormatDistance(date, new Date(), {
-    numeric: 'auto',
-    style: 'short',
-  });
-}
-
-function parseDateValue(value: string) {
-  const normalizedValue = hasTimezoneSuffix(value) ? value : `${value}Z`;
-  const parsedIsoDate = parseISO(normalizedValue);
-
-  if (isValid(parsedIsoDate)) {
-    return parsedIsoDate;
-  }
-
-  const parsedDate = new Date(normalizedValue);
-
-  if (isValid(parsedDate)) {
-    return parsedDate;
-  }
-
-  return null;
-}
-
-function hasTimezoneSuffix(value: string) {
-  return /(?:Z|[+-]\d{2}:\d{2})$/.test(value);
+  return (
+    formatRelativeDate(completedAt, {
+      numeric: 'auto',
+      style: 'short',
+    }) ?? completedAt
+  );
 }
 
 function ConnectionStatusLabel({ children }: React.PropsWithChildren) {

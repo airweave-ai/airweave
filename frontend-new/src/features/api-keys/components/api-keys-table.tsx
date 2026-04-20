@@ -1,10 +1,17 @@
 import { getCoreRowModel, useReactTable } from '@tanstack/react-table';
 import { MoreVertical } from 'lucide-react';
 import { IconCopy, IconRefresh, IconTrash } from '@tabler/icons-react';
+import { useDeleteApiKeyMutation, useRotateApiKeyMutation } from '../api';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { ReactNode } from 'react';
 import type { ApiKey } from '@/shared/api';
 import { CardRowsTable } from '@/shared/components/card-rows-table';
+import {
+  formatDate,
+  formatRelativeDate,
+  parseDate,
+} from '@/shared/format/date';
+import { useCopyToClipboard } from '@/shared/hooks/use-copy-to-clipboard';
 import { cn } from '@/shared/tailwind/cn';
 import { Button } from '@/shared/ui/button';
 import {
@@ -13,11 +20,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/shared/ui/dropdown-menu';
-
-const apiKeyDateFormatter = new Intl.DateTimeFormat(undefined, {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-});
 
 export const apiKeysTableColumns: Array<ColumnDef<ApiKey>> = [
   {
@@ -29,44 +31,42 @@ export const apiKeysTableColumns: Array<ColumnDef<ApiKey>> = [
     accessorKey: 'created_by_email',
     header: 'Created by',
     cell: ({ row }) => (
-      <PlaceholderCell>
-        {row.original.created_by_email ?? 'Unknown'}
-      </PlaceholderCell>
+      <ValueCell>{row.original.created_by_email ?? 'Unknown'}</ValueCell>
     ),
   },
   {
     accessorKey: 'created_at',
     header: 'Created at',
     cell: ({ row }) => (
-      <PlaceholderCell>
-        {formatApiKeyDate(row.original.created_at, 'Unknown')}
-      </PlaceholderCell>
+      <ValueCell>
+        {formatDate(row.original.created_at) ?? row.original.created_at}
+      </ValueCell>
     ),
   },
   {
     accessorKey: 'expiration_date',
     header: 'Expiration date',
     cell: ({ row }) => (
-      <PlaceholderCell>
-        {formatApiKeyDate(row.original.expiration_date, 'Unknown')}
-      </PlaceholderCell>
+      <ExpirationDateCell expirationDate={row.original.expiration_date} />
     ),
   },
   {
     accessorKey: 'last_used_date',
     header: 'Last used',
     cell: ({ row }) => (
-      <PlaceholderCell>
-        {formatApiKeyDate(row.original.last_used_date)}
-      </PlaceholderCell>
+      <ValueCell className="first-letter:uppercase">
+        {formatRelativeDate(row.original.last_used_date) ??
+          row.original.last_used_date ??
+          'Never'}
+      </ValueCell>
     ),
   },
   {
     id: 'actions',
     header: () => <span className="sr-only">Actions</span>,
-    cell: () => (
+    cell: ({ row }) => (
       <div className="flex justify-end">
-        <ApiKeyActionsMenu />
+        <ApiKeyActionsMenu apiKey={row.original} />
       </div>
     ),
   },
@@ -77,10 +77,7 @@ type ApiKeysTableProps = {
   className?: string;
 };
 
-export function ApiKeysTable({
-  apiKeys,
-  className,
-}: ApiKeysTableProps) {
+export function ApiKeysTable({ apiKeys, className }: ApiKeysTableProps) {
   const table = useReactTable({
     data: apiKeys,
     columns: apiKeysTableColumns,
@@ -100,8 +97,38 @@ export function ApiKeysTable({
   );
 }
 
-function PlaceholderCell({ children = '-' }: { children?: ReactNode }) {
-  return <span className="text-muted-foreground">{children}</span>;
+function ValueCell({
+  children = '-',
+  className,
+}: {
+  children?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        'inline-block font-mono text-xs text-muted-foreground',
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function ExpirationDateCell({ expirationDate }: { expirationDate: string }) {
+  const parsedExpirationDate = parseDate(expirationDate);
+  const isExpired =
+    parsedExpirationDate !== null &&
+    parsedExpirationDate.getTime() <= Date.now();
+
+  return (
+    <ValueCell className={cn(isExpired && 'text-destructive')}>
+      {isExpired ? 'Expired' : 'Expires'}{' '}
+      {formatRelativeDate(parsedExpirationDate, { unit: 'day' }) ??
+        expirationDate}
+    </ValueCell>
+  );
 }
 
 function ApiKeyValueCell({ apiKey }: { apiKey: ApiKey }) {
@@ -128,7 +155,12 @@ function truncateApiKey(value: string, startLength = 16, endLength = 8) {
   return `${value.slice(0, startLength)}...${value.slice(-endLength)}`;
 }
 
-function ApiKeyActionsMenu() {
+function ApiKeyActionsMenu({ apiKey }: { apiKey: ApiKey }) {
+  const { copy } = useCopyToClipboard();
+  const decryptedKey = apiKey.decrypted_key;
+  const deleteApiKeyMutation = useDeleteApiKeyMutation();
+  const rotateApiKeyMutation = useRotateApiKeyMutation();
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -139,36 +171,34 @@ function ApiKeyActionsMenu() {
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="min-w-47" side="bottom">
-        <DropdownMenuItem>
-          <IconCopy />
-          Copy key
-        </DropdownMenuItem>
-        <DropdownMenuItem>
+        {decryptedKey && (
+          <DropdownMenuItem onClick={() => copy(decryptedKey)}>
+            <IconCopy />
+            Copy key
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem
+          onClick={() =>
+            rotateApiKeyMutation.mutate({
+              path: {
+                id: apiKey.id,
+              },
+            })
+          }
+        >
           <IconRefresh />
           Rotate key
         </DropdownMenuItem>
-        <DropdownMenuItem variant="destructive">
+        <DropdownMenuItem
+          variant="destructive"
+          onClick={() =>
+            deleteApiKeyMutation.mutate({ query: { id: apiKey.id } })
+          }
+        >
           <IconTrash />
           Delete
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
-}
-
-function formatApiKeyDate(
-  date: string | null | undefined,
-  emptyLabel = 'Never',
-) {
-  if (!date) {
-    return emptyLabel;
-  }
-
-  const parsedDate = new Date(date);
-
-  if (Number.isNaN(parsedDate.getTime())) {
-    return date;
-  }
-
-  return apiKeyDateFormatter.format(parsedDate);
 }
