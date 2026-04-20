@@ -74,7 +74,8 @@ class TestChangesApiScoping:
         _, kwargs = source._get.call_args
         params = kwargs["params"]
         assert params["driveId"] == "0ABCdef"
-        assert params["includeItemsFromAllDrives"] == "false"
+        # Must stay "true" even when scoped — otherwise shared-drive changes are omitted.
+        assert params["includeItemsFromAllDrives"] == "true"
 
     async def test_iterate_changes_unscoped_includes_all_drives(self):
         source = await _make_source(GoogleDriveConfig())

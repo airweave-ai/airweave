@@ -214,8 +214,9 @@ class GoogleDriveSource(BaseSource):
         params: Dict[str, Any] = {
             "pageToken": start_token,
             "includeRemoved": "true",
-            # When scoped to a single drive, only emit changes from that drive.
-            "includeItemsFromAllDrives": "false" if drive_id_filter else "true",
+            # Must be "true" even when driveId is set — otherwise the API omits
+            # shared-drive items entirely. driveId alone scopes changes to that drive.
+            "includeItemsFromAllDrives": "true",
             "supportsAllDrives": "true",
             "pageSize": 1000,
             "fields": (
