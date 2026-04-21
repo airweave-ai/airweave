@@ -29,24 +29,43 @@ class FakeSyncContext:
     logger: Any = field(default_factory=lambda: MagicMock())
 
 
-def _make_entity(entity_id: str, hash_val: str = "abc123", definition: str = "stub"):
-    meta = SimpleNamespace(hash=hash_val)
+def _make_entity(
+    entity_id: str,
+    hash_val: str = "abc123",
+    definition: str = "stub",
+    source_hash: str | None = None,
+    content_hash: str | None = None,
+):
+    meta = SimpleNamespace(hash=hash_val, _computed_content_hash=content_hash)
     return SimpleNamespace(
         entity_id=entity_id,
         airweave_system_metadata=meta,
+        source_hash=source_hash,
     )
 
 
-def _make_insert(entity_id: str, hash_val: str = "abc123", definition: str = "stub"):
+def _make_insert(
+    entity_id: str,
+    hash_val: str = "abc123",
+    definition: str = "stub",
+    source_hash: str | None = None,
+    content_hash: str | None = None,
+):
     return EntityInsertAction(
-        entity=_make_entity(entity_id, hash_val),
+        entity=_make_entity(entity_id, hash_val, source_hash=source_hash, content_hash=content_hash),
         entity_definition_short_name=definition,
     )
 
 
-def _make_update(entity_id: str, hash_val: str = "new_hash", definition: str = "stub"):
+def _make_update(
+    entity_id: str,
+    hash_val: str = "new_hash",
+    definition: str = "stub",
+    source_hash: str | None = None,
+    content_hash: str | None = None,
+):
     return EntityUpdateAction(
-        entity=_make_entity(entity_id, hash_val),
+        entity=_make_entity(entity_id, hash_val, source_hash=source_hash, content_hash=content_hash),
         entity_definition_short_name=definition,
         db_id=uuid4(),
     )
@@ -297,6 +316,59 @@ class TestFetchExistingMap:
         result = await handler._fetch_existing_map([], ctx, MagicMock())
 
         assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# source_hash / content_hash persistence
+# ---------------------------------------------------------------------------
+
+
+class TestSourceHashPersistence:
+    @pytest.mark.asyncio
+    async def test_insert_passes_source_hash_and_content_hash(self):
+        handler, repo = _make_handler()
+        ctx = FakeSyncContext()
+        action = _make_insert(
+            "e1", source_hash="sha256:abc", content_hash="deadbeef"
+        )
+
+        await handler._do_inserts([action], ctx, MagicMock())
+
+        repo.bulk_create.assert_called_once()
+        create_objs = repo.bulk_create.call_args[1]["objs"]
+        assert len(create_objs) == 1
+        assert create_objs[0].source_hash == "sha256:abc"
+        assert create_objs[0].content_hash == "deadbeef"
+
+    @pytest.mark.asyncio
+    async def test_insert_passes_none_when_no_source_hash(self):
+        handler, repo = _make_handler()
+        ctx = FakeSyncContext()
+        action = _make_insert("e1")
+
+        await handler._do_inserts([action], ctx, MagicMock())
+
+        repo.bulk_create.assert_called_once()
+        create_objs = repo.bulk_create.call_args[1]["objs"]
+        assert create_objs[0].source_hash is None
+        assert create_objs[0].content_hash is None
+
+    @pytest.mark.asyncio
+    async def test_update_passes_source_hash_and_content_hash(self):
+        handler, repo = _make_handler()
+        ctx = FakeSyncContext()
+        action = _make_update(
+            "e1", source_hash="sha1:xyz", content_hash="cafebabe"
+        )
+        db_entity = SimpleNamespace(id=uuid4())
+        existing_map = {("e1", "stub"): db_entity}
+
+        await handler._do_updates([action], existing_map, ctx, MagicMock())
+
+        repo.bulk_update_hash.assert_called_once()
+        rows = repo.bulk_update_hash.call_args[1]["rows"]
+        assert len(rows) == 1
+        assert rows[0] == (db_entity.id, "new_hash", "sha1:xyz", "cafebabe")
 
 
 class TestHandleBatch:
