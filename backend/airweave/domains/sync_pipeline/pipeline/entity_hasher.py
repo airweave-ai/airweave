@@ -5,6 +5,8 @@ HashComputer (pipeline — adds file I/O, batching, side effects)
 and SourceHashLookup (source — trial composite for download skip).
 """
 
+from __future__ import annotations
+
 import hashlib
 import json
 from typing import Any, Optional
@@ -116,7 +118,7 @@ def _get_flagged_field_value(entity: BaseEntity, flag: AirweaveFieldFlag) -> Any
     """Extract the value of the field marked with the given flag."""
     flag_key = flag.value if hasattr(flag, "value") else flag
 
-    for field_name, field_info in entity.model_fields.items():
+    for field_name, field_info in entity.__class__.model_fields.items():
         json_extra = field_info.json_schema_extra
         if json_extra and isinstance(json_extra, dict):
             if json_extra.get(flag_key):

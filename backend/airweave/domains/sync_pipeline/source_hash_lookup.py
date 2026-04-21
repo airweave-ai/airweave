@@ -14,7 +14,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave.core.logging import ContextualLogger
-from airweave.domains.sync_pipeline.pipeline.entity_hasher import compute_entity_hash
+from airweave.domains.sync_pipeline.pipeline.entity_hasher import (
+    compute_entity_hash,
+    populate_derived_fields,
+)
 from airweave.models.entity import Entity
 from airweave.platform.entities._base import FileEntity
 
@@ -103,6 +106,11 @@ class SourceHashLookup:
         """
         if not self._prefetched:
             return False
+
+        # Populate entity_id (and other derived fields) from flagged
+        # source fields. At source time these are still None; without
+        # this call the entity_id check below always bails out.
+        populate_derived_fields(entity)
 
         source_hash = getattr(entity, "source_hash", None)
         entity_id = entity.entity_id

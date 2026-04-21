@@ -248,3 +248,31 @@ class TestShouldSkipDownload:
         await lookup.prefetch(db)
 
         assert lookup.should_skip_download(entity) is False
+
+    @pytest.mark.asyncio
+    async def test_skip_works_with_unpopulated_entity_id(self):
+        """Regression: entity_id is None at source time (derived fields
+        not yet populated). should_skip_download must call
+        populate_derived_fields internally so the lookup succeeds."""
+        entity = _file_entity("f-1", source_hash="sha256:aaa")
+        # Verify entity_id is truly unpopulated (as it would be at source time)
+        assert entity.entity_id is None
+
+        content_hash = "stored_content_hash"
+        # Compute the expected composite via compute_entity_hash (which
+        # populates derived fields as a side effect on a COPY-like path).
+        # We need the composite for the DB row, so use a separate entity.
+        ref_entity = _file_entity("f-1", source_hash="sha256:aaa")
+        composite = compute_entity_hash(ref_entity, content_hash=content_hash)
+
+        lookup = _make_lookup()
+        db = _mock_db_with_rows([
+            _db_row("f-1", "sha256:aaa", content_hash, composite),
+        ])
+        await lookup.prefetch(db)
+
+        # The entity under test still has entity_id=None — should_skip_download
+        # must populate it internally.
+        assert lookup.should_skip_download(entity) is True
+        # Confirm entity_id was populated as a side effect
+        assert entity.entity_id == "f-1"
