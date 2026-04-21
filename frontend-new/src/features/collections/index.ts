@@ -1,7 +1,7 @@
 export { CollectionsSummaryCard } from './components/collections-summary-card';
 export { CollectionCodeSnippetAside } from './components/collection-code-snippet-aside';
 export { CollectionSearch } from './components/collection-search';
-export type { CollectionSearchTierName } from './components/collection-search';
+export { useCollectionSearchWorkspace } from './components/collection-search';
 export { CollectionFilterButtonGroup } from './components/collection-filter-button-group';
 export {
   CollectionsEmptyState,

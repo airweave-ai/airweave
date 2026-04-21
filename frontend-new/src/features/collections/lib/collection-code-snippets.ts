@@ -1,3 +1,5 @@
+import type { CollectionSearchConfig } from './collection-search-model';
+
 export type CollectionCodeSnippetLanguage = 'node' | 'python';
 export type CollectionCodeSnippetTier = 'agentic' | 'classic' | 'instant';
 
@@ -84,11 +86,16 @@ const tierPythonResponseSnippets: Record<CollectionCodeSnippetTier, string> = {
 
 export function createCollectionCodeSnippets({
   collectionId,
-  tier,
+  config,
+  query,
 }: {
   collectionId: string;
-  tier: CollectionCodeSnippetTier;
+  config: CollectionSearchConfig;
+  query: string;
 }): Record<CollectionCodeSnippetLanguage, CollectionCodeSnippet> {
+  const { tier } = config;
+  const snippetQuery = query.trim() || SEARCH_QUERY;
+  const queryLiteral = JSON.stringify(snippetQuery);
   const nodeMethod =
     tier === 'instant'
       ? 'searchInstant'
@@ -101,17 +108,23 @@ export function createCollectionCodeSnippets({
       : tier === 'agentic'
         ? 'search_agentic'
         : 'search_classic';
-  const nodeRequestLines = [`      query: "${SEARCH_QUERY}"`];
-  const pythonRequestLines = [`        "query": "${SEARCH_QUERY}"`];
+  const nodeRequestLines = [`      query: ${queryLiteral}`];
+  const pythonRequestLines = [`        "query": ${queryLiteral}`];
 
   if (tier === 'instant') {
-    nodeRequestLines.push('      retrievalStrategy: "hybrid"');
-    pythonRequestLines.push('        "retrieval_strategy": "hybrid"');
+    nodeRequestLines.push(
+      `      retrievalStrategy: "${config.instant.retrievalStrategy}"`,
+    );
+    pythonRequestLines.push(
+      `        "retrieval_strategy": "${config.instant.retrievalStrategy}"`,
+    );
   }
 
   if (tier === 'agentic') {
-    nodeRequestLines.push('      thinking: true');
-    pythonRequestLines.push('        "thinking": True');
+    nodeRequestLines.push(`      thinking: ${String(config.agentic.thinking)}`);
+    pythonRequestLines.push(
+      `        "thinking": ${config.agentic.thinking ? 'True' : 'False'}`,
+    );
   }
 
   return {

@@ -1,15 +1,16 @@
 import * as React from 'react';
-import { useForm } from '@tanstack/react-form';
 import { IconArrowRight, IconPlayerStopFilled } from '@tabler/icons-react';
-import * as z from 'zod';
-import { CollectionSearchState } from './collection-search-state';
+import { CollectionTooltipContent } from '../collection-tooltip-content';
 import {
   collectionSearchTierLabels,
   collectionSearchTierNames,
-  useCollectionSearchTiers,
-} from './use-collection-search-tiers';
+} from '../../lib/collection-search-model';
+import { CollectionSearchState } from './collection-search-state';
+import { SearchConfigFields } from './search-config-fields';
 import type { CollectionSearchTabValue } from './collection-search-state';
-import type { CollectionSearchTierName } from './use-collection-search-tiers';
+import type { CollectionSearchTiers } from './use-collection-search-tiers';
+import type { CollectionSearchWorkspaceForm } from './use-collection-search-workspace';
+import type { CollectionSearchTierName } from '../../lib/collection-search-model';
 import {
   InputGroup,
   InputGroupAddon,
@@ -17,78 +18,49 @@ import {
   InputGroupTextarea,
 } from '@/shared/ui/input-group';
 import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs';
+import { Tooltip, TooltipTrigger } from '@/shared/ui/tooltip';
 
-const collectionSearchQuerySchema = z
-  .string()
-  .trim()
-  .min(1, 'Ask a question to search this collection.');
-
-const collectionSearchFormSchema = z.object({
-  query: collectionSearchQuerySchema,
-});
-
-const defaultFormValues = {
-  query: '',
+const collectionSearchTierTooltipContent: Record<
+  CollectionSearchTierName,
+  {
+    delay: string;
+    description: string;
+    title: string;
+  }
+> = {
+  agentic: {
+    delay: '<2 min',
+    description:
+      'Agent that navigates through your collection to find the best results',
+    title: 'Agentic',
+  },
+  classic: {
+    delay: '~2s',
+    description: 'AI-optimized search strategy',
+    title: 'Classic',
+  },
+  instant: {
+    delay: '~0.5s',
+    description: 'Direct vector search',
+    title: 'Instant',
+  },
 };
 
 export function CollectionSearch({
-  collectionId,
   disabled = false,
-  onTierChange,
-  tier,
+  form,
+  tiers,
 }: {
-  collectionId: string;
   disabled?: boolean;
-  onTierChange: (tier: CollectionSearchTierName) => void;
-  tier: CollectionSearchTierName;
+  form: CollectionSearchWorkspaceForm;
+  tiers: CollectionSearchTiers;
 }) {
   const [selectedTabsByTier, setSelectedTabsByTier] = React.useState<
     Partial<Record<CollectionSearchTierName, CollectionSearchTabValue>>
   >({});
-  const tiers = useCollectionSearchTiers({ collectionId });
-  const activeTier = tiers[tier];
-  const isLoading = activeTier.state.status === 'loading';
-  const activeSelectedTab = selectedTabsByTier[tier];
-
-  const form = useForm({
-    defaultValues: defaultFormValues,
-    validators: {
-      onChange: collectionSearchFormSchema,
-      onMount: collectionSearchFormSchema,
-      onSubmit: collectionSearchFormSchema,
-    },
-    onSubmit: ({ value }) => {
-      const { query } = collectionSearchFormSchema.parse(value);
-
-      activeTier.submit(query);
-    },
-  });
-
-  const handleSubmit = React.useCallback(() => {
-    void form.handleSubmit();
-  }, [form]);
-
-  const handleCancel = React.useCallback(() => {
-    activeTier.cancel();
-  }, [activeTier]);
-
-  const handleTierChange = React.useCallback(
-    (nextTierName: CollectionSearchTierName) => {
-      if (nextTierName === tier) {
-        return;
-      }
-
-      if (activeTier.state.status === 'loading') {
-        activeTier.cancel();
-      }
-
-      onTierChange(nextTierName);
-    },
-    [activeTier, onTierChange],
-  );
 
   const handleSelectedTabChange = React.useCallback(
-    (tab: CollectionSearchTabValue) => {
+    (tier: CollectionSearchTierName, tab: CollectionSearchTabValue) => {
       setSelectedTabsByTier((currentTabs) => {
         if (currentTabs[tier] === tab) {
           return currentTabs;
@@ -100,122 +72,189 @@ export function CollectionSearch({
         };
       });
     },
-    [tier],
+    [],
   );
 
   return (
-    <div className="space-y-4">
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          handleSubmit();
-        }}
+    <form
+      className="space-y-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        return form.handleSubmit();
+      }}
+    >
+      <form.Subscribe
+        selector={(state) => ({
+          tier: state.values.tier,
+        })}
       >
-        <div className="space-y-2">
-          <InputGroup className="rounded-sm border-none">
-            <form.Field name="query">
-              {(field) => {
-                const query = field.state.value;
+        {({ tier }) => {
+          const activeTier = tiers[tier];
+          const isLoading = activeTier.state.status === 'loading';
+          const activeSelectedTab = selectedTabsByTier[tier];
 
-                return (
-                  <InputGroupTextarea
-                    disabled={disabled}
-                    placeholder="Ask your agent a question..."
-                    value={query}
-                    className="min-h-21 px-4 pt-4 pb-2 text-sm leading-5 placeholder:text-muted-foreground"
-                    onBlur={field.handleBlur}
-                    onChange={(event) => {
-                      field.handleChange(event.target.value);
+          return (
+            <React.Fragment>
+              <div className="space-y-2">
+                <InputGroup className="rounded-sm border-none">
+                  <form.Field name="query">
+                    {(field) => {
+                      const query = field.state.value;
+
+                      return (
+                        <InputGroupTextarea
+                          disabled={disabled}
+                          placeholder="Ask your agent a question..."
+                          value={query}
+                          className="min-h-21 px-4 pt-4 pb-2 text-sm leading-5 placeholder:text-muted-foreground"
+                          onBlur={field.handleBlur}
+                          onChange={(event) => {
+                            field.handleChange(event.target.value);
+                          }}
+                          onKeyDown={(event) => {
+                            if (
+                              event.key !== 'Enter' ||
+                              event.shiftKey ||
+                              event.nativeEvent.isComposing
+                            ) {
+                              return;
+                            }
+
+                            event.preventDefault();
+
+                            if (
+                              !disabled &&
+                              !isLoading &&
+                              form.state.canSubmit
+                            ) {
+                              return form.handleSubmit();
+                            }
+                          }}
+                        />
+                      );
                     }}
-                    onKeyDown={(event) => {
-                      if (
-                        event.key !== 'Enter' ||
-                        event.shiftKey ||
-                        event.nativeEvent.isComposing
-                      ) {
-                        return;
-                      }
+                  </form.Field>
 
-                      event.preventDefault();
+                  <InputGroupAddon
+                    align="block-end"
+                    className="w-full flex-wrap items-center justify-between gap-3 px-4 pb-4"
+                  >
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+                      <form.Field name="tier">
+                        {(field) => (
+                          <Tabs
+                            className="shrink-0"
+                            value={field.state.value}
+                            onValueChange={(value) => {
+                              const nextTier =
+                                value as CollectionSearchTierName;
 
-                      if (!disabled && !isLoading && form.state.canSubmit) {
-                        handleSubmit();
-                      }
-                    }}
-                  />
-                );
-              }}
-            </form.Field>
+                              if (nextTier === tier) {
+                                return;
+                              }
 
-            <InputGroupAddon
-              align="block-end"
-              className="w-full items-center justify-between gap-3 px-4 pb-4"
-            >
-              <Tabs
-                className="shrink-0"
-                value={tier}
-                onValueChange={(value) =>
-                  handleTierChange(value as CollectionSearchTierName)
-                }
-              >
-                <TabsList aria-label="Search tier" className="!h-9">
-                  {collectionSearchTierNames.map((tierName) => (
-                    <TabsTrigger
-                      key={tierName}
-                      disabled={disabled}
-                      value={tierName}
-                    >
-                      {collectionSearchTierLabels[tierName]}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </Tabs>
+                              if (activeTier.state.status === 'loading') {
+                                activeTier.cancel();
+                              }
 
-              <form.Subscribe selector={(state) => state.canSubmit}>
-                {(canSubmit) => {
-                  const buttonClassName = 'size-9 rounded-xs';
+                              field.handleChange(nextTier);
+                            }}
+                          >
+                            <TabsList
+                              aria-label="Search tier"
+                              className="!h-9 w-64"
+                            >
+                              {collectionSearchTierNames.map((tierName) => {
+                                const tooltip =
+                                  collectionSearchTierTooltipContent[tierName];
 
-                  if (isLoading) {
-                    return (
-                      <InputGroupButton
-                        aria-label="Cancel search"
+                                return (
+                                  <Tooltip key={tierName}>
+                                    <TooltipTrigger asChild>
+                                      <div className="flex flex-1">
+                                        <TabsTrigger
+                                          className="w-full"
+                                          disabled={disabled}
+                                          value={tierName}
+                                        >
+                                          {collectionSearchTierLabels[tierName]}
+                                        </TabsTrigger>
+                                      </div>
+                                    </TooltipTrigger>
+
+                                    <CollectionTooltipContent
+                                      sideOffset={8}
+                                      description={tooltip.description}
+                                      footer={tooltip.delay}
+                                      title={tooltip.title}
+                                    />
+                                  </Tooltip>
+                                );
+                              })}
+                            </TabsList>
+                          </Tabs>
+                        )}
+                      </form.Field>
+
+                      <SearchConfigFields
                         disabled={disabled}
-                        size="icon-sm"
-                        type="button"
-                        variant="destructive"
-                        className={buttonClassName}
-                        onClick={handleCancel}
-                      >
-                        <IconPlayerStopFilled className="size-4" />
-                      </InputGroupButton>
-                    );
-                  }
+                        form={form}
+                        tier={tier}
+                      />
+                    </div>
 
-                  return (
-                    <InputGroupButton
-                      aria-label="Search collection"
-                      disabled={disabled || !canSubmit}
-                      size="icon-sm"
-                      type="submit"
-                      variant="default"
-                      className={buttonClassName}
-                    >
-                      <IconArrowRight className="size-4" />
-                    </InputGroupButton>
-                  );
-                }}
-              </form.Subscribe>
-            </InputGroupAddon>
-          </InputGroup>
-        </div>
-      </form>
+                    <form.Subscribe selector={(state) => state.canSubmit}>
+                      {(canSubmit) => {
+                        const buttonClassName = 'size-9 rounded-xs';
 
-      <CollectionSearchState
-        onSelectedTabChange={handleSelectedTabChange}
-        selectedTab={activeSelectedTab}
-        state={activeTier.state}
-        tierName={tier}
-      />
-    </div>
+                        if (isLoading) {
+                          return (
+                            <InputGroupButton
+                              aria-label="Cancel search"
+                              disabled={disabled}
+                              size="icon-sm"
+                              type="button"
+                              variant="destructive"
+                              className={buttonClassName}
+                              onClick={() => {
+                                activeTier.cancel();
+                              }}
+                            >
+                              <IconPlayerStopFilled className="size-4" />
+                            </InputGroupButton>
+                          );
+                        }
+
+                        return (
+                          <InputGroupButton
+                            aria-label="Search collection"
+                            disabled={disabled || !canSubmit}
+                            size="icon-sm"
+                            type="submit"
+                            variant="default"
+                            className={buttonClassName}
+                          >
+                            <IconArrowRight className="size-4" />
+                          </InputGroupButton>
+                        );
+                      }}
+                    </form.Subscribe>
+                  </InputGroupAddon>
+                </InputGroup>
+              </div>
+
+              <CollectionSearchState
+                onSelectedTabChange={(tab) =>
+                  handleSelectedTabChange(tier, tab)
+                }
+                selectedTab={activeSelectedTab}
+                state={activeTier.state}
+                tierName={tier}
+              />
+            </React.Fragment>
+          );
+        }}
+      </form.Subscribe>
+    </form>
   );
 }

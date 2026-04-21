@@ -7,14 +7,16 @@ type CollectionTooltipContentProps = Omit<
   React.ComponentProps<typeof TooltipContent>,
   'title'
 > & {
-  title: ReactNode;
   description: ReactNode;
+  footer?: ReactNode;
+  title: ReactNode;
 };
 
 export function CollectionTooltipContent({
-  title,
   description,
+  footer,
   className,
+  title,
   ...props
 }: CollectionTooltipContentProps) {
   return (
@@ -27,9 +29,10 @@ export function CollectionTooltipContent({
     >
       <p>{title}</p>
       <Separator className="w-full" />
-      <p className="text-center text-balance text-muted-foreground">
-        {description}
-      </p>
+      <div className="space-y-0.5 text-center text-balance text-muted-foreground">
+        <p>{description}</p>
+        {footer ? <p>{footer}</p> : null}
+      </div>
     </TooltipContent>
   );
 }

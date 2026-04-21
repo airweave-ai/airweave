@@ -9,9 +9,9 @@ import { CollectionSearchRawTabContent } from './collection-search-raw-tab';
 import { CollectionSearchStatusCard } from './collection-search-status-card';
 import type {
   CollectionSearchReasoningEvent,
-  CollectionSearchTierName,
   CollectionSearchTierState,
 } from './use-collection-search-tiers';
+import type { CollectionSearchTierName } from '../../lib/collection-search-model';
 import { formatNumber } from '@/shared/format/format-number';
 import { pluralize } from '@/shared/format/pluralize';
 import { useCopyToClipboard } from '@/shared/hooks/use-copy-to-clipboard';
