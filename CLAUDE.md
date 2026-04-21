@@ -27,6 +27,9 @@ Data flow: Sources → Entity extraction → Transformation (DAG) → Embedding 
 ```
 
 ### Backend
+
+Use **Poetry 2.3+** to match CI. `tool.poetry.requires-poetry` is omitted because Poetry 1.x rejects that key as an invalid `[tool.poetry]` field, which breaks `poetry run` (e.g. pre-commit hooks).
+
 ```bash
 cd backend
 poetry install                 # Install dependencies
