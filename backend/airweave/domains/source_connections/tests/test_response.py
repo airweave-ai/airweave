@@ -28,6 +28,7 @@ from airweave.domains.source_connections.response import ResponseBuilder
 from airweave.domains.source_connections.types import LastJobInfo, SourceConnectionStats
 from airweave.domains.sources.fakes.registry import FakeSourceRegistry
 from airweave.domains.sources.types import SourceRegistryEntry
+from airweave.domains.syncs.fakes.repository import FakeSyncRepository
 from airweave.domains.syncs.jobs.fakes.repository import FakeSyncJobRepository
 from airweave.platform.configs._base import Fields
 from airweave.schemas.entity_count import EntityCountWithDefinition
@@ -209,6 +210,7 @@ class BuilderFixture:
         self.source_registry = FakeSourceRegistry()
         self.entity_count_repo = FakeEntityCountRepository()
         self.sync_job_repo = FakeSyncJobRepository()
+        self.sync_repo = FakeSyncRepository()
         self.builder = ResponseBuilder(
             sc_repo=self.sc_repo,
             connection_repo=self.connection_repo,
@@ -216,6 +218,7 @@ class BuilderFixture:
             source_registry=self.source_registry,
             entity_count_repo=self.entity_count_repo,
             sync_job_repo=self.sync_job_repo,
+            sync_repo=self.sync_repo,
         )
 
 
@@ -1486,6 +1489,7 @@ async def test_resolve_provider_info_no_readable_id():
         source_registry=FakeSourceRegistry(),
         entity_count_repo=FakeEntityCountRepository(),
         sync_job_repo=FakeSyncJobRepository(),
+        sync_repo=FakeSyncRepository(),
         auth_provider_registry=registry,
     )
     sc = _make_source_conn(readable_auth_provider_id=None)
@@ -1515,6 +1519,7 @@ async def test_resolve_provider_info_returns_url_and_short_name():
         source_registry=FakeSourceRegistry(),
         entity_count_repo=FakeEntityCountRepository(),
         sync_job_repo=FakeSyncJobRepository(),
+        sync_repo=FakeSyncRepository(),
         auth_provider_registry=registry,
     )
     sc = _make_source_conn(readable_auth_provider_id="my-composio")
@@ -1544,6 +1549,7 @@ async def test_resolve_provider_info_exception_returns_empty():
         source_registry=FakeSourceRegistry(),
         entity_count_repo=FakeEntityCountRepository(),
         sync_job_repo=FakeSyncJobRepository(),
+        sync_repo=FakeSyncRepository(),
         auth_provider_registry=registry,
     )
     sc = _make_source_conn(readable_auth_provider_id="my-composio")

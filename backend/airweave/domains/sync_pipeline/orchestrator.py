@@ -11,9 +11,10 @@ from airweave.core.events.sync import (
     AccessControlMembershipBatchProcessedEvent,
 )
 from airweave.core.protocols.event_bus import EventBus
-from airweave.core.shared_models import SyncJobStatus, SyncStatus
+from airweave.core.shared_models import SyncJobStatus, SyncPauseReason, SyncStatus
 from airweave.db.session import get_db_context
 from airweave.domains.access_control.pipeline import AccessControlPipeline
+from airweave.domains.source_connections.types import ErrorClassification
 from airweave.domains.sources.exceptions.classifier import classify_error
 from airweave.domains.sync_pipeline.contexts import SyncContext
 from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
@@ -658,10 +659,6 @@ class SyncOrchestrator:
     async def _handle_sync_failure(self, error: Exception) -> None:
         """Handle sync failure by updating job status with error details."""
         error_message = get_error_message(error)
-        self.sync_context.logger.error(
-            f"Sync job {self.sync_context.sync_job.id} failed: {error_message}", exc_info=True
-        )
-
         classification = classify_error(error)
 
         stats = self.runtime.entity_tracker.get_stats()
@@ -676,19 +673,17 @@ class SyncOrchestrator:
             error_category=classification.category,
         )
 
-        if classification.category is not None:
-            try:
-                await self._sync_state_machine.transition(
-                    sync_id=self.sync_context.sync.id,
-                    target=SyncStatus.PAUSED,
-                    ctx=self.sync_context,
-                    reason=f"Credential error: {classification.category.value}",
-                )
-            except Exception as pause_err:
-                self.sync_context.logger.warning(
-                    f"Failed to pause sync after credential error: {pause_err}",
-                    exc_info=True,
-                )
+        pause_reason = self._get_pause_reason(error, classification)
+        if pause_reason is not None:
+            self.sync_context.logger.warning(
+                f"Sync {self.sync_context.sync.id} will pause "
+                f"({pause_reason.value}): {error_message}"
+            )
+            await self._pause_sync(pause_reason, error_message)
+        else:
+            self.sync_context.logger.error(
+                f"Sync job {self.sync_context.sync_job.id} failed: {error_message}", exc_info=True
+            )
 
         # Calculate duration from start to failure
         if not self.sync_context.sync_job.started_at:
@@ -709,6 +704,33 @@ class SyncOrchestrator:
             error=error_message,
             duration_ms=duration_ms,
         )
+
+    @staticmethod
+    def _get_pause_reason(
+        error: Exception,
+        classification: ErrorClassification,
+    ) -> SyncPauseReason | None:
+        """Determine if an error warrants pausing the sync."""
+        if isinstance(error, UsageLimitExceededError):
+            return SyncPauseReason.USAGE_EXHAUSTED
+        if isinstance(error, PaymentRequiredError):
+            return SyncPauseReason.PAYMENT_REQUIRED
+        if classification.category is not None:
+            return SyncPauseReason.CREDENTIAL_ERROR
+        return None
+
+    async def _pause_sync(self, reason: SyncPauseReason, error_message: str) -> None:
+        """Pause the sync for errors that won't resolve without user action."""
+        try:
+            await self._sync_state_machine.transition(
+                sync_id=self.sync_context.sync.id,
+                target=SyncStatus.PAUSED,
+                ctx=self.sync_context,
+                reason=f"{reason.value}: {error_message}",
+                pause_reason=reason,
+            )
+        except Exception as err:
+            self.sync_context.logger.warning(f"Failed to pause sync: {err}", exc_info=True)
 
     async def _handle_cancellation(self) -> None:
         """Centralized cancellation handler - explicit and immediate."""
