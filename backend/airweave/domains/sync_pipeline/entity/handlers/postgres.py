@@ -177,7 +177,7 @@ class EntityPostgresHandler(EntityActionHandler):
                     entity_id=action.entity_id,
                     entity_definition_short_name=action.entity_definition_short_name,
                     hash=action.entity.airweave_system_metadata.hash,
-                    source_hash=action.entity.source_hash,
+                    source_hash=getattr(action.entity, "source_hash", None),
                     content_hash=action.entity.airweave_system_metadata._computed_content_hash,
                 )
             )
@@ -210,7 +210,7 @@ class EntityPostgresHandler(EntityActionHandler):
             update_pairs.append((
                 existing_map[key].id,
                 action.entity.airweave_system_metadata.hash,
-                action.entity.source_hash,
+                getattr(action.entity, "source_hash", None),
                 action.entity.airweave_system_metadata._computed_content_hash,
             ))
 

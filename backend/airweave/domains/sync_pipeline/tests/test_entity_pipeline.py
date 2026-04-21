@@ -1,12 +1,12 @@
 """Tests for EntityPipeline — DI wiring, orphan identification, and source-hash lookup."""
 
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
 from airweave.domains.sync_pipeline.entity.pipeline import EntityPipeline
+from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import AirweaveSystemMetadata, FileEntity
 
@@ -76,7 +76,7 @@ async def test_identify_orphans_uses_entity_repo():
     sync_context.sync = MagicMock()
     sync_context.sync.id = sync_id
 
-    with patch("airweave.db.session.get_db_context") as mock_db_ctx:
+    with patch("airweave.domains.sync_pipeline.entity.pipeline.get_db_context") as mock_db_ctx:
         mock_db = AsyncMock()
         mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -112,7 +112,7 @@ async def test_identify_orphans_empty_when_all_encountered():
     sync_context.sync = MagicMock()
     sync_context.sync.id = uuid4()
 
-    with patch("airweave.db.session.get_db_context") as mock_db_ctx:
+    with patch("airweave.domains.sync_pipeline.entity.pipeline.get_db_context") as mock_db_ctx:
         mock_db = AsyncMock()
         mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -132,15 +132,6 @@ class _StubFileEntity(FileEntity):
     stub_name: str = AirweaveField(..., is_name=True)
 
 
-def _make_registry(class_map=None):
-    from airweave.domains.entities.registry import EntityDefinitionRegistry
-
-    registry = EntityDefinitionRegistry()
-    if class_map:
-        registry._by_class = dict(class_map)
-    return registry
-
-
 def _file_entity(entity_id="f-1", source_hash=None):
     e = _StubFileEntity(
         stub_id=entity_id,
@@ -158,29 +149,43 @@ def _file_entity(entity_id="f-1", source_hash=None):
     return e
 
 
-def _make_pipeline(repo=None, registry=None):
+def _make_lookup(cache=None):
+    """Build a SourceHashLookup with a prepopulated cache."""
+    from airweave.domains.sync_pipeline.source_hash_lookup import StoredEntityHashes
+
+    lookup = SourceHashLookup(sync_id=uuid4(), logger=MagicMock())
+    lookup._prefetched = True
+    if cache:
+        for eid, (sh, ch, comp) in cache.items():
+            lookup._cache[eid] = StoredEntityHashes(
+                source_hash=sh, content_hash=ch, composite_hash=comp,
+            )
+    return lookup
+
+
+def _make_pipeline(repo=None, lookup=None):
     return EntityPipeline(
         entity_tracker=MagicMock(),
         event_bus=MagicMock(),
         action_resolver=MagicMock(),
         action_dispatcher=MagicMock(),
         entity_repo=repo or MagicMock(),
-        entity_registry=registry,
+        source_hash_lookup=lookup,
     )
 
 
 # ---------------------------------------------------------------------------
-# Constructor — entity_registry
+# Constructor — source_hash_lookup
 # ---------------------------------------------------------------------------
 
 
-def test_constructor_stores_entity_registry():
-    registry = MagicMock()
-    pipeline = _make_pipeline(registry=registry)
-    assert pipeline._entity_registry is registry
+def test_constructor_stores_source_hash_lookup():
+    lookup = MagicMock()
+    pipeline = _make_pipeline(lookup=lookup)
+    assert pipeline._source_hash_lookup is lookup
 
 
-def test_constructor_entity_registry_defaults_to_none():
+def test_constructor_source_hash_lookup_defaults_to_none():
     pipeline = EntityPipeline(
         entity_tracker=MagicMock(),
         event_bus=MagicMock(),
@@ -188,142 +193,86 @@ def test_constructor_entity_registry_defaults_to_none():
         action_dispatcher=MagicMock(),
         entity_repo=MagicMock(),
     )
-    assert pipeline._entity_registry is None
+    assert pipeline._source_hash_lookup is None
 
 
 # ---------------------------------------------------------------------------
-# _resolve_short_name
+# _collect_reusable_content_hashes
 # ---------------------------------------------------------------------------
 
 
-def test_resolve_short_name_uses_registry():
-    registry = _make_registry({_StubFileEntity: "stub_file_entity"})
-    pipeline = _make_pipeline(registry=registry)
-    e = _file_entity()
-    assert pipeline._resolve_short_name(e) == "stub_file_entity"
-
-
-def test_resolve_short_name_returns_none_without_registry():
-    pipeline = _make_pipeline(registry=None)
-    e = _file_entity()
-    assert pipeline._resolve_short_name(e) is None
-
-
-def test_resolve_short_name_returns_none_for_unknown_class():
-    registry = _make_registry({})
-    pipeline = _make_pipeline(registry=registry)
-    e = _file_entity()
-    assert pipeline._resolve_short_name(e) is None
-
-
-# ---------------------------------------------------------------------------
-# _fetch_stored_hashes
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_fetch_stored_hashes_returns_none_without_source_hash():
-    """Entities without source_hash produce no DB query."""
-    pipeline = _make_pipeline()
-    e = _file_entity(source_hash=None)
-
-    sync_ctx = MagicMock()
-    result = await pipeline._fetch_stored_hashes([e], sync_ctx)
-
-    assert result is None
-
-
-@pytest.mark.asyncio
-async def test_fetch_stored_hashes_returns_none_without_registry():
-    """Without entity_registry, short_name resolution fails and entities are skipped."""
-    pipeline = _make_pipeline(registry=None)
+def test_collect_returns_none_without_lookup():
+    """Without a SourceHashLookup, returns None."""
+    pipeline = _make_pipeline(lookup=None)
     e = _file_entity(source_hash="sha256:abc")
 
     sync_ctx = MagicMock()
-    result = await pipeline._fetch_stored_hashes([e], sync_ctx)
+    result = pipeline._collect_reusable_content_hashes([e], sync_ctx)
 
     assert result is None
 
 
-@pytest.mark.asyncio
-async def test_fetch_stored_hashes_returns_content_hash_on_match():
-    """When source_hash matches stored value, returns the stored content_hash."""
-    registry = _make_registry({_StubFileEntity: "stub_file_entity"})
-    repo = MagicMock()
+def test_collect_returns_none_without_source_hash():
+    """Entities without source_hash are skipped."""
+    lookup = _make_lookup()
+    pipeline = _make_pipeline(lookup=lookup)
+    e = _file_entity(source_hash=None)
 
-    db_row = SimpleNamespace(source_hash="sha256:abc", content_hash="deadbeef")
-    repo.bulk_get_by_entity_sync_and_definition = AsyncMock(
-        return_value={("f-1", "stub_file_entity"): db_row}
-    )
+    sync_ctx = MagicMock()
+    result = pipeline._collect_reusable_content_hashes([e], sync_ctx)
 
-    pipeline = _make_pipeline(repo=repo, registry=registry)
+    assert result is None
+
+
+def test_collect_returns_content_hash_on_match():
+    """When source_hash matches stored value, returns content_hash."""
+    lookup = _make_lookup(cache={
+        "f-1": ("sha256:abc", "deadbeef", "composite123"),
+    })
+    pipeline = _make_pipeline(lookup=lookup)
     e = _file_entity(entity_id="f-1", source_hash="sha256:abc")
 
     sync_ctx = MagicMock()
-    sync_ctx.sync = MagicMock()
-    sync_ctx.sync.id = uuid4()
-
-    with patch("airweave.db.session.get_db_context") as mock_db_ctx:
-        mock_db = AsyncMock()
-        mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
-        mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
-
-        result = await pipeline._fetch_stored_hashes([e], sync_ctx)
+    result = pipeline._collect_reusable_content_hashes([e], sync_ctx)
 
     assert result == {"f-1": "deadbeef"}
 
 
-@pytest.mark.asyncio
-async def test_fetch_stored_hashes_returns_none_on_hash_mismatch():
-    """When source_hash differs from stored, returns None (no reuse)."""
-    registry = _make_registry({_StubFileEntity: "stub_file_entity"})
-    repo = MagicMock()
-
-    db_row = SimpleNamespace(source_hash="sha256:old", content_hash="deadbeef")
-    repo.bulk_get_by_entity_sync_and_definition = AsyncMock(
-        return_value={("f-1", "stub_file_entity"): db_row}
-    )
-
-    pipeline = _make_pipeline(repo=repo, registry=registry)
+def test_collect_returns_none_on_hash_mismatch():
+    """When source_hash differs from stored, no content_hash returned."""
+    lookup = _make_lookup(cache={
+        "f-1": ("sha256:old", "deadbeef", "composite123"),
+    })
+    pipeline = _make_pipeline(lookup=lookup)
     e = _file_entity(entity_id="f-1", source_hash="sha256:new")
 
     sync_ctx = MagicMock()
-    sync_ctx.sync = MagicMock()
-    sync_ctx.sync.id = uuid4()
-
-    with patch("airweave.db.session.get_db_context") as mock_db_ctx:
-        mock_db = AsyncMock()
-        mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
-        mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
-
-        result = await pipeline._fetch_stored_hashes([e], sync_ctx)
+    result = pipeline._collect_reusable_content_hashes([e], sync_ctx)
 
     assert result is None
 
 
-@pytest.mark.asyncio
-async def test_fetch_stored_hashes_skips_when_no_stored_content_hash():
-    """When DB row has source_hash but no content_hash, no reuse."""
-    registry = _make_registry({_StubFileEntity: "stub_file_entity"})
-    repo = MagicMock()
-
-    db_row = SimpleNamespace(source_hash="sha256:abc", content_hash=None)
-    repo.bulk_get_by_entity_sync_and_definition = AsyncMock(
-        return_value={("f-1", "stub_file_entity"): db_row}
-    )
-
-    pipeline = _make_pipeline(repo=repo, registry=registry)
+def test_collect_returns_none_when_no_stored_content_hash():
+    """When stored entry has no content_hash, no reuse."""
+    lookup = _make_lookup(cache={
+        "f-1": ("sha256:abc", None, "composite123"),
+    })
+    pipeline = _make_pipeline(lookup=lookup)
     e = _file_entity(entity_id="f-1", source_hash="sha256:abc")
 
     sync_ctx = MagicMock()
-    sync_ctx.sync = MagicMock()
-    sync_ctx.sync.id = uuid4()
+    result = pipeline._collect_reusable_content_hashes([e], sync_ctx)
 
-    with patch("airweave.db.session.get_db_context") as mock_db_ctx:
-        mock_db = AsyncMock()
-        mock_db_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_db)
-        mock_db_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
+    assert result is None
 
-        result = await pipeline._fetch_stored_hashes([e], sync_ctx)
+
+def test_collect_returns_none_for_entity_not_in_cache():
+    """Entity not in cache returns None."""
+    lookup = _make_lookup(cache={})
+    pipeline = _make_pipeline(lookup=lookup)
+    e = _file_entity(entity_id="f-1", source_hash="sha256:abc")
+
+    sync_ctx = MagicMock()
+    result = pipeline._collect_reusable_content_hashes([e], sync_ctx)
 
     assert result is None

@@ -1,7 +1,9 @@
 """Protocols for the entities domain."""
 
+from __future__ import annotations
+
 from datetime import datetime
-from typing import Dict, List, Optional, Protocol, Tuple, Type
+from typing import TYPE_CHECKING, Dict, List, Optional, Protocol, Tuple, Type
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +14,9 @@ from airweave.domains.entities.types import EntityDefinitionEntry
 from airweave.models.entity import Entity
 from airweave.schemas.entity_count import EntityCountWithDefinition
 
+if TYPE_CHECKING:
+    from airweave.platform.entities._base import BaseEntity
+
 
 class EntityDefinitionRegistryProtocol(RegistryProtocol[EntityDefinitionEntry], Protocol):
     """Entity definition registry protocol."""
@@ -20,7 +25,7 @@ class EntityDefinitionRegistryProtocol(RegistryProtocol[EntityDefinitionEntry], 
         """List all entity definitions for a given source."""
         ...
 
-    def get_short_name_by_class(self, entity_class: Type) -> str | None:
+    def get_short_name_by_class(self, entity_class: Type[BaseEntity]) -> str | None:
         """Reverse-lookup: get short_name for an entity class."""
         ...
 

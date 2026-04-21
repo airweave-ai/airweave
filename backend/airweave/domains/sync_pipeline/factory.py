@@ -225,11 +225,18 @@ class SyncFactory(SyncFactoryProtocol):
         logger.debug(f"Context + runtime built in {time.time() - init_start:.2f}s")
 
         # 4. Wire pipelines
+        source_hash_lookup = SourceHashLookup(
+            sync_id=sync_context.sync.id,
+            logger=sync_context.logger,
+        )
+        await source_hash_lookup.prefetch(db)
+
         entity_pipeline = self._build_entity_pipeline(
-            sync_context, runtime, destinations, resolved_config
+            sync_context, runtime, destinations, resolved_config,
+            source_hash_lookup=source_hash_lookup,
         )
         access_control_pipeline = self._build_access_control_pipeline(sync_context)
-        stream = await self._build_stream(db, runtime, source_result, sync_context)
+        stream = self._build_stream(runtime, source_result, sync_context, source_hash_lookup)
 
         # 5. Create orchestrator
         orchestrator = SyncOrchestrator(
@@ -273,6 +280,7 @@ class SyncFactory(SyncFactoryProtocol):
         runtime: SyncRuntime,
         destinations: list,
         resolved_config: SyncConfig,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> EntityPipeline:
         """Build entity pipeline with dispatcher and action resolver."""
         dispatcher_builder = EntityDispatcherBuilder(
@@ -295,7 +303,7 @@ class SyncFactory(SyncFactoryProtocol):
             action_resolver=action_resolver,
             action_dispatcher=dispatcher,
             entity_repo=self._entity_repo,
-            entity_registry=self._entity_definition_registry,
+            source_hash_lookup=source_hash_lookup,
         )
 
     def _build_access_control_pipeline(self, sync_context: SyncContext) -> AccessControlPipeline:
@@ -311,20 +319,14 @@ class SyncFactory(SyncFactoryProtocol):
             acl_repo=self._acl_repo,
         )
 
-    async def _build_stream(
+    def _build_stream(
         self,
-        db: AsyncSession,
         runtime: SyncRuntime,
         source_result: SourceBuildResult,
         sync_context: SyncContext,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncSourceStream:
         """Build the async source stream from the source generator."""
-        source_hash_lookup = SourceHashLookup(
-            sync_id=sync_context.sync.id,
-            logger=sync_context.logger,
-        )
-        await source_hash_lookup.prefetch(db)
-
         return AsyncSourceStream(
             source_generator=runtime.source.generate_entities(
                 cursor=runtime.cursor,

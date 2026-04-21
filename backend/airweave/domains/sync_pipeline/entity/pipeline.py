@@ -13,10 +13,11 @@ Lifecycle:
 
 import time
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from airweave.core.events.sync import EntityBatchProcessedEvent, TypeActionCounts
-from airweave.domains.entities.protocols import EntityDefinitionRegistryProtocol, EntityRepositoryProtocol
+from airweave.db.session import get_db_context
+from airweave.domains.entities.protocols import EntityRepositoryProtocol
 from airweave.domains.sync_pipeline.contexts import SyncContext
 from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
 from airweave.domains.sync_pipeline.entity.actions import EntityActionBatch
@@ -29,6 +30,7 @@ from airweave.domains.sync_pipeline.protocols import (
     EntityActionDispatcherProtocol,
     EntityActionResolverProtocol,
 )
+from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 from airweave.platform.entities._base import BaseEntity, CodeFileEntity, FileEntity
 
 if TYPE_CHECKING:
@@ -48,7 +50,7 @@ class EntityPipeline:
         action_resolver: EntityActionResolverProtocol,
         action_dispatcher: EntityActionDispatcherProtocol,
         entity_repo: EntityRepositoryProtocol,
-        entity_registry: Optional[EntityDefinitionRegistryProtocol] = None,
+        source_hash_lookup: Optional[SourceHashLookup] = None,
     ):
         """Initialize with per-sync tracker, event bus, and action components."""
         self._tracker = entity_tracker
@@ -56,7 +58,7 @@ class EntityPipeline:
         self._resolver = action_resolver
         self._dispatcher = action_dispatcher
         self._entity_repo = entity_repo
-        self._entity_registry = entity_registry
+        self._source_hash_lookup = source_hash_lookup
         self._batch_seq = 0
 
     # -------------------------------------------------------------------------
@@ -166,78 +168,52 @@ class EntityPipeline:
         """Prepare entities: enrich metadata and compute hashes."""
         await self._enrich_early_metadata(entities, sync_context)
 
-        # Pre-fetch stored content hashes for file entities with source_hash set.
-        # Returns Dict[entity_id, content_hash] keyed by entity_id for hash_computer.
-        stored_data = await self._fetch_stored_hashes(entities, sync_context)
+        # Build stored content_hash map from the prefetched SourceHashLookup
+        # cache. No DB query needed — the lookup was prefetched at sync start.
+        stored_data = self._collect_reusable_content_hashes(entities, sync_context)
 
         await hash_computer.compute_for_batch(
             entities, sync_context, runtime, stored_data=stored_data
         )
 
-    def _resolve_short_name(self, entity: BaseEntity) -> Optional[str]:
-        """Resolve entity definition short_name via registry.
-
-        Returns None if the entity class is not registered, which skips
-        the source-hash optimization for that entity.
-        """
-        if self._entity_registry:
-            return self._entity_registry.get_short_name_by_class(entity.__class__)
-        return None
-
-    async def _fetch_stored_hashes(
+    def _collect_reusable_content_hashes(
         self,
         entities: List[BaseEntity],
         sync_context: SyncContext,
     ) -> Optional[Dict[str, str]]:
-        """Fetch stored content_hash for file entities whose source_hash is set.
+        """Collect stored content_hash values for unchanged file entities.
 
-        Compares entity.source_hash against the stored source_hash in the DB.
-        When they match and a content_hash is stored, returns a mapping so the
-        hash computer can skip the file read.
+        Uses the prefetched SourceHashLookup cache (no DB round-trip).
+        Returns a mapping of entity_id -> stored content_hash for file
+        entities whose source_hash matches the stored value, allowing
+        the hash computer to skip file reads.
 
-        Returns:
-            Mapping of entity_id -> stored content_hash, or None if no
-            entities have source_hash set.
+        Note: the SourceHashLookup cache is keyed by entity_id alone.
+        This assumes each entity_id maps to at most one file entity type
+        within a sync — true for all current sources.
         """
-        # Collect file entities that have a source_hash
-        candidates: List[Tuple[str, str]] = []
-        source_hashes: Dict[str, str] = {}  # entity_id -> current source_hash
+        if not self._source_hash_lookup:
+            return None
+
+        result: Dict[str, str] = {}
         for entity in entities:
-            if (
+            if not (
                 isinstance(entity, (FileEntity, CodeFileEntity))
                 and entity.source_hash
                 and entity.entity_id
             ):
-                short_name = self._resolve_short_name(entity)
-                if not short_name:
-                    continue
-                candidates.append((entity.entity_id, short_name))
-                source_hashes[entity.entity_id] = entity.source_hash
-
-        if not candidates:
-            return None
-
-        from airweave.db.session import get_db_context
-
-        async with get_db_context() as db:
-            existing = await self._entity_repo.bulk_get_by_entity_sync_and_definition(
-                db=db,
-                sync_id=sync_context.sync.id,
-                entity_requests=candidates,
-            )
-
-        # Build result: only include entries where source_hash matches AND content_hash exists
-        result: Dict[str, str] = {}
-        for (eid, _def_name), db_row in existing.items():
-            if not db_row.source_hash or not db_row.content_hash:
                 continue
 
-            if source_hashes.get(eid) == db_row.source_hash:
-                result[eid] = db_row.content_hash
+            if not self._source_hash_lookup.is_unchanged(entity.entity_id, entity.source_hash):
+                continue
+
+            content_hash = self._source_hash_lookup.get_stored_content_hash(entity.entity_id)
+            if content_hash:
+                result[entity.entity_id] = content_hash
 
         if result:
             sync_context.logger.debug(
-                f"Source-hash matched {len(result)}/{len(candidates)} file entities "
+                f"Source-hash cache hit for {len(result)} file entities "
                 f"— reusing stored content_hash"
             )
 
@@ -366,8 +342,6 @@ class EntityPipeline:
 
     async def _identify_orphans(self, sync_context: SyncContext) -> Dict[str, List[str]]:
         """Identify orphaned entity IDs (in DB but not encountered), grouped by definition."""
-        from airweave.db.session import get_db_context
-
         encountered_ids = self._tracker.get_all_encountered_ids_flat()
 
         async with get_db_context() as db:

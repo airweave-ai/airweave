@@ -1,12 +1,17 @@
 """Entity definition registry — in-memory registry built once at startup."""
 
+from __future__ import annotations
+
 import re
-from typing import Type
+from typing import TYPE_CHECKING, Type
 
 from airweave.core.logging import logger
 from airweave.domains.entities.protocols import EntityDefinitionRegistryProtocol
 from airweave.domains.entities.types import EntityDefinitionEntry
 from airweave.platform.entities import ENTITIES_BY_SOURCE
+
+if TYPE_CHECKING:
+    from airweave.platform.entities._base import BaseEntity
 
 registry_logger = logger.with_prefix("EntityDefinitionRegistry: ").with_context(
     component="entity_definition_registry"
@@ -104,7 +109,7 @@ class EntityDefinitionRegistry(EntityDefinitionRegistryProtocol):
         """List all registered entity definition entries."""
         return list(self._entries.values())
 
-    def get_short_name_by_class(self, entity_class: Type) -> str | None:
+    def get_short_name_by_class(self, entity_class: Type["BaseEntity"]) -> str | None:
         """Reverse-lookup: get short_name for an entity class.
 
         Returns None if the class is not registered.

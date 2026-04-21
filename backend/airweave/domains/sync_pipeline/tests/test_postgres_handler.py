@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from types import SimpleNamespace
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Tuple
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
@@ -51,8 +51,11 @@ def _make_insert(
     source_hash: str | None = None,
     content_hash: str | None = None,
 ):
+    entity = _make_entity(
+        entity_id, hash_val, source_hash=source_hash, content_hash=content_hash
+    )
     return EntityInsertAction(
-        entity=_make_entity(entity_id, hash_val, source_hash=source_hash, content_hash=content_hash),
+        entity=entity,
         entity_definition_short_name=definition,
     )
 
@@ -64,8 +67,11 @@ def _make_update(
     source_hash: str | None = None,
     content_hash: str | None = None,
 ):
+    entity = _make_entity(
+        entity_id, hash_val, source_hash=source_hash, content_hash=content_hash
+    )
     return EntityUpdateAction(
-        entity=_make_entity(entity_id, hash_val, source_hash=source_hash, content_hash=content_hash),
+        entity=entity,
         entity_definition_short_name=definition,
         db_id=uuid4(),
     )
@@ -369,6 +375,57 @@ class TestSourceHashPersistence:
         rows = repo.bulk_update_hash.call_args[1]["rows"]
         assert len(rows) == 1
         assert rows[0] == (db_entity.id, "new_hash", "sha1:xyz", "cafebabe")
+
+
+    @pytest.mark.asyncio
+    async def test_insert_non_file_entity_without_source_hash_attr(self):
+        """Non-file entities lack a source_hash attribute — must not crash."""
+        handler, repo = _make_handler()
+        ctx = FakeSyncContext()
+
+        # Simulate a BaseEntity subclass that has no source_hash attribute
+        meta = SimpleNamespace(hash="abc123", _computed_content_hash=None)
+        entity_without_source_hash = SimpleNamespace(
+            entity_id="e1",
+            airweave_system_metadata=meta,
+            # deliberately no source_hash attribute
+        )
+        action = EntityInsertAction(
+            entity=entity_without_source_hash,
+            entity_definition_short_name="stub",
+        )
+
+        await handler._do_inserts([action], ctx, MagicMock())
+
+        repo.bulk_create.assert_called_once()
+        create_objs = repo.bulk_create.call_args[1]["objs"]
+        assert create_objs[0].source_hash is None
+        assert create_objs[0].content_hash is None
+
+    @pytest.mark.asyncio
+    async def test_update_non_file_entity_without_source_hash_attr(self):
+        """Non-file entities lack a source_hash attribute — must not crash."""
+        handler, repo = _make_handler()
+        ctx = FakeSyncContext()
+
+        meta = SimpleNamespace(hash="new_hash", _computed_content_hash=None)
+        entity_without_source_hash = SimpleNamespace(
+            entity_id="e1",
+            airweave_system_metadata=meta,
+        )
+        action = EntityUpdateAction(
+            entity=entity_without_source_hash,
+            entity_definition_short_name="stub",
+            db_id=uuid4(),
+        )
+        db_entity = SimpleNamespace(id=uuid4())
+        existing_map = {("e1", "stub"): db_entity}
+
+        await handler._do_updates([action], existing_map, ctx, MagicMock())
+
+        repo.bulk_update_hash.assert_called_once()
+        rows = repo.bulk_update_hash.call_args[1]["rows"]
+        assert rows[0] == (db_entity.id, "new_hash", None, None)
 
 
 class TestHandleBatch:
