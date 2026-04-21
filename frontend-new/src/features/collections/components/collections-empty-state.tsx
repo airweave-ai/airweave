@@ -1,3 +1,5 @@
+import { IconFolderPlus, IconSearchOff } from '@tabler/icons-react';
+import type { ReactNode } from 'react';
 import { Button } from '@/shared/ui/button';
 import {
   Empty,
@@ -7,8 +9,6 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/shared/ui/empty';
-import { IconFolderPlus, IconSearchOff } from '@tabler/icons-react';
-import type { ReactNode } from 'react';
 
 type CollectionsEmptyStateCardProps = {
   action: ReactNode;

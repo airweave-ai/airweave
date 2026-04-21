@@ -70,7 +70,9 @@ export function ConnectSourceSyncJobProgress({
         <ConnectSourceSyncHeader source={source} variant="error" />
         <ConnectSourceSyncErrorState
           title={status === 'failed' ? 'Last sync failed' : 'Sync cancelled'}
-          timestamp={formatUtcTimestamp(job.completed_at ?? job.started_at) ?? undefined}
+          timestamp={
+            formatUtcTimestamp(job.completed_at ?? job.started_at) ?? undefined
+          }
           description={
             status === 'failed' ? (
               <>

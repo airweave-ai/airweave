@@ -9,7 +9,7 @@ import {
 import {
   demoCollectionDescription,
   useDemoCollection,
-} from '../demo-collection';
+} from '../lib/demo-collection';
 import { CollectionActionsMenu } from './collection-actions-menu';
 import {
   CollectionSourceConnections,

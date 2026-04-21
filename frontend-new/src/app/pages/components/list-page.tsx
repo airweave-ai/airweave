@@ -14,7 +14,10 @@ export function ListPage({
 }: React.ComponentProps<'section'>) {
   return (
     <section
-      className={cn('flex min-h-full flex-1 flex-col gap-5 px-16 py-4', className)}
+      className={cn(
+        'flex min-h-full flex-1 flex-col gap-5 px-16 py-4',
+        className,
+      )}
       {...props}
     />
   );
@@ -71,7 +74,8 @@ export function ListPageSearch({
   loadingLabel,
   className,
 }: ListPageSearchProps) {
-  const showLoadingState = loadingLabel !== undefined || isFetching !== undefined;
+  const showLoadingState =
+    loadingLabel !== undefined || isFetching !== undefined;
 
   return (
     <InputGroup className={cn('w-full', className)}>
@@ -110,7 +114,10 @@ export function ListPageState({
 }: React.ComponentProps<'div'>) {
   return (
     <div
-      className={cn('flex min-h-0 flex-1 items-center justify-center', className)}
+      className={cn(
+        'flex min-h-0 flex-1 items-center justify-center',
+        className,
+      )}
       {...props}
     />
   );

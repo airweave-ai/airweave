@@ -11,5 +11,9 @@ export function LoginPage(props: LoginPageProps) {
     );
   }
 
-  return <AirweaveLoader className="min-h-screen">Redirecting to sign in</AirweaveLoader>;
+  return (
+    <AirweaveLoader className="min-h-screen">
+      Redirecting to sign in
+    </AirweaveLoader>
+  );
 }

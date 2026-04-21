@@ -125,7 +125,9 @@ export function CollectionsTable({
         hasSelectedCollections ? (
           <div className="absolute inset-x-0 top-1 z-10 flex h-10 items-center justify-between gap-4 text-xs font-medium tracking-wide">
             <div className="flex items-center gap-3">
-              <CollectionBulkActionsMenu collectionIds={selectedCollectionIds} />
+              <CollectionBulkActionsMenu
+                collectionIds={selectedCollectionIds}
+              />
               <span className="text-left">
                 {formatNumber(selectedCollectionsCount)}{' '}
                 {pluralize(selectedCollectionsCount, 'Collection')} selected

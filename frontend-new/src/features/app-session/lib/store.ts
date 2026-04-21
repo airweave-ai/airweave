@@ -1,4 +1,3 @@
-import { useStore } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { createStore } from 'zustand/vanilla';
 
@@ -39,8 +38,4 @@ export function setPreferredOrganizationId(organizationId: string | null) {
 
 export function clearPreferredOrganizationId() {
   appSessionStore.getState().clearPreferredOrganizationId();
-}
-
-export function usePreferredOrganizationId() {
-  return useStore(appSessionStore, (state) => state.preferredOrganizationId);
 }

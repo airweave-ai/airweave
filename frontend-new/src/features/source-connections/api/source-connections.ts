@@ -18,7 +18,9 @@ export const sourceConnectionInvalidationTags = [
 
 export function createSourceConnectionMutationOptions(organizationId: string) {
   return mutationOptions({
-    ...createSourceConnectionsPostMutation(withOrganizationHeaders({ organizationId })),
+    ...createSourceConnectionsPostMutation(
+      withOrganizationHeaders({ organizationId }),
+    ),
     meta: {
       errorToast: false,
       invalidateTags: sourceConnectionInvalidationTags,
