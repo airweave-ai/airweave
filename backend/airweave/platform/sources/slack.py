@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional
 
 from tenacity import retry, stop_after_attempt
 
@@ -28,6 +28,9 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 # Pattern for Slack mrkdwn special sequences:
 # <@U1234|display_name> → @display_name  (user mention with label)
@@ -280,6 +283,7 @@ class SlackSource(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Not used — Slack is a federated search source.
 

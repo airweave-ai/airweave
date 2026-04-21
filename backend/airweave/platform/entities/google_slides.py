@@ -180,6 +180,7 @@ class GoogleSlidesPresentationEntity(FileEntity):
             viewed_by_me_time=_parse_dt(data.get("viewedByMeTime")),
             version=data.get("version"),
             export_mime_type="application/pdf",
+            source_hash=f"version:{data['version']}" if data.get("version") is not None else None,
         )
 
     @computed_field(return_type=str)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -34,6 +34,9 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 
 @source(
@@ -310,12 +313,23 @@ class BoxSource(BaseSource):
             permalink_url=f"https://app.box.com/file/{file_data['id']}",
             etag=file_data.get("etag"),
             sequence_id=file_data.get("sequence_id"),
+            source_hash=f"sha1:{file_data['sha1']}" if file_data.get("sha1") else None,
         )
 
         permissions = file_data.get("permissions") or {}
         can_download = permissions.get("can_download", False)
 
-        await self._maybe_download_file(file_entity, files, is_box_note, can_download)
+        # Layer 2: skip download if source_hash matches
+        lookup = getattr(self, "_source_hash_lookup", None)
+        skip_download = (
+            lookup
+            and file_entity.source_hash
+            and lookup.is_unchanged(file_entity.file_id, file_entity.source_hash)
+        )
+        if skip_download:
+            self.logger.debug(f"Source-hash match, skipping download: {file_entity.name}")
+        else:
+            await self._maybe_download_file(file_entity, files, is_box_note, can_download)
         yield file_entity
 
         file_breadcrumb = Breadcrumb(
@@ -408,8 +422,10 @@ class BoxSource(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate all entities from Box."""
+        self._source_hash_lookup = source_hash_lookup
         self.logger.debug("Starting Box sync")
 
         current_user = await self._get_current_user()

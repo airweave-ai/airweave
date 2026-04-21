@@ -17,7 +17,7 @@ References:
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -48,6 +48,9 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 
 @source(
@@ -217,7 +220,8 @@ class GoogleDriveSource(BaseSource):
                 "nextPageToken,newStartPageToken,"
                 "changes(removed,fileId,changeType,file("
                 "id,name,mimeType,description,trashed,explicitlyTrashed,"
-                "parents,shared,webViewLink,iconLink,createdTime,modifiedTime,size,md5Checksum)"
+                "parents,shared,webViewLink,iconLink,createdTime,modifiedTime,"
+                "size,md5Checksum,sha256Checksum,version)"
                 ")"
             ),
         }
@@ -448,7 +452,7 @@ class GoogleDriveSource(BaseSource):
             "q": "mimeType != 'application/vnd.google-apps.folder'",
             "fields": "nextPageToken, files(id, name, mimeType, description, starred, trashed, "
             "explicitlyTrashed, parents, shared, webViewLink, iconLink, createdTime, "
-            "modifiedTime, size, md5Checksum, webContentLink)",
+            "modifiedTime, size, md5Checksum, sha256Checksum, version, webContentLink)",
         }
 
         if drive_id:
@@ -581,7 +585,8 @@ class GoogleDriveSource(BaseSource):
                 "nextPageToken, files("
                 "id, name, mimeType, description, starred, trashed, "
                 "explicitlyTrashed, parents, shared, webViewLink, iconLink, "
-                "createdTime, modifiedTime, size, md5Checksum, webContentLink)"
+                "createdTime, modifiedTime, size, md5Checksum, sha256Checksum, "
+                "version, webContentLink)"
             ),
         }
         if drive_id:
@@ -856,6 +861,16 @@ class GoogleDriveSource(BaseSource):
     # ------------------------------
     # Concurrency-aware processing
     # ------------------------------
+    def _should_skip_download(self, file_entity: GoogleDriveFileEntity) -> bool:
+        """Check if file download can be skipped via source_hash lookup."""
+        lookup = getattr(self, "_source_hash_lookup", None)
+        if not lookup or not file_entity.source_hash:
+            return False
+        if lookup.is_unchanged(file_entity.file_id, file_entity.source_hash):
+            self.logger.debug(f"Source-hash match, skipping download: {file_entity.name}")
+            return True
+        return False
+
     async def _process_file_batch(
         self,
         file_obj: Dict,
@@ -868,6 +883,10 @@ class GoogleDriveSource(BaseSource):
             if not file_entity:
                 return None
             self.logger.debug(f"Processing file entity: {file_entity.file_id} '{file_entity.name}'")
+
+            if self._should_skip_download(file_entity):
+                self._store_file_metadata(file_obj)
+                return file_entity
 
             if await self._download_file(file_entity, files):
                 self._store_file_metadata(file_obj)
@@ -908,6 +927,10 @@ class GoogleDriveSource(BaseSource):
             return None
 
         self.logger.debug(f"Processing changed file: {file_entity.file_id} '{file_entity.name}'")
+
+        if self._should_skip_download(file_entity):
+            self._store_file_metadata(file_obj)
+            return file_entity
 
         if await self._download_file(file_entity, files):
             self._store_file_metadata(file_obj)
@@ -998,6 +1021,7 @@ class GoogleDriveSource(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate all Google Drive entities.
 
@@ -1008,6 +1032,7 @@ class GoogleDriveSource(BaseSource):
           deletion entities for removed files and upsert entities for changed files.
         """
         self._cursor = cursor
+        self._source_hash_lookup = source_hash_lookup
 
         try:
             start_page_token = self._get_cursor_start_page_token()

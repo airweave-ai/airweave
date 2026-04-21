@@ -8,8 +8,11 @@ Comprehensive implementation that retrieves:
 Follows the same structure as the Gmail and Outlook Mail implementations.
 """
 
+
+from __future__ import annotations
+
 import base64
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional
 
 from tenacity import retry, stop_after_attempt
 
@@ -37,6 +40,9 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 
 @source(
@@ -438,6 +444,7 @@ class OutlookCalendarSource(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate all Outlook Calendar entities: Calendars, Events and Attachments."""
         self.logger.info("Starting Outlook Calendar entity generation")

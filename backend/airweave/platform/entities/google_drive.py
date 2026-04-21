@@ -156,6 +156,10 @@ class GoogleDriveFileEntity(FileEntity):
     md5_checksum: Optional[str] = AirweaveField(
         None, description="MD5 checksum for the content of the file.", embeddable=False
     )
+    sha256_checksum: Optional[str] = AirweaveField(
+        None, description="SHA256 checksum for the content of the file.", embeddable=False,
+        unhashable=True,
+    )
     shared_with_me_time: Optional[datetime] = AirweaveField(
         None, description="Time when this file was shared with the user.", embeddable=False
     )
@@ -229,9 +233,15 @@ class GoogleDriveFileEntity(FileEntity):
             web_view_link=data.get("webViewLink"),
             icon_link=data.get("iconLink"),
             md5_checksum=data.get("md5Checksum"),
+            sha256_checksum=data.get("sha256Checksum"),
             shared_with_me_time=_parse_drive_dt(data.get("sharedWithMeTime")),
             modified_by_me_time=_parse_drive_dt(data.get("modifiedByMeTime")),
             viewed_by_me_time=_parse_drive_dt(data.get("viewedByMeTime")),
+            source_hash=(
+                f"sha256:{data['sha256Checksum']}"
+                if data.get("sha256Checksum")
+                else f"version:{data['version']}" if data.get("version") else None
+            ),
         )
 
     def model_dump(self, *args, **kwargs) -> dict[str, Any]:

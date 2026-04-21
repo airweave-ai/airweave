@@ -7,7 +7,7 @@ Authentication: API key via x-slite-api-key header.
 
 from __future__ import annotations
 
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, Optional
 
 from tenacity import retry, stop_after_attempt
 
@@ -29,6 +29,9 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 SLITE_API_BASE = "https://api.slite.com/v1"
 
@@ -180,6 +183,7 @@ class SliteSource(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[SliteNoteEntity, None]:
         """Generate all note entities from Slite."""
         async for entity in self._generate_note_entities():

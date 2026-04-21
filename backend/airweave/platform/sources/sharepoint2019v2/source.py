@@ -24,7 +24,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional
 
 from airweave.core.logging import ContextualLogger
 from airweave.domains.access_control.schemas import MembershipTuple
@@ -58,6 +58,9 @@ from airweave.platform.sources.sharepoint2019v2.builders import (
 )
 from airweave.platform.sources.sharepoint2019v2.client import SharePointClient
 from airweave.schemas.source_connection import AuthenticationMethod
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 MAX_CONCURRENT_FILE_DOWNLOADS = 10
 ITEM_BATCH_SIZE = 50
@@ -493,6 +496,7 @@ class SharePoint2019V2Source(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate entities from SharePoint, using incremental sync when possible.
 

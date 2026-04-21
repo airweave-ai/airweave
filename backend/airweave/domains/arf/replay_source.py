@@ -9,16 +9,24 @@ Unlike SnapshotSource (user-facing for evals), this source:
 - Is never exposed via the API
 """
 
-from typing import AsyncGenerator, Optional
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, AsyncGenerator, Optional
 from uuid import UUID
 
 from airweave.core.exceptions import NotFoundException
 from airweave.core.logging import ContextualLogger
 from airweave.core.logging import logger as _module_logger
 from airweave.domains.arf.reader import ArfReader
+from airweave.domains.browse_tree.types import NodeSelectionData
+from airweave.domains.storage.file_service import FileService
 from airweave.domains.storage.protocols import StorageBackend
+from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.entities._base import BaseEntity
 from airweave.platform.sources._base import BaseSource
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 
 class ArfReplaySource(BaseSource):
@@ -82,7 +90,14 @@ class ArfReplaySource(BaseSource):
             original_short_name=original_short_name,
         )
 
-    async def generate_entities(self) -> AsyncGenerator[BaseEntity, None]:
+    async def generate_entities(
+        self,
+        *,
+        cursor: SyncCursor | None = None,
+        files: FileService | None = None,
+        node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate entities from ARF storage."""
         self.logger.info(f"ARF Replay: Reading entities from sync {self.sync_id}")
         async for entity in self.reader.iter_entities():

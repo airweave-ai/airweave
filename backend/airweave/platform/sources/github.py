@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import mimetypes
 from pathlib import Path
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional
 
 from tenacity import retry, stop_after_attempt
 
@@ -45,6 +45,9 @@ from airweave.platform.utils.file_extensions import (
     is_text_file,
 )
 from airweave.schemas.source_connection import AuthenticationMethod
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 
 @source(
@@ -439,6 +442,7 @@ class GitHubSource(BaseSource):
                 sha=file_data["sha"],
                 line_count=line_count,
                 is_binary=False,
+                source_hash=f"sha1:{file_data['sha']}" if file_data.get("sha") else None,
             )
 
             if files:
@@ -616,6 +620,7 @@ class GitHubSource(BaseSource):
                     sha=file_data["sha"],
                     line_count=line_count,
                     is_binary=False,
+                    source_hash=f"sha1:{file_data['sha']}" if file_data.get("sha") else None,
                 )
 
                 if files and content_text:
@@ -757,6 +762,7 @@ class GitHubSource(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate entities from GitHub repository with incremental support.
 

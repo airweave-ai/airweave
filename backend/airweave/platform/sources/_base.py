@@ -19,6 +19,7 @@ from typing import (
 
 if TYPE_CHECKING:
     from airweave.domains.access_control.schemas import MembershipTuple
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 from pydantic import BaseModel
 
@@ -209,6 +210,7 @@ class BaseSource:
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate entities for the source.
 
@@ -216,6 +218,8 @@ class BaseSource:
             cursor: SyncCursor for incremental sync tracking.
             files: FileService for downloading files.
             node_selections: Node selections for targeted sync.
+            source_hash_lookup: Lookup service to check if entity content
+                is unchanged since last sync, enabling download skip.
         """
         return
         yield  # type: ignore[misc]

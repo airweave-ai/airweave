@@ -7,7 +7,7 @@ https://docs.fireflies.ai/schema/transcript.
 
 from __future__ import annotations
 
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, Optional
 
 from tenacity import retry, stop_after_attempt
 
@@ -33,6 +33,9 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 FIREFLIES_GRAPHQL_URL = "https://api.fireflies.ai/graphql"
 TRANSCRIPTS_PAGE_SIZE = 50
@@ -142,6 +145,7 @@ class FirefliesSource(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate transcript entities from the Fireflies API.
 

@@ -6,7 +6,7 @@ API reference: https://docs.apollo.io/
 
 from __future__ import annotations
 
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, Optional
 
 from tenacity import retry, stop_after_attempt
 
@@ -33,6 +33,9 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 APOLLO_BASE_URL = "https://api.apollo.io/api/v1"
 PER_PAGE = 100
@@ -290,6 +293,7 @@ class ApolloSource(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[Any, None]:
         """Generate all entities: Accounts, Contacts, Sequences, Email Activities."""
         self.logger.info("Starting Apollo sync (Accounts, Contacts, Sequences, Email Activities)")

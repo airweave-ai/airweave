@@ -7,7 +7,7 @@ Authentication: API token (header api_token).
 
 from __future__ import annotations
 
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional
 
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -30,6 +30,9 @@ from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sources.http_helpers import raise_for_status
 from airweave.schemas.source_connection import AuthenticationMethod
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 DEFAULT_BASE_URL = "https://apihub.document360.io"
 API_PATH_PREFIX = "/v2"
@@ -154,6 +157,7 @@ class Document360Source(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate project versions, categories, and articles."""
         self.logger.info("Starting Document360 sync")

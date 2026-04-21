@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import secrets
-from typing import AsyncGenerator
+from typing import TYPE_CHECKING, AsyncGenerator
 
 import asyncpg
 
@@ -25,6 +25,9 @@ from airweave.platform.entities.ctti import CTTIWebEntity
 from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 
 @source(
@@ -202,6 +205,7 @@ class CTTISource(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[CTTIWebEntity, None]:
         """Generate WebEntity instances for each nct_id in the AACT studies table."""
         try:

@@ -49,7 +49,7 @@ def _make_source_cls(
         async def create(cls, *, auth, logger, http_client, config):
             return cls()
 
-        async def generate_entities(self, *, cursor=None, files=None, node_selections=None):
+        async def generate_entities(self, *, cursor=None, files=None, node_selections=None, source_hash_lookup=None):
             return
             yield
 

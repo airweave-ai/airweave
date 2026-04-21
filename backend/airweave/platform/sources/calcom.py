@@ -16,7 +16,7 @@ Data model reference:
 from __future__ import annotations
 
 from datetime import timezone
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, Optional
 
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -41,6 +41,9 @@ from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
 from airweave.platform.sources.http_helpers import raise_for_status
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 DEFAULT_CAL_API_BASE = "https://api.cal.com"
 # API versions per endpoint family (see Cal.com v2 docs)
@@ -223,6 +226,7 @@ class CalSource(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate all booking entities from Cal.com.
 

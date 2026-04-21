@@ -14,8 +14,11 @@ Reference (Microsoft Graph API):
   https://learn.microsoft.com/en-us/graph/api/driveitem-list-children?view=graph-rest-1.0
 """
 
+
+from __future__ import annotations
+
 from collections import deque
-from typing import AsyncGenerator, Dict, List, Optional
+from typing import TYPE_CHECKING, AsyncGenerator, Dict, List, Optional
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -40,6 +43,9 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 
 @source(
@@ -209,7 +215,7 @@ class OneDriveSource(BaseSource):
             "$top": 100,
             "$select": (
                 "id,name,size,createdDateTime,lastModifiedDateTime,"
-                "file,folder,parentReference,webUrl"
+                "file,folder,parentReference,webUrl,eTag,cTag"
             ),
         }
 
@@ -292,6 +298,20 @@ class OneDriveSource(BaseSource):
                 if not file_entity:
                     continue
 
+                # Layer 2: skip download if source_hash matches
+                lookup = getattr(self, "_source_hash_lookup", None)
+                if (
+                    lookup
+                    and file_entity.source_hash
+                    and lookup.is_unchanged(file_entity.id, file_entity.source_hash)
+                ):
+                    self.logger.debug(
+                        f"Source-hash match, skipping download: {file_entity.name}"
+                    )
+                    file_count += 1
+                    yield file_entity
+                    continue
+
                 if files:
                     try:
                         await files.download_from_url(
@@ -339,6 +359,7 @@ class OneDriveSource(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate all OneDrive entities.
 
@@ -346,6 +367,7 @@ class OneDriveSource(BaseSource):
           - OneDriveDriveEntity for the user's drive
           - OneDriveDriveItemEntity for each file in the drive
         """
+        self._source_hash_lookup = source_hash_lookup
         drive_entity = None
         async for drive in self._generate_drive_entity():
             yield drive

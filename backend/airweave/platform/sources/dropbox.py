@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
-from typing import AsyncGenerator, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, AsyncGenerator, Dict, List, Optional, Tuple
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -34,6 +34,9 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 
 @source(
@@ -223,6 +226,7 @@ class DropboxSource(BaseSource):
             content_hash=entry.get("content_hash"),
             sharing_info=sharing_info,
             has_explicit_shared_members=entry.get("has_explicit_shared_members"),
+            source_hash=f"sha256:{entry['content_hash']}" if entry.get("content_hash") else None,
         )
 
     async def _download_file(
@@ -303,6 +307,17 @@ class DropboxSource(BaseSource):
 
             file_entity = self._create_file_entity(entry, folder_breadcrumbs)
 
+            # Layer 2: skip download if source_hash matches
+            lookup = getattr(self, "_source_hash_lookup", None)
+            if (
+                lookup
+                and file_entity.source_hash
+                and lookup.is_unchanged(file_entity.id, file_entity.source_hash)
+            ):
+                self.logger.debug(f"Source-hash match, skipping download: {file_entity.name}")
+                yield file_entity
+                continue
+
             try:
                 result = await self._download_file(file_entity, files)
                 if result:
@@ -367,8 +382,10 @@ class DropboxSource(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Recursively generate all entities from Dropbox."""
+        self._source_hash_lookup = source_hash_lookup
         assert files is not None, "FileService is required for Dropbox"
 
         async for account_entity in self._generate_account_entities():

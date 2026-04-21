@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import random
 from datetime import datetime
-from typing import AsyncGenerator
+from typing import TYPE_CHECKING, AsyncGenerator
 
 from airweave.core.logging import ContextualLogger
 from airweave.domains.browse_tree.types import NodeSelectionData
@@ -25,6 +25,9 @@ from airweave.platform.entities.timed import TimedContainerEntity, TimedEntity
 from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 NOUNS = [
     "project",
@@ -127,6 +130,7 @@ class TimedSource(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Yield timed entities with configurable delays between each."""
         self.logger.info(

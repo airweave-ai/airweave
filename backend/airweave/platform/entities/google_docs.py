@@ -180,6 +180,7 @@ class GoogleDocsDocumentEntity(FileEntity):
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             ),
             web_url_value=data.get("webViewLink"),
+            source_hash=f"version:{data['version']}" if data.get("version") is not None else None,
         )
 
     @computed_field(return_type=str)

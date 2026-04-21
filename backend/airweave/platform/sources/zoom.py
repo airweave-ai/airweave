@@ -15,7 +15,7 @@ Reference:
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, Optional
 
 from pydantic import BaseModel
 from tenacity import retry, stop_after_attempt
@@ -44,6 +44,9 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 
 def _parse_dt(dt_str: Optional[str]) -> Optional[datetime]:
@@ -400,6 +403,7 @@ class ZoomSource(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate entities for Zoom meetings, participants, and recordings."""
         self.logger.info("Starting Zoom entity generation")

@@ -7,7 +7,7 @@ API reference: https://coda.io/developers/apis/v1
 
 from __future__ import annotations
 
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional
 
 from tenacity import retry, stop_after_attempt
 
@@ -39,6 +39,9 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 CODA_API_BASE = "https://coda.io/apis/v1"
 TIMEOUT_SECONDS = 30.0
@@ -231,6 +234,7 @@ class CodaSource(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[Any, None]:
         """Generate all Coda entities: docs, pages (with content), tables, rows."""
         self.logger.info("Starting Coda sync")

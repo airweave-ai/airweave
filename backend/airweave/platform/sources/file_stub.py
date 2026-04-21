@@ -17,7 +17,7 @@ import os
 import random
 import tempfile
 from datetime import datetime, timedelta
-from typing import AsyncGenerator, List, Optional, Tuple
+from typing import TYPE_CHECKING, AsyncGenerator, List, Optional, Tuple
 
 from airweave.core.logging import ContextualLogger
 from airweave.domains.browse_tree.types import NodeSelectionData
@@ -39,6 +39,9 @@ from airweave.platform.entities.file_stub import (
 from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 # Word lists for deterministic content generation (shared with stub.py)
 NOUNS = [
@@ -589,6 +592,7 @@ class FileStubSource(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Yield a container + one entity per file type."""
         gen = self._generator

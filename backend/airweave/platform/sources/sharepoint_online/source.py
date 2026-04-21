@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Callable, Dict, List, Optional
 from urllib.parse import urlparse
 
 import httpx
@@ -70,6 +70,9 @@ from airweave.platform.sources.sharepoint_online.builders import (
 from airweave.platform.sources.sharepoint_online.client import GRAPH_BASE_URL, GraphClient
 from airweave.platform.sources.sharepoint_online.graph_groups import EntraGroupExpander
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 MAX_CONCURRENT_FILE_DOWNLOADS = 10
 ITEM_BATCH_SIZE = 50
@@ -446,6 +449,7 @@ class SharePointOnlineBase(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate all SharePoint entities using full, incremental, or targeted sync."""
         cursor_data = cursor.data if cursor else {}

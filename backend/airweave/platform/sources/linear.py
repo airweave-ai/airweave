@@ -7,7 +7,7 @@ import os
 import re
 import time
 from datetime import datetime, timezone
-from typing import AsyncGenerator, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, AsyncGenerator, Dict, List, Optional, Union
 from uuid import uuid4
 
 import httpx
@@ -45,6 +45,9 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod, OAuthType
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 _GRAPHQL_URL = "https://api.linear.app/graphql"
 
@@ -616,6 +619,7 @@ class LinearSource(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate all entities from Linear.
 

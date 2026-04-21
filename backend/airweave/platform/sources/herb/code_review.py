@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime
-from typing import AsyncGenerator, Optional
+from typing import TYPE_CHECKING, AsyncGenerator, Optional
 
 from airweave.core.logging import ContextualLogger
 from airweave.domains.browse_tree.types import NodeSelectionData
@@ -20,6 +20,9 @@ from airweave.platform.entities.herb_code_review import HerbPullRequestEntity
 from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 
 @source(
@@ -80,6 +83,7 @@ class HerbCodeReviewSource(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate HerbPullRequestEntity instances from HERB product files."""
         products_dir = os.path.join(self.data_dir, "products")

@@ -188,6 +188,7 @@ class OneDriveDriveItemEntity(FileEntity):
             file=file_info,
             folder=data.get("folder"),
             parent_reference=parent_ref,
+            source_hash=f"ctag:{data['cTag']}" if data.get("cTag") else None,
         )
 
     @computed_field(return_type=str)

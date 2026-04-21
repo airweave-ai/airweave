@@ -24,7 +24,7 @@ Auth Reference: https://shopify.dev/docs/apps/build/authentication-authorization
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -66,6 +66,9 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 SHOPIFY_API_VERSION = "2024-01"
 
@@ -831,6 +834,7 @@ class ShopifySource(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate all Shopify entities."""
         async for entity in self._generate_product_entities():

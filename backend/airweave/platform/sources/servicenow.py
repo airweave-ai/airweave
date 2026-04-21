@@ -7,8 +7,11 @@ Reference:
     ServiceNow Table API: https://www.servicenow.com/docs/r/washingtondc/api-reference/rest-apis/api-rest.html
 """
 
+
+from __future__ import annotations
+
 import base64
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional
 
 from tenacity import retry, stop_after_attempt
 
@@ -36,6 +39,9 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 TABLE_API_PATH = "/api/now/table"
 PAGE_LIMIT = 1000
@@ -222,6 +228,7 @@ class ServiceNowSource(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate all MVP entities from the ServiceNow instance."""
         self.logger.info("Starting ServiceNow sync")

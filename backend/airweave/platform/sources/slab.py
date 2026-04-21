@@ -14,7 +14,7 @@ are still synced.
 
 from __future__ import annotations
 
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 from tenacity import retry, stop_after_attempt
 
@@ -36,6 +36,9 @@ from airweave.platform.sources.retry_helpers import (
     wait_rate_limit_with_backoff,
 )
 from airweave.schemas.source_connection import AuthenticationMethod
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 SLAB_GRAPHQL_URL = "https://api.slab.com/v1/graphql"
 POSTS_IDS_BATCH_SIZE = 100
@@ -282,6 +285,7 @@ class SlabSource(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[Any, None]:
         """Generate all entities from Slab.
 

@@ -1,9 +1,11 @@
 """Bitbucket source implementation for syncing repositories, workspaces, and code files."""
 
+from __future__ import annotations
+
 import mimetypes
 from datetime import datetime
 from pathlib import Path
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -39,6 +41,9 @@ from airweave.platform.utils.file_extensions import (
 )
 from airweave.schemas.source_connection import AuthenticationMethod
 
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
+
 
 @source(
     name="Bitbucket",
@@ -54,6 +59,7 @@ from airweave.schemas.source_connection import AuthenticationMethod
 )
 class BitbucketSource(BaseSource):
     """Bitbucket source connector integrates with the Bitbucket REST API to extract data.
+
 
     Connects to your Bitbucket workspaces and repositories.
 
@@ -402,6 +408,7 @@ class BitbucketSource(BaseSource):
                     repo_full_name=f"{workspace_slug}/{repo_slug}",
                     workspace_slug=workspace_slug,
                     line_count=line_count,
+                    source_hash=f"sha1:{commit_hash}" if commit_hash else None,
                 )
 
                 if files:
@@ -429,6 +436,7 @@ class BitbucketSource(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate entities from Bitbucket.
 

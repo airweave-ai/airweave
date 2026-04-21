@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import AsyncGenerator, List
+from typing import TYPE_CHECKING, AsyncGenerator, List
 
 from airweave.core.logging import ContextualLogger
 from airweave.domains.browse_tree.types import NodeSelectionData
@@ -31,6 +31,9 @@ from airweave.platform.entities.enron import EnronEmailEntity
 from airweave.platform.http_client.airweave_client import AirweaveHttpClient
 from airweave.platform.sources._base import BaseSource
 from airweave.schemas.source_connection import AuthenticationMethod
+
+if TYPE_CHECKING:
+    from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 
 _CTRL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
@@ -94,6 +97,7 @@ class EnronSource(BaseSource):
         cursor: SyncCursor | None = None,
         files: FileService | None = None,
         node_selections: list[NodeSelectionData] | None = None,
+        source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Read parquet files and yield EnronEmailEntity instances."""
         # Lazy import: pyarrow is a heavy optional dependency only needed by this
