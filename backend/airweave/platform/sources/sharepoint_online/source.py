@@ -403,9 +403,18 @@ class SharePointOnlineBase(BaseSource):
     ) -> List[BaseEntity]:
         semaphore = asyncio.Semaphore(MAX_CONCURRENT_FILE_DOWNLOADS)
         results: List[BaseEntity] = []
+        lookup = getattr(self, "_source_hash_lookup", None)
 
         async def download_one(item: PendingFileDownload):
             async with semaphore:
+                # Skip download if content + metadata unchanged
+                if lookup and lookup.should_skip_download(item.entity):
+                    self.logger.debug(
+                        f"Source-hash match, skipping download: {item.entity.file_name}"
+                    )
+                    results.append(item.entity)
+                    return
+
                 try:
                     entity = await self._download_and_save_file(
                         item.entity,
@@ -452,6 +461,7 @@ class SharePointOnlineBase(BaseSource):
         source_hash_lookup: SourceHashLookup | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Generate all SharePoint entities using full, incremental, or targeted sync."""
+        self._source_hash_lookup = source_hash_lookup
         cursor_data = cursor.data if cursor else {}
         for g in cursor_data.get("tracked_entra_groups", []):
             self._item_level_entra_groups.add(g)

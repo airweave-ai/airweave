@@ -319,13 +319,9 @@ class BoxSource(BaseSource):
         permissions = file_data.get("permissions") or {}
         can_download = permissions.get("can_download", False)
 
-        # Layer 2: skip download if source_hash matches
+        # Skip download if content + metadata unchanged
         lookup = getattr(self, "_source_hash_lookup", None)
-        skip_download = (
-            lookup
-            and file_entity.source_hash
-            and lookup.is_unchanged(file_entity.file_id, file_entity.source_hash)
-        )
+        skip_download = lookup and lookup.should_skip_download(file_entity)
         if skip_download:
             self.logger.debug(f"Source-hash match, skipping download: {file_entity.name}")
         else:

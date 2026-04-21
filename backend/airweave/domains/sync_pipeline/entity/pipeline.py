@@ -16,13 +16,13 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from airweave.core.events.sync import EntityBatchProcessedEvent, TypeActionCounts
-from airweave.core.shared_models import AirweaveFieldFlag
 from airweave.domains.entities.protocols import EntityDefinitionRegistryProtocol, EntityRepositoryProtocol
 from airweave.domains.sync_pipeline.contexts import SyncContext
 from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
 from airweave.domains.sync_pipeline.entity.actions import EntityActionBatch
 from airweave.domains.sync_pipeline.exceptions import SyncFailureError
 from airweave.domains.sync_pipeline.pipeline.cleanup_service import cleanup_service
+from airweave.domains.sync_pipeline.pipeline.entity_hasher import populate_derived_fields
 from airweave.domains.sync_pipeline.pipeline.entity_tracker import EntityTracker
 from airweave.domains.sync_pipeline.pipeline.hash_computer import hash_computer
 from airweave.domains.sync_pipeline.protocols import (
@@ -244,7 +244,7 @@ class EntityPipeline:
         return result if result else None
 
     # -------------------------------------------------------------------------
-    # Phase 4: Handle KEEP-only batches
+    # Phase 3: Handle KEEP-only batches
     # -------------------------------------------------------------------------
 
     async def _handle_keep_only_batch(
@@ -266,7 +266,7 @@ class EntityPipeline:
             await self._cleanup_temp_files_for_batch(batch, sync_context)
 
     # -------------------------------------------------------------------------
-    # Phase 6: Update Entity Tracker
+    # Phase 4: Update Entity Tracker
     # -------------------------------------------------------------------------
 
     async def _update_tracker(
@@ -411,39 +411,10 @@ class EntityPipeline:
     # Helper Methods
     # -------------------------------------------------------------------------
 
-    def _get_flagged_field_value(self, entity: BaseEntity, flag_name: str) -> Any:
-        """Extract value of field marked with specified flag."""
-        flag_key = flag_name.value if hasattr(flag_name, "value") else flag_name
-
-        for field_name, field_info in entity.model_fields.items():
-            json_extra = field_info.json_schema_extra
-            if json_extra and isinstance(json_extra, dict):
-                if json_extra.get(flag_key):
-                    return getattr(entity, field_name, None)
-
-        return None
-
-    def _populate_base_entity_fields_from_flags(self, entity: BaseEntity) -> None:
+    @staticmethod
+    def _populate_base_entity_fields_from_flags(entity: BaseEntity) -> None:
         """Populate BaseEntity fields from flagged fields."""
-        if not entity.entity_id:
-            flagged_value = self._get_flagged_field_value(entity, AirweaveFieldFlag.IS_ENTITY_ID)
-            if flagged_value:
-                entity.entity_id = str(flagged_value)
-
-        if not entity.name:
-            flagged_value = self._get_flagged_field_value(entity, AirweaveFieldFlag.IS_NAME)
-            if flagged_value:
-                entity.name = str(flagged_value)
-
-        if not entity.created_at:
-            flagged_value = self._get_flagged_field_value(entity, AirweaveFieldFlag.IS_CREATED_AT)
-            if flagged_value is not None:
-                entity.created_at = flagged_value
-
-        if not entity.updated_at:
-            flagged_value = self._get_flagged_field_value(entity, AirweaveFieldFlag.IS_UPDATED_AT)
-            if flagged_value is not None:
-                entity.updated_at = flagged_value
+        populate_derived_fields(entity)
 
     async def _enrich_early_metadata(
         self,

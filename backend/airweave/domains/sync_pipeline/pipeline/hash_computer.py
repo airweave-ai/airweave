@@ -2,12 +2,15 @@
 
 import asyncio
 import hashlib
-import json
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from airweave.core.shared_models import AirweaveFieldFlag
 from airweave.domains.sync_pipeline.async_helpers import run_in_thread_pool
 from airweave.domains.sync_pipeline.exceptions import EntityProcessingError, SyncFailureError
+from airweave.domains.sync_pipeline.pipeline.entity_hasher import (
+    compute_dict_hash,
+    exclude_volatile_fields,
+    stable_serialize,
+)
 from airweave.platform.entities._base import BaseEntity, CodeFileEntity, FileEntity
 
 if TYPE_CHECKING:
@@ -265,71 +268,20 @@ class HashComputer:
         return h.hexdigest()
 
     # ------------------------------------------------------------------------------------
-    # Serialization and Hashing
+    # Serialization and Hashing (delegated to entity_hasher)
     # ------------------------------------------------------------------------------------
 
-    def _exclude_volatile_fields(self, entity: BaseEntity, entity_dict: dict) -> dict:
-        """Exclude volatile fields from entity dict for hashing.
+    @staticmethod
+    def _exclude_volatile_fields(entity: BaseEntity, entity_dict: dict) -> dict:
+        return exclude_volatile_fields(entity, entity_dict)
 
-        Args:
-            entity: Original entity (for field metadata inspection)
-            entity_dict: Entity dict from model_dump
-
-        Returns:
-            Dict with volatile fields excluded
-        """
-        excluded_fields = {
-            "airweave_system_metadata",  # Not initialized yet
-            "breadcrumbs",  # Parent relationships are volatile
-            "local_path",  # Temp path changes per run
-            "url",  # Contains access tokens
-        }
-
-        # Add fields marked with unhashable=True
-        for field_name, field_info in entity.__class__.model_fields.items():
-            json_extra = field_info.json_schema_extra
-            if json_extra and isinstance(json_extra, dict):
-                flag_key = (
-                    AirweaveFieldFlag.UNHASHABLE.value
-                    if hasattr(AirweaveFieldFlag.UNHASHABLE, "value")
-                    else AirweaveFieldFlag.UNHASHABLE
-                )
-                if json_extra.get(flag_key):
-                    excluded_fields.add(field_name)
-
-        return {k: v for k, v in entity_dict.items() if k not in excluded_fields}
-
-    def _compute_dict_hash(self, content_dict: dict) -> str:
-        """Compute SHA256 hash of a dictionary with stable serialization.
-
-        Args:
-            content_dict: Dictionary to hash
-
-        Returns:
-            Hex digest of SHA256 hash
-        """
-        stable_data = self._stable_serialize(content_dict)
-        json_str = json.dumps(stable_data, sort_keys=True, separators=(",", ":"))
-        return hashlib.sha256(json_str.encode()).hexdigest()
+    @staticmethod
+    def _compute_dict_hash(content_dict: dict) -> str:
+        return compute_dict_hash(content_dict)
 
     @staticmethod
     def _stable_serialize(obj: Any) -> Any:
-        """Recursively serialize object in a stable way for hashing.
-
-        Args:
-            obj: Object to serialize
-
-        Returns:
-            Serialized object with stable ordering
-        """
-        if isinstance(obj, dict):
-            return {k: HashComputer._stable_serialize(v) for k, v in sorted(obj.items())}
-        elif isinstance(obj, (list, tuple)):
-            return [HashComputer._stable_serialize(x) for x in obj]
-        elif isinstance(obj, (str, int, float, bool, type(None))):
-            return obj
-        else:
-            return str(obj)
+        return stable_serialize(obj)
 
 
 # Singleton instance

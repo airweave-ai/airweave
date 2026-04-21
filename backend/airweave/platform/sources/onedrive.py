@@ -298,13 +298,9 @@ class OneDriveSource(BaseSource):
                 if not file_entity:
                     continue
 
-                # Layer 2: skip download if source_hash matches
+                # Skip download if content + metadata unchanged
                 lookup = getattr(self, "_source_hash_lookup", None)
-                if (
-                    lookup
-                    and file_entity.source_hash
-                    and lookup.is_unchanged(file_entity.id, file_entity.source_hash)
-                ):
+                if lookup and lookup.should_skip_download(file_entity):
                     self.logger.debug(
                         f"Source-hash match, skipping download: {file_entity.name}"
                     )

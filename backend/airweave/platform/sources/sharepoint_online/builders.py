@@ -134,6 +134,8 @@ async def build_file_entity(
 
     access = await extract_access_control(permissions or []) if permissions else None
 
+    ctag = item_data.get("cTag")
+
     return SharePointOnlineFileEntity(
         url=download_url or item_data.get("webUrl", ""),
         size=size,
@@ -154,6 +156,7 @@ async def build_file_entity(
         updated_at=_parse_datetime(item_data.get("lastModifiedDateTime")),
         access=access,
         breadcrumbs=breadcrumbs,
+        source_hash=f"ctag:{ctag}" if ctag else None,
     )
 
 

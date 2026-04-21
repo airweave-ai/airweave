@@ -864,9 +864,9 @@ class GoogleDriveSource(BaseSource):
     def _should_skip_download(self, file_entity: GoogleDriveFileEntity) -> bool:
         """Check if file download can be skipped via source_hash lookup."""
         lookup = getattr(self, "_source_hash_lookup", None)
-        if not lookup or not file_entity.source_hash:
+        if not lookup:
             return False
-        if lookup.is_unchanged(file_entity.file_id, file_entity.source_hash):
+        if lookup.should_skip_download(file_entity):
             self.logger.debug(f"Source-hash match, skipping download: {file_entity.name}")
             return True
         return False
