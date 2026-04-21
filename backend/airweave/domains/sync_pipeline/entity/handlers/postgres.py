@@ -5,7 +5,7 @@ This handler runs AFTER destination handlers to ensure consistency.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Any, Dict, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -177,6 +177,8 @@ class EntityPostgresHandler(EntityActionHandler):
                     entity_id=action.entity_id,
                     entity_definition_short_name=action.entity_definition_short_name,
                     hash=action.entity.airweave_system_metadata.hash,
+                    source_hash=action.entity.source_hash,
+                    content_hash=action.entity.airweave_system_metadata._computed_content_hash,
                 )
             )
 
@@ -196,7 +198,7 @@ class EntityPostgresHandler(EntityActionHandler):
         db: AsyncSession,
     ) -> None:
         """Execute UPDATE operations (hash updates)."""
-        update_pairs = []
+        update_pairs: list[Tuple[UUID, str, Optional[str], Optional[str]]] = []
         for action in actions:
             if not action.entity.airweave_system_metadata.hash:
                 raise SyncFailureError(f"Entity {action.entity_id} missing hash")
@@ -205,7 +207,12 @@ class EntityPostgresHandler(EntityActionHandler):
             if key not in existing_map:
                 raise SyncFailureError(f"UPDATE entity {action.entity_id} not in existing_map")
 
-            update_pairs.append((existing_map[key].id, action.entity.airweave_system_metadata.hash))
+            update_pairs.append((
+                existing_map[key].id,
+                action.entity.airweave_system_metadata.hash,
+                action.entity.source_hash,
+                action.entity.airweave_system_metadata._computed_content_hash,
+            ))
 
         if not update_pairs:
             return

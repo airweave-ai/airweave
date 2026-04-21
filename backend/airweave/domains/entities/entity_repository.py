@@ -1,6 +1,6 @@
 """Entity repository wrapping crud.entity for sync pipeline usage."""
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,9 +45,9 @@ class EntityRepository(EntityRepositoryProtocol):
         self,
         db: AsyncSession,
         *,
-        rows: List[Tuple[UUID, str]],
+        rows: list[Tuple[UUID, str, Optional[str], Optional[str]]],
     ) -> None:
-        """Bulk-update content hashes."""
+        """Bulk-update hash, source_hash, and content_hash."""
         return await crud.entity.bulk_update_hash(db, rows=rows)
 
     async def bulk_remove(

@@ -2,9 +2,10 @@ from datetime import datetime
 from typing import ClassVar, List, Optional, Type
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 from airweave.domains.embedders.types import SparseEmbedding
+from airweave.platform.entities._airweave_field import AirweaveField
 
 
 class Breadcrumb(BaseModel):
@@ -78,6 +79,10 @@ class AirweaveSystemMetadata(BaseModel):
     sparse_embedding: Optional[SparseEmbedding] = Field(
         None, description="BM25 sparse embedding for hybrid search (Qdrant only)"
     )
+
+    # Internal: SHA256 of file bytes computed during hash stage, persisted to
+    # entity.content_hash. Not a model field — just a pipeline transport slot.
+    _computed_content_hash: Optional[str] = PrivateAttr(default=None)
 
     # Set during persistence
     db_entity_id: Optional[UUID] = Field(None, description="ID of the entity in the database.")
@@ -223,6 +228,15 @@ class FileEntity(BaseEntity):
     mime_type: Optional[str] = Field(None, description="MIME type of the file.")
 
     local_path: Optional[str] = Field(None, description="Local path of the file.")
+
+    # Source-native content hash for download-skip optimization
+    source_hash: Optional[str] = AirweaveField(
+        None,
+        description="Prefixed source-native content hash (e.g. sha256:e3b0c44...). "
+        "Set by connectors that provide content hashes from APIs.",
+        embeddable=False,
+        unhashable=True,
+    )
 
 
 class CodeFileEntity(FileEntity):

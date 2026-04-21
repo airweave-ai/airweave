@@ -80,6 +80,8 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
             set_={
                 "sync_job_id": stmt.excluded.sync_job_id,
                 "hash": stmt.excluded.hash,
+                "source_hash": stmt.excluded.source_hash,
+                "content_hash": stmt.excluded.content_hash,
                 "modified_at": stmt.excluded.modified_at,
             },
         ).returning(Entity)
@@ -254,6 +256,8 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
             set_={
                 "sync_job_id": stmt.excluded.sync_job_id,
                 "hash": stmt.excluded.hash,
+                "source_hash": stmt.excluded.source_hash,
+                "content_hash": stmt.excluded.content_hash,
                 "modified_at": stmt.excluded.modified_at,
             },
         ).returning(Entity)
@@ -273,21 +277,26 @@ class CRUDEntity(CRUDBaseOrganization[Entity, EntityCreate, EntityUpdate]):
         self,
         db: AsyncSession,
         *,
-        rows: list[tuple[UUID, str]],
+        rows: list[tuple[UUID, str, Optional[str], Optional[str]]],
     ) -> None:
-        """Bulk update the 'hash' field for many entities.
+        """Bulk update hash, source_hash, and content_hash for many entities.
 
         Args:
             db: The async database session.
-            rows: list of tuples (entity_db_id, new_hash)
+            rows: list of (id, hash, source_hash, content_hash) tuples
         """
         if not rows:
             return
-        for entity_db_id, new_hash in rows:
+        for entity_db_id, new_hash, source_hash, content_hash in rows:
             stmt = (
                 update(Entity)
                 .where(Entity.id == entity_db_id)
-                .values(hash=new_hash, modified_at=datetime.now(timezone.utc).replace(tzinfo=None))
+                .values(
+                    hash=new_hash,
+                    source_hash=source_hash,
+                    content_hash=content_hash,
+                    modified_at=datetime.now(timezone.utc).replace(tzinfo=None),
+                )
             )
             await db.execute(stmt)
 

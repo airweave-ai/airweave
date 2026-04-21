@@ -13,11 +13,11 @@ Lifecycle:
 
 import time
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from airweave.core.events.sync import EntityBatchProcessedEvent, TypeActionCounts
 from airweave.core.shared_models import AirweaveFieldFlag
-from airweave.domains.entities.protocols import EntityRepositoryProtocol
+from airweave.domains.entities.protocols import EntityDefinitionRegistryProtocol, EntityRepositoryProtocol
 from airweave.domains.sync_pipeline.contexts import SyncContext
 from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
 from airweave.domains.sync_pipeline.entity.actions import EntityActionBatch
@@ -29,7 +29,7 @@ from airweave.domains.sync_pipeline.protocols import (
     EntityActionDispatcherProtocol,
     EntityActionResolverProtocol,
 )
-from airweave.platform.entities._base import BaseEntity
+from airweave.platform.entities._base import BaseEntity, CodeFileEntity, FileEntity
 
 if TYPE_CHECKING:
     from airweave.core.protocols.event_bus import EventBus
@@ -48,6 +48,7 @@ class EntityPipeline:
         action_resolver: EntityActionResolverProtocol,
         action_dispatcher: EntityActionDispatcherProtocol,
         entity_repo: EntityRepositoryProtocol,
+        entity_registry: Optional[EntityDefinitionRegistryProtocol] = None,
     ):
         """Initialize with per-sync tracker, event bus, and action components."""
         self._tracker = entity_tracker
@@ -55,6 +56,7 @@ class EntityPipeline:
         self._resolver = action_resolver
         self._dispatcher = action_dispatcher
         self._entity_repo = entity_repo
+        self._entity_registry = entity_registry
         self._batch_seq = 0
 
     # -------------------------------------------------------------------------
@@ -163,7 +165,83 @@ class EntityPipeline:
     ) -> None:
         """Prepare entities: enrich metadata and compute hashes."""
         await self._enrich_early_metadata(entities, sync_context)
-        await hash_computer.compute_for_batch(entities, sync_context, runtime)
+
+        # Pre-fetch stored content hashes for file entities with source_hash set.
+        # Returns Dict[entity_id, content_hash] keyed by entity_id for hash_computer.
+        stored_data = await self._fetch_stored_hashes(entities, sync_context)
+
+        await hash_computer.compute_for_batch(
+            entities, sync_context, runtime, stored_data=stored_data
+        )
+
+    def _resolve_short_name(self, entity: BaseEntity) -> Optional[str]:
+        """Resolve entity definition short_name via registry.
+
+        Returns None if the entity class is not registered, which skips
+        the source-hash optimization for that entity.
+        """
+        if self._entity_registry:
+            return self._entity_registry.get_short_name_by_class(entity.__class__)
+        return None
+
+    async def _fetch_stored_hashes(
+        self,
+        entities: List[BaseEntity],
+        sync_context: SyncContext,
+    ) -> Optional[Dict[str, str]]:
+        """Fetch stored content_hash for file entities whose source_hash is set.
+
+        Compares entity.source_hash against the stored source_hash in the DB.
+        When they match and a content_hash is stored, returns a mapping so the
+        hash computer can skip the file read.
+
+        Returns:
+            Mapping of entity_id -> stored content_hash, or None if no
+            entities have source_hash set.
+        """
+        # Collect file entities that have a source_hash
+        candidates: List[Tuple[str, str]] = []
+        source_hashes: Dict[str, str] = {}  # entity_id -> current source_hash
+        for entity in entities:
+            if (
+                isinstance(entity, (FileEntity, CodeFileEntity))
+                and entity.source_hash
+                and entity.entity_id
+            ):
+                short_name = self._resolve_short_name(entity)
+                if not short_name:
+                    continue
+                candidates.append((entity.entity_id, short_name))
+                source_hashes[entity.entity_id] = entity.source_hash
+
+        if not candidates:
+            return None
+
+        from airweave.db.session import get_db_context
+
+        async with get_db_context() as db:
+            existing = await self._entity_repo.bulk_get_by_entity_sync_and_definition(
+                db=db,
+                sync_id=sync_context.sync.id,
+                entity_requests=candidates,
+            )
+
+        # Build result: only include entries where source_hash matches AND content_hash exists
+        result: Dict[str, str] = {}
+        for (eid, _def_name), db_row in existing.items():
+            if not db_row.source_hash or not db_row.content_hash:
+                continue
+
+            if source_hashes.get(eid) == db_row.source_hash:
+                result[eid] = db_row.content_hash
+
+        if result:
+            sync_context.logger.debug(
+                f"Source-hash matched {len(result)}/{len(candidates)} file entities "
+                f"— reusing stored content_hash"
+            )
+
+        return result if result else None
 
     # -------------------------------------------------------------------------
     # Phase 4: Handle KEEP-only batches

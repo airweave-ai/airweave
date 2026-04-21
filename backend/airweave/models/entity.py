@@ -38,6 +38,16 @@ class Entity(OrganizationBase):
         comment="Entity definition short_name from the registry (e.g. asana_task_entity)",
     )
     hash: Mapped[str] = mapped_column(String, nullable=False)
+    source_hash: Mapped[Optional[str]] = mapped_column(
+        String,
+        nullable=True,
+        comment="Prefixed source-native content hash (e.g. sha256:e3b0c44...) for download-skip",
+    )
+    content_hash: Mapped[Optional[str]] = mapped_column(
+        String,
+        nullable=True,
+        comment="SHA256 hex digest of file content bytes, reused when source_hash matches",
+    )
 
     # Add back references
     sync_job: Mapped["SyncJob"] = relationship(
@@ -68,5 +78,12 @@ class Entity(OrganizationBase):
             "idx_entity_sync_id_entity_def_short_name",
             "sync_id",
             "entity_definition_short_name",
+        ),
+        Index(
+            "idx_entity_sync_id_entity_id_source_hash",
+            "sync_id",
+            "entity_id",
+            "entity_definition_short_name",
+            "source_hash",
         ),
     )

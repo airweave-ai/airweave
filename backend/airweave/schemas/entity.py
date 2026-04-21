@@ -15,6 +15,8 @@ class EntityBase(BaseModel):
     entity_id: str
     entity_definition_short_name: Optional[str] = None
     hash: str
+    source_hash: Optional[str] = None
+    content_hash: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -33,6 +35,8 @@ class EntityUpdate(BaseModel):
     entity_id: Optional[str] = None
     entity_definition_short_name: Optional[str] = None
     hash: Optional[str] = None
+    source_hash: Optional[str] = None
+    content_hash: Optional[str] = None
 
 
 class EntityInDBBase(EntityBase):

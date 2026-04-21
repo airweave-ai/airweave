@@ -53,6 +53,7 @@ from airweave.domains.sync_pipeline.protocols import (
     ChunkEmbedProcessorProtocol,
     SyncFactoryProtocol,
 )
+from airweave.domains.sync_pipeline.source_hash_lookup import SourceHashLookup
 from airweave.domains.sync_pipeline.stream import AsyncSourceStream
 from airweave.domains.sync_pipeline.worker_pool import AsyncWorkerPool
 from airweave.domains.syncs.cursors.cursor import SyncCursor
@@ -228,7 +229,7 @@ class SyncFactory(SyncFactoryProtocol):
             sync_context, runtime, destinations, resolved_config
         )
         access_control_pipeline = self._build_access_control_pipeline(sync_context)
-        stream = self._build_stream(runtime, source_result, sync_context)
+        stream = await self._build_stream(db, runtime, source_result, sync_context)
 
         # 5. Create orchestrator
         orchestrator = SyncOrchestrator(
@@ -294,6 +295,7 @@ class SyncFactory(SyncFactoryProtocol):
             action_resolver=action_resolver,
             action_dispatcher=dispatcher,
             entity_repo=self._entity_repo,
+            entity_registry=self._entity_definition_registry,
         )
 
     def _build_access_control_pipeline(self, sync_context: SyncContext) -> AccessControlPipeline:
@@ -309,18 +311,26 @@ class SyncFactory(SyncFactoryProtocol):
             acl_repo=self._acl_repo,
         )
 
-    def _build_stream(
+    async def _build_stream(
         self,
+        db: AsyncSession,
         runtime: SyncRuntime,
         source_result: SourceBuildResult,
         sync_context: SyncContext,
     ) -> AsyncSourceStream:
         """Build the async source stream from the source generator."""
+        source_hash_lookup = SourceHashLookup(
+            sync_id=sync_context.sync.id,
+            logger=sync_context.logger,
+        )
+        await source_hash_lookup.prefetch(db)
+
         return AsyncSourceStream(
             source_generator=runtime.source.generate_entities(
                 cursor=runtime.cursor,
                 files=source_result.files,
                 node_selections=source_result.node_selections,
+                source_hash_lookup=source_hash_lookup,
             ),
             queue_size=10000,
             logger=sync_context.logger,

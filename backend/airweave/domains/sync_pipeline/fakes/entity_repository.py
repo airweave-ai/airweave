@@ -1,6 +1,6 @@
 """Fake entity repository for testing."""
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,7 +31,12 @@ class FakeEntityRepository(EntityRepositoryProtocol):
     async def bulk_create(self, db: AsyncSession, *, objs: list, ctx: BaseContext) -> List[Entity]:
         return []
 
-    async def bulk_update_hash(self, db: AsyncSession, *, rows: List[Tuple[UUID, str]]) -> None:
+    async def bulk_update_hash(
+        self,
+        db: AsyncSession,
+        *,
+        rows: list[Tuple[UUID, str, Optional[str], Optional[str]]],
+    ) -> None:
         pass
 
     async def bulk_remove(

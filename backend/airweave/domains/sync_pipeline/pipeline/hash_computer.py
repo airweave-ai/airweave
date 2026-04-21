@@ -3,7 +3,7 @@
 import asyncio
 import hashlib
 import json
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from airweave.core.shared_models import AirweaveFieldFlag
 from airweave.domains.sync_pipeline.async_helpers import run_in_thread_pool
@@ -33,6 +33,7 @@ class HashComputer:
         entities: List[BaseEntity],
         sync_context: "SyncContext",
         runtime: "SyncRuntime",
+        stored_data: Optional[Dict[str, str]] = None,
     ) -> None:
         """Compute hashes for entire batch and set on entity.airweave_system_metadata.hash.
 
@@ -40,6 +41,8 @@ class HashComputer:
             entities: List of entities to compute hashes for
             sync_context: Sync context with logger
             runtime: Sync runtime with live services
+            stored_data: Mapping of entity_id -> stored content_hash for entities
+                whose source_hash matched. Allows skipping file reads.
 
         Note:
             Modifies entities in-place, setting airweave_system_metadata.hash.
@@ -52,7 +55,9 @@ class HashComputer:
             return
 
         # Compute all hashes concurrently with semaphore control
-        results = await self._compute_hashes_concurrently(entities, sync_context)
+        results = await self._compute_hashes_concurrently(
+            entities, sync_context, stored_data=stored_data
+        )
 
         # Process results and handle failures
         await self._process_hash_results(entities, results, sync_context, runtime)
@@ -60,11 +65,17 @@ class HashComputer:
         # Validate all remaining entities have hash set
         self._validate_hashes(entities)
 
-    async def compute_for_entity(self, entity: BaseEntity) -> Optional[str]:
+    async def compute_for_entity(
+        self,
+        entity: BaseEntity,
+        stored_content_hash: Optional[str] = None,
+    ) -> Optional[str]:
         """Compute stable content hash for a single entity.
 
         Args:
             entity: Entity to compute hash for
+            stored_content_hash: If provided, reuse this content hash instead of reading
+                the file. Used when source_hash matched the stored value.
 
         Returns:
             SHA256 hash hex digest, or None on failure
@@ -78,8 +89,14 @@ class HashComputer:
 
             # Step 2: For file entities, compute and add content hash
             if isinstance(entity, (FileEntity, CodeFileEntity)):
-                content_hash = await self._compute_file_content_hash(entity)
+                if stored_content_hash is not None:
+                    content_hash = stored_content_hash
+                else:
+                    content_hash = await self._compute_file_content_hash(entity)
                 entity_dict["_content_hash"] = content_hash
+                # Store on entity metadata for persistence
+                if entity.airweave_system_metadata is not None:
+                    entity.airweave_system_metadata._computed_content_hash = content_hash
 
             # Step 3: Exclude volatile fields
             content_dict = self._exclude_volatile_fields(entity, entity_dict)
@@ -100,12 +117,14 @@ class HashComputer:
         self,
         entities: List[BaseEntity],
         sync_context: "SyncContext",
+        stored_data: Optional[Dict[str, str]] = None,
     ) -> List[Tuple[Tuple[str, str], Optional[str]]]:
         """Compute hashes for all entities concurrently with semaphore control.
 
         Args:
             entities: Entities to hash
             sync_context: Sync context with logger
+            stored_data: Mapping of entity_id -> stored content_hash
 
         Returns:
             List of ((entity_type, entity_id), hash_value) tuples
@@ -118,8 +137,14 @@ class HashComputer:
         ) -> Tuple[Tuple[str, str], Optional[str]]:
             async with semaphore:
                 entity_key = (entity.__class__.__name__, entity.entity_id)
+                # Look up stored content_hash for source-hash-matched entities
+                reuse_content_hash: Optional[str] = None
+                if stored_data and entity.entity_id:
+                    reuse_content_hash = stored_data.get(entity.entity_id)
                 try:
-                    hash_value = await self.compute_for_entity(entity)
+                    hash_value = await self.compute_for_entity(
+                        entity, stored_content_hash=reuse_content_hash
+                    )
                     return entity_key, hash_value
                 except EntityProcessingError as e:
                     sync_context.logger.warning(
