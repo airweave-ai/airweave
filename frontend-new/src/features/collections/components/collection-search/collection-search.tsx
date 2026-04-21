@@ -16,13 +16,7 @@ import {
   InputGroupButton,
   InputGroupTextarea,
 } from '@/shared/ui/input-group';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/shared/ui/select';
+import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 
 const collectionSearchQuerySchema = z
   .string()
@@ -157,28 +151,25 @@ export function CollectionSearch({
               align="block-end"
               className="w-full items-center justify-between gap-3 px-4 pb-4"
             >
-              <Select
-                disabled={disabled}
+              <Tabs
+                className="shrink-0"
                 value={tier}
-                onValueChange={(value: CollectionSearchTierName) =>
-                  handleTierChange(value)
+                onValueChange={(value) =>
+                  handleTierChange(value as CollectionSearchTierName)
                 }
               >
-                <SelectTrigger
-                  size="sm"
-                  className="min-w-23 shrink-0 border-none dark:bg-transparent"
-                >
-                  <SelectValue aria-label={collectionSearchTierLabels[tier]} />
-                </SelectTrigger>
-
-                <SelectContent position="popper">
+                <TabsList aria-label="Search tier" className="!h-9">
                   {collectionSearchTierNames.map((tierName) => (
-                    <SelectItem key={tierName} value={tierName}>
+                    <TabsTrigger
+                      key={tierName}
+                      disabled={disabled}
+                      value={tierName}
+                    >
                       {collectionSearchTierLabels[tierName]}
-                    </SelectItem>
+                    </TabsTrigger>
                   ))}
-                </SelectContent>
-              </Select>
+                </TabsList>
+              </Tabs>
 
               <form.Subscribe selector={(state) => state.canSubmit}>
                 {(canSubmit) => {
