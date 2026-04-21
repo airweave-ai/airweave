@@ -62,7 +62,9 @@ const collectionSearchQueryDefaults = {
 
 export function createCollectionMutationOptions(organizationId: string) {
   return mutationOptions({
-    ...createCollectionsPostMutation(withOrganizationHeaders({ organizationId })),
+    ...createCollectionsPostMutation(
+      withOrganizationHeaders({ organizationId }),
+    ),
     meta: {
       errorToast: false,
       invalidateTags: collectionInvalidationTags,

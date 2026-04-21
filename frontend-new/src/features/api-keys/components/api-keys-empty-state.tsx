@@ -40,11 +40,7 @@ export function ApiKeysNoSearchResultsState({
   );
 }
 
-export function ApiKeysEmptyState({
-  action,
-}: {
-  action?: ReactNode;
-}) {
+export function ApiKeysEmptyState({ action }: { action?: ReactNode }) {
   return (
     <ApiKeysEmptyStateCard
       action={action}

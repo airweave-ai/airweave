@@ -139,26 +139,23 @@ export function ConnectSourceAuthErrorPage({ error }: ErrorComponentProps) {
       }),
     [collectionId, navigate],
   );
-  const handleReauthorized = React.useCallback(
-    () => {
-      if (!sourceConnectionId) {
-        return;
-      }
+  const handleReauthorized = React.useCallback(() => {
+    if (!sourceConnectionId) {
+      return;
+    }
 
-      return navigate({
-        params: {
-          collectionId,
-          source: sourceShortName,
-        },
-        replace: true,
-        search: {
-          source_connection_id: sourceConnectionId,
-        },
-        to: '/collections/$collectionId/connect-source/$source/auth',
-      });
-    },
-    [collectionId, navigate, sourceConnectionId, sourceShortName],
-  );
+    return navigate({
+      params: {
+        collectionId,
+        source: sourceShortName,
+      },
+      replace: true,
+      search: {
+        source_connection_id: sourceConnectionId,
+      },
+      to: '/collections/$collectionId/connect-source/$source/auth',
+    });
+  }, [collectionId, navigate, sourceConnectionId, sourceShortName]);
   const sourceForLayout = source ?? {
     name: getFallbackSourceName(sourceShortName),
     short_name: sourceShortName,

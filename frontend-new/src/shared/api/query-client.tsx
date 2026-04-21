@@ -18,12 +18,18 @@ export const queryClient = new QueryClient({
       const message =
         typeof mutation.meta?.errorToast === 'string'
           ? mutation.meta.errorToast
-          : getApiErrorMessage(error, 'Something went wrong.') ??
-            'Something went wrong.';
+          : (getApiErrorMessage(error, 'Something went wrong.') ??
+            'Something went wrong.');
 
       toast.error(message);
     },
-    onSuccess: async (_data, _variables, _onMutateResult, mutation, context) => {
+    onSuccess: async (
+      _data,
+      _variables,
+      _onMutateResult,
+      mutation,
+      context,
+    ) => {
       const tags = mutation.meta?.invalidateTags;
 
       if (!tags?.length) {
