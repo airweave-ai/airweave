@@ -167,7 +167,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}
 
       - name: Trivy image scan
-        uses: aquasecurity/trivy-action@876cf04c63f65e9799bcf1043b584e72469c7143 # v0.34.2
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           image-ref: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}:${{ steps.meta.outputs.version }}
           format: sarif
