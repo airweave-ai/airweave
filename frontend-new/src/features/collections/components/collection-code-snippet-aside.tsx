@@ -1,7 +1,8 @@
 import * as React from 'react';
 import { IconLayoutSidebarRight } from '@tabler/icons-react';
 import { createCollectionCodeSnippets } from '../lib/collection-code-snippets';
-import type { CollectionSearchTierName } from './collection-search/use-collection-search-tiers';
+import { getCollectionSearchConfig } from '../lib/collection-search-request';
+import type { CollectionSearchWorkspaceForm } from './collection-search/use-collection-search-workspace';
 import {
   CodeSnippetAside,
   CodeSnippetAsideContent,
@@ -22,20 +23,53 @@ type CollectionCodeSnippetAsideLanguage =
 export function CollectionCodeSnippetAside({
   collapsed,
   collectionId,
+  form,
   onCollapseToggle,
-  tier,
 }: {
   collapsed: boolean;
   collectionId: string;
+  form: CollectionSearchWorkspaceForm;
   onCollapseToggle: () => void;
-  tier: CollectionSearchTierName;
+}) {
+  return (
+    <form.Subscribe
+      selector={(state) => ({
+        config: getCollectionSearchConfig(state.values),
+        query: state.values.query,
+      })}
+    >
+      {({ config, query }) => (
+        <CollectionCodeSnippetAsideContent
+          collapsed={collapsed}
+          collectionId={collectionId}
+          config={config}
+          onCollapseToggle={onCollapseToggle}
+          query={query}
+        />
+      )}
+    </form.Subscribe>
+  );
+}
+
+function CollectionCodeSnippetAsideContent({
+  collapsed,
+  collectionId,
+  config,
+  onCollapseToggle,
+  query,
+}: {
+  collapsed: boolean;
+  collectionId: string;
+  config: ReturnType<typeof getCollectionSearchConfig>;
+  onCollapseToggle: () => void;
+  query: string;
 }) {
   const { copied, copy } = useCopyToClipboard();
   const [language, setLanguage] =
     React.useState<CollectionCodeSnippetAsideLanguage>('python');
   const snippets = React.useMemo(
-    () => createCollectionCodeSnippets({ collectionId, tier }),
-    [collectionId, tier],
+    () => createCollectionCodeSnippets({ collectionId, config, query }),
+    [collectionId, config, query],
   );
   const activeSnippet = snippets[language];
 

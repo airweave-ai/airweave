@@ -5,7 +5,13 @@ import {
   classicCollectionSearchQueryOptions,
   instantCollectionSearchQueryOptions,
 } from '../../api';
+import {
+  getDefaultCollectionSearchRequest,
+  isCollectionSearchRequestEqual,
+} from '../../lib/collection-search-request';
 import type { QueryKey } from '@tanstack/react-query';
+import type { CollectionSearchTierName } from '../../lib/collection-search-model';
+import type { CollectionSearchRequest } from '../../lib/collection-search-request';
 import type {
   SearchAgenticDoneEvent,
   SearchAgenticStreamEvent,
@@ -14,33 +20,18 @@ import type {
 import { getApiErrorMessage } from '@/shared/api';
 import { useCurrentOrganizationId } from '@/shared/session';
 
-export const collectionSearchTierNames = [
-  'instant',
-  'classic',
-  'agentic',
-] as const;
-
-export type CollectionSearchTierName =
-  (typeof collectionSearchTierNames)[number];
-
-export const collectionSearchTierLabels: Record<
-  CollectionSearchTierName,
-  string
-> = {
-  instant: 'Instant',
-  classic: 'Classic',
-  agentic: 'Agentic',
-};
-
-type CollectionSearchRequest = {
-  collectionId: string;
-  query: string;
-};
-
 type JsonCollectionSearchQueryOptions = ReturnType<
   | typeof classicCollectionSearchQueryOptions
   | typeof instantCollectionSearchQueryOptions
 >;
+
+type JsonCollectionSearchRequest = Extract<
+  CollectionSearchRequest,
+  { tier: 'classic' | 'instant' }
+>;
+
+type CollectionSearchTierRequest<TTier extends CollectionSearchTierName> =
+  Extract<CollectionSearchRequest, { tier: TTier }>;
 
 export type CollectionSearchReasoningEvent = Extract<
   SearchAgenticStreamEvent,
@@ -57,23 +48,30 @@ export type CollectionSearchTierState = {
   rawFinalEvent?: SearchAgenticDoneEvent;
 };
 
-export type CollectionSearchTierController = {
+export type CollectionSearchTierController<
+  TRequest extends CollectionSearchRequest = CollectionSearchRequest,
+> = {
   cancel: () => void;
   refetch: () => void;
   state: CollectionSearchTierState;
-  submit: (query: string) => void;
+  submit: (request: TRequest) => void;
 };
 
-export type CollectionSearchTiers = Record<
-  CollectionSearchTierName,
-  CollectionSearchTierController
->;
+export type CollectionSearchTiers = {
+  agentic: CollectionSearchTierController<
+    CollectionSearchTierRequest<'agentic'>
+  >;
+  classic: CollectionSearchTierController<
+    CollectionSearchTierRequest<'classic'>
+  >;
+  instant: CollectionSearchTierController<
+    CollectionSearchTierRequest<'instant'>
+  >;
+};
 
 export function useCollectionSearchTiers({
-  agenticThinking = true,
   collectionId,
 }: {
-  agenticThinking?: boolean;
   collectionId: string;
 }): CollectionSearchTiers {
   const organizationId = useCurrentOrganizationId();
@@ -83,15 +81,16 @@ export function useCollectionSearchTiers({
     collectionId,
     errorMessage: 'Instant search failed. Try again.',
     organizationId,
+    tier: 'instant',
   });
   const classic = useJsonCollectionSearchTier({
     buildQueryOptions: classicCollectionSearchQueryOptions,
     collectionId,
     errorMessage: 'Search failed. Try again.',
     organizationId,
+    tier: 'classic',
   });
   const agentic = useAgenticCollectionSearchTier({
-    thinking: agenticThinking,
     collectionId,
     organizationId,
   });
@@ -106,41 +105,39 @@ export function useCollectionSearchTiers({
   );
 }
 
-function useJsonCollectionSearchTier({
+function useJsonCollectionSearchTier<
+  TRequest extends JsonCollectionSearchRequest,
+>({
   buildQueryOptions,
   collectionId,
   errorMessage,
   organizationId,
+  tier,
 }: {
   buildQueryOptions: (
     organizationId: string,
-    request: CollectionSearchRequest,
+    request: TRequest,
   ) => JsonCollectionSearchQueryOptions;
   collectionId: string;
   errorMessage: string;
   organizationId: string;
-}): CollectionSearchTierController {
+  tier: TRequest['tier'];
+}): CollectionSearchTierController<TRequest> {
   const queryClient = useQueryClient();
+  const defaultRequest = React.useMemo(
+    () => getDefaultCollectionSearchRequest(collectionId, tier) as TRequest,
+    [collectionId, tier],
+  );
   const [submittedRequest, setSubmittedRequest] =
-    React.useState<CollectionSearchRequest | null>(null);
+    React.useState<TRequest | null>(null);
   const activeRequest = React.useMemo(
     () =>
       submittedRequest?.collectionId === collectionId ? submittedRequest : null,
     [collectionId, submittedRequest],
   );
   const queryOptions = React.useMemo(
-    () =>
-      buildQueryOptions(organizationId, {
-        collectionId: activeRequest?.collectionId ?? collectionId,
-        query: activeRequest?.query ?? '',
-      }),
-    [
-      activeRequest?.collectionId,
-      activeRequest?.query,
-      buildQueryOptions,
-      collectionId,
-      organizationId,
-    ],
+    () => buildQueryOptions(organizationId, activeRequest ?? defaultRequest),
+    [activeRequest, buildQueryOptions, defaultRequest, organizationId],
   );
   const query = useQuery({
     ...queryOptions,
@@ -148,18 +145,15 @@ function useJsonCollectionSearchTier({
   });
 
   const submit = React.useCallback(
-    (queryText: string) => {
-      if (activeRequest?.query === queryText) {
+    (request: TRequest) => {
+      if (isCollectionSearchRequestEqual(activeRequest, request)) {
         void query.refetch();
         return;
       }
 
-      setSubmittedRequest({
-        collectionId,
-        query: queryText,
-      });
+      setSubmittedRequest(request);
     },
-    [activeRequest?.query, collectionId, query],
+    [activeRequest, query],
   );
 
   const cancel = React.useCallback(() => {
@@ -231,15 +225,21 @@ function useJsonCollectionSearchTier({
 function useAgenticCollectionSearchTier({
   collectionId,
   organizationId,
-  thinking,
 }: {
   collectionId: string;
   organizationId: string;
-  thinking?: boolean;
-}): CollectionSearchTierController {
+}): CollectionSearchTierController<CollectionSearchTierRequest<'agentic'>> {
   const queryClient = useQueryClient();
+  const defaultRequest = React.useMemo(
+    () =>
+      getDefaultCollectionSearchRequest(
+        collectionId,
+        'agentic',
+      ) as CollectionSearchTierRequest<'agentic'>,
+    [collectionId],
+  );
   const [submittedRequest, setSubmittedRequest] =
-    React.useState<CollectionSearchRequest | null>(null);
+    React.useState<CollectionSearchTierRequest<'agentic'> | null>(null);
   const activeRequest = React.useMemo(
     () =>
       submittedRequest?.collectionId === collectionId ? submittedRequest : null,
@@ -247,18 +247,11 @@ function useAgenticCollectionSearchTier({
   );
   const queryOptions = React.useMemo(
     () =>
-      agenticCollectionSearchStreamQueryOptions(organizationId, {
-        collectionId: activeRequest?.collectionId ?? collectionId,
-        query: activeRequest?.query ?? '',
-        thinking,
-      }),
-    [
-      activeRequest?.collectionId,
-      activeRequest?.query,
-      collectionId,
-      organizationId,
-      thinking,
-    ],
+      agenticCollectionSearchStreamQueryOptions(
+        organizationId,
+        activeRequest ?? defaultRequest,
+      ),
+    [activeRequest, defaultRequest, organizationId],
   );
   const query = useQuery({
     ...queryOptions,
@@ -266,18 +259,15 @@ function useAgenticCollectionSearchTier({
   });
 
   const submit = React.useCallback(
-    (queryText: string) => {
-      if (activeRequest?.query === queryText) {
+    (request: CollectionSearchTierRequest<'agentic'>) => {
+      if (isCollectionSearchRequestEqual(activeRequest, request)) {
         void query.refetch();
         return;
       }
 
-      setSubmittedRequest({
-        collectionId,
-        query: queryText,
-      });
+      setSubmittedRequest(request);
     },
-    [activeRequest?.query, collectionId, query],
+    [activeRequest, query],
   );
 
   const cancel = React.useCallback(() => {

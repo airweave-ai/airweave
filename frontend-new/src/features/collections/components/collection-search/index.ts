@@ -1,2 +1,2 @@
 export { CollectionSearch } from './collection-search';
-export type { CollectionSearchTierName } from './use-collection-search-tiers';
+export { useCollectionSearchWorkspace } from './use-collection-search-workspace';

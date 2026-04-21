@@ -6,6 +6,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import type { QueryClient } from '@tanstack/react-query';
+import type { CollectionSearchRequest } from './lib/collection-search-request';
 import {
   classicSearchCollectionsReadableIdSearchClassicPostOptions,
   countCollectionsCountGetOptions,
@@ -25,14 +26,20 @@ type CollectionListParams = NonNullable<
   Parameters<typeof listCollectionsGetOptions>[0]
 >;
 
-type CollectionSearchParams = {
-  collectionId: string;
-  query: string;
-};
+type ClassicCollectionSearchParams = Extract<
+  CollectionSearchRequest,
+  { tier: 'classic' }
+>;
 
-type AgenticCollectionSearchParams = CollectionSearchParams & {
-  thinking?: boolean;
-};
+type InstantCollectionSearchParams = Extract<
+  CollectionSearchRequest,
+  { tier: 'instant' }
+>;
+
+type AgenticCollectionSearchParams = Extract<
+  CollectionSearchRequest,
+  { tier: 'agentic' }
+>;
 
 type ClassicCollectionSearchQueryOptions = NonNullable<
   Parameters<
@@ -88,7 +95,7 @@ export function useCreateCollectionMutation() {
 
 export function classicCollectionSearchQueryOptions(
   organizationId: string,
-  { collectionId, query }: CollectionSearchParams,
+  { collectionId, query }: ClassicCollectionSearchParams,
 ) {
   const params: ClassicCollectionSearchQueryOptions = {
     body: { query },
@@ -107,10 +114,13 @@ export function classicCollectionSearchQueryOptions(
 
 export function instantCollectionSearchQueryOptions(
   organizationId: string,
-  { collectionId, query }: CollectionSearchParams,
+  { collectionId, query, retrievalStrategy }: InstantCollectionSearchParams,
 ) {
   const params: InstantCollectionSearchQueryOptions = {
-    body: { query },
+    body: {
+      query,
+      retrieval_strategy: retrievalStrategy,
+    },
     path: {
       readable_id: collectionId,
     },
@@ -147,7 +157,7 @@ export function agenticCollectionSearchStreamQueryOptions(
 }
 
 export function useClassicCollectionSearchQueryOptions(
-  params: CollectionSearchParams | null,
+  params: Pick<ClassicCollectionSearchParams, 'collectionId' | 'query'> | null,
 ) {
   const currentOrganizationId = useCurrentOrganizationId();
 
@@ -156,6 +166,7 @@ export function useClassicCollectionSearchQueryOptions(
       classicCollectionSearchQueryOptions(currentOrganizationId, {
         collectionId: params?.collectionId ?? '',
         query: params?.query ?? '',
+        tier: 'classic',
       }),
     [currentOrganizationId, params?.collectionId, params?.query],
   );
