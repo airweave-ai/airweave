@@ -98,32 +98,39 @@ export function createCollectionCodeSnippets({
   const queryLiteral = JSON.stringify(snippetQuery);
   const nodeMethod =
     tier === 'instant'
-      ? 'searchInstant'
+      ? 'search.instant'
       : tier === 'agentic'
-        ? 'searchAgentic'
-        : 'searchClassic';
+        ? 'search.agentic'
+        : 'search.classic';
   const pythonMethod =
     tier === 'instant'
-      ? 'search_instant'
+      ? 'search.instant'
       : tier === 'agentic'
-        ? 'search_agentic'
-        : 'search_classic';
-  const nodeRequestLines = [`      query: ${queryLiteral}`];
-  const pythonRequestLines = [`        "query": ${queryLiteral}`];
+        ? 'search.agentic'
+        : 'search.classic';
+  const nodeRequestLines = [`    query: ${queryLiteral}`];
+  const pythonRequestLines = [`    query=${queryLiteral}`];
 
   if (tier === 'instant') {
     nodeRequestLines.push(
-      `      retrievalStrategy: "${config.instant.retrievalStrategy}"`,
+      `    retrieval_strategy: "${config.instant.retrievalStrategy}"`,
     );
     pythonRequestLines.push(
-      `        "retrieval_strategy": "${config.instant.retrievalStrategy}"`,
+      `    retrieval_strategy="${config.instant.retrievalStrategy}"`,
     );
   }
 
   if (tier === 'agentic') {
-    nodeRequestLines.push(`      thinking: ${String(config.agentic.thinking)}`);
+    nodeRequestLines.push(`    thinking: ${String(config.agentic.thinking)}`);
     pythonRequestLines.push(
-      `        "thinking": ${config.agentic.thinking ? 'True' : 'False'}`,
+      `    thinking=${config.agentic.thinking ? 'True' : 'False'}`,
+    );
+  }
+
+  if (config.filter.length > 0) {
+    nodeRequestLines.push(formatNodeRequestProperty('filter', config.filter));
+    pythonRequestLines.push(
+      formatPythonRequestProperty('filter', config.filter),
     );
   }
 
@@ -138,9 +145,7 @@ const client = new AirweaveSDKClient({
 const response = await client.collections.${nodeMethod}(
   "${collectionId}",
   {
-    request: {
 ${nodeRequestLines.join(',\n')}
-    },
   },
 );`,
       responseCode: tierResponseSnippets[tier],
@@ -154,11 +159,85 @@ client = AirweaveSDK(
 
 response = client.collections.${pythonMethod}(
     readable_id="${collectionId}",
-    request={
 ${pythonRequestLines.join(',\n')}
-    },
 )`,
       responseCode: tierPythonResponseSnippets[tier],
     },
   };
+}
+
+function formatNodeRequestProperty(name: string, value: unknown) {
+  const literal = JSON.stringify(value, null, 2);
+
+  return literal
+    .split('\n')
+    .map((line, index) =>
+      index === 0 ? `    ${name}: ${line}` : `    ${line}`,
+    )
+    .join('\n');
+}
+
+function formatPythonRequestProperty(name: string, value: unknown) {
+  const literal = formatPythonLiteral(value);
+
+  return literal
+    .split('\n')
+    .map((line, index) =>
+      index === 0 ? `    ${name}=${line}` : `    ${line}`,
+    )
+    .join('\n');
+}
+
+function formatPythonLiteral(value: unknown, indentLevel = 0): string {
+  const indent = '  '.repeat(indentLevel);
+  const childIndent = '  '.repeat(indentLevel + 1);
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return '[]';
+    }
+
+    return `[
+${value
+  .map((item) => `${childIndent}${formatPythonLiteral(item, indentLevel + 1)}`)
+  .join(',\n')}
+${indent}]`;
+  }
+
+  if (isPythonLiteralObject(value)) {
+    const entries = Object.entries(value);
+
+    if (entries.length === 0) {
+      return '{}';
+    }
+
+    return `{
+${entries
+  .map(
+    ([key, entryValue]) =>
+      `${childIndent}${JSON.stringify(key)}: ${formatPythonLiteral(entryValue, indentLevel + 1)}`,
+  )
+  .join(',\n')}
+${indent}}`;
+  }
+
+  if (typeof value === 'string') {
+    return JSON.stringify(value);
+  }
+
+  if (typeof value === 'number') {
+    return String(value);
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'True' : 'False';
+  }
+
+  return 'None';
+}
+
+function isPythonLiteralObject(
+  value: unknown,
+): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }

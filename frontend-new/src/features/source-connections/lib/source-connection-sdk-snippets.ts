@@ -14,13 +14,20 @@ const client = new AirweaveSDKClient({
   apiKey: "YOUR_API_KEY",
 });
 
-const authUrl = "https://api.airweave.ai/source-connections/authorize/abc123";
-window.location.assign(authUrl);
+const sourceConnection = {
+  id: "source-connection-id",
+  auth: {
+    auth_url: "https://api.airweave.ai/source-connections/authorize/abc123",
+    claim_token: "claim-token",
+  },
+};
+
+window.location.assign(sourceConnection.auth.auth_url);
 
 const verifiedConnection = await client.sourceConnections.verifyOauth(
-  "source-connection-id",
+  sourceConnection.id,
   {
-    claimToken: "claim-token",
+    claim_token: sourceConnection.auth.claim_token,
   },
 );`,
       responseCode: `const response = {
@@ -48,12 +55,19 @@ client = AirweaveSDK(
     api_key="YOUR_API_KEY",
 )
 
-auth_url = "https://api.airweave.ai/source-connections/authorize/abc123"
-print(auth_url)
+source_connection = {
+    "id": "source-connection-id",
+    "auth": {
+        "auth_url": "https://api.airweave.ai/source-connections/authorize/abc123",
+        "claim_token": "claim-token",
+    },
+}
+
+print(source_connection["auth"]["auth_url"])
 
 verified_connection = client.source_connections.verify_oauth(
-    id="source-connection-id",
-    claim_token="claim-token",
+    source_connection_id=source_connection["id"],
+    claim_token=source_connection["auth"]["claim_token"],
 )`,
       responseCode: `{
     "id": "source-connection-id",
@@ -84,12 +98,12 @@ const client = new AirweaveSDKClient({
 
 const sourceConnection = await client.sourceConnections.create({
   name: "Example Connection",
-  shortName: "your_source_short_name",
-  readableCollectionId: "your-collection-id",
+  short_name: "your_source_short_name",
+  readable_collection_id: "your-collection-id",
   authentication: {
     redirect_uri: "https://your-app.com/connect-source/auth/callback",
   },
-  syncImmediately: false,
+  sync_immediately: false,
 });`,
       responseCode: `const response = {
   id: "source-connection-id",
