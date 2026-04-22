@@ -5,46 +5,46 @@ edit-this-page-url: https://github.com/airweave-ai/airweave/blob/main/fern/docs/
 slug: search
 ---
 
-## Instant Search
+## Instant search
 
 `POST /collections/{id}/search/instant`
 
-Direct vector search. Use when speed is critical (~0.5sec).
+Use this direct vector search when speed is critical (~0.5sec).
 
-The only parameter unique to instant is `retrieval_strategy`, which controls how the vector database matches your query:
+The only parameter unique to instant search is `retrieval_strategy`, which controls how the vector database matches your query:
 
-- **`hybrid`** (default) — Combines semantic and keyword search via Reciprocal Rank Fusion. Best for most queries.
-- **`semantic`** — Dense vector cosine similarity. Finds conceptually similar content even when wording differs.
-- **`keyword`** — BM25 text matching. Only returns content with your exact terms. Use for error codes, identifiers, or known phrases.
+- **`hybrid`** (default) combines semantic and keyword search via Reciprocal Rank Fusion. It's best for most queries.
+- **`semantic`** uses dense vector cosine similarity. It finds conceptually similar content even when wording differs.
+- **`keyword`** uses BM25 text matching and only returns content with your exact terms. Use it for error codes, identifiers, or known phrases.
 
 In classic and agentic search, the retrieval strategy is chosen automatically.
 
-## Classic Search
+## Classic search
 
 `POST /collections/{id}/search/classic`
 
-AI-optimized search strategy. Sensible default for most use cases (~2sec).
+Classic search uses an AI-optimized search strategy. It's a sensible default for most use cases (~2sec).
 
 An LLM analyzes your query and generates an optimized search strategy.
 
-## Agentic Search
+## Agentic search
 
 `POST /collections/{id}/search/agentic`
 
-Agent that navigates through your collection to find the best results. Use when recall matters more than latency (&lt;2min).
+Agentic search uses an agent to navigate through your collection to find the best results. Use it when recall matters more than latency (&lt;2min).
 
 An AI agent iteratively searches your data using tool calling. It searches with multiple strategies, reads full documents, navigates entity hierarchies (parent/child/sibling), and builds a comprehensive result set.
 
-Two parameters unique to agentic:
+Two parameters are unique to agentic search:
 
-- **`thinking`** — Enables extended chain-of-thought reasoning before tool calls. Better search strategies, but slower and uses more tokens. Useful for complex or ambiguous queries.
-- **`limit`** — Unlike instant/classic where the vector database always returns up to `limit` results, the agent collects results based on relevance. It may return fewer if it decides there aren't enough matches. Setting a limit caps the maximum — if the agent collects more, results are truncated. When `null` (default), there is no cap.
+- **`thinking`** enables extended chain-of-thought reasoning before tool calls. It results in better search strategies, but is slower and uses more tokens. It's useful for complex or ambiguous queries.
+- **`limit`** enables the agent to collect results based on relevance instead of having the vector data return up to `limit` results like in instant and classic search. The agent may return fewer results if it decides there aren't enough matches. Setting a limit caps the maximum — if the agent collects more, results are truncated. When the `limit` is `null` (default), there is no cap on the number of results.
 
 ### Streaming
 
 `POST /collections/{id}/search/agentic/stream`
 
-Real-time SSE events as the agent works. Events are delivered as `data: {json}\n\n` messages. The stream terminates after a `done` or `error` event.
+Streaming lets you see real-time SSE events as the agent works. Events are delivered as `data: {json}\n\n` messages. The stream terminates after a `done` or `error` event.
 
 <Accordion title="started">
 Emitted once when the search begins.
@@ -64,7 +64,7 @@ Emitted once when the search begins.
 </Accordion>
 
 <Accordion title="thinking">
-Emitted once per iteration after the LLM responds. `thinking` contains extended reasoning (when enabled), `text` contains conversational output before tool calls.
+Emitted once per iteration after the LLM responds. `thinking` contains extended reasoning (when enabled), and `text` contains conversational output before tool calls.
 
 ```json
 {
@@ -82,7 +82,7 @@ Emitted once per iteration after the LLM responds. `thinking` contains extended 
 </Accordion>
 
 <Accordion title="tool_call">
-Emitted after each tool the agent calls. `diagnostics.arguments` has the full tool input, `diagnostics.stats` has the output. The stats shape depends on which tool was called:
+Emitted after each tool the agent calls. `diagnostics.arguments` has the full tool input, and `diagnostics.stats` has the output. The stats shape depends on which tool was called:
 
 <Accordion title="search">
 ```json
@@ -432,9 +432,9 @@ Emitted when the search fails. Also terminates the stream.
 
 ## Filters
 
-Filters constrain search results by metadata. They work across all three tiers.
+Filters constrain search results by metadata. They work across all three tiers (instant, classic, and agentic search).
 
-In classic and agentic search, the AI generates its own filters internally, your filters are **AND'd into every search** it performs, acting as constraints that cannot be bypassed.
+In classic and agentic search, the AI generates its own filters internally. Your filters are **AND'd into every search** it performs, acting as constraints that cannot be bypassed.
 
 ### Structure
 
@@ -457,7 +457,7 @@ This allows expressions like: `(A AND B) OR (C AND D)`
 }
 ```
 
-### Filterable Fields
+### Filterable fields
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -534,7 +534,7 @@ This allows expressions like: `(A AND B) OR (C AND D)`
 }
 ```
 
-**Combine groups with OR — Slack messages OR Notion pages:**
+**Combine groups with OR (Slack messages OR Notion pages):**
 
 ```json
 {
@@ -555,7 +555,7 @@ This allows expressions like: `(A AND B) OR (C AND D)`
 }
 ```
 
-**Navigate hierarchy — find all entities inside a parent:**
+**Navigate hierarchy (find all entities inside a parent):**
 
 ```json
 {
@@ -569,7 +569,7 @@ This allows expressions like: `(A AND B) OR (C AND D)`
 }
 ```
 
-### Validation Rules
+### Validation rules
 
 - Date fields (`created_at`, `updated_at`) require ISO 8601 timestamps (e.g., `2025-01-15T00:00:00Z`)
 - Ordering operators (`greater_than`, `less_than`, etc.) only work on date and numeric fields
@@ -578,9 +578,9 @@ This allows expressions like: `(A AND B) OR (C AND D)`
 - Scalar operators (`equals`, `contains`, etc.) require a single value, not an array
 
 
-## Response Format
+## Response format
 
-All three tiers return the same `SearchV2Response` with a `results` array. See the [API Reference](/api-reference/collections/instant-search) for the full response schema and interactive examples.
+All three search tiers return the same `SearchV2Response` with a `results` array. See the [API Reference](/api-reference/collections/instant-search) for the full response schema and interactive examples.
 
 
 ## Configuring the LLM provider chain
