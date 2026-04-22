@@ -1,4 +1,7 @@
-import type { AirweaveDomainsSearchTypesPlanRetrievalStrategy } from '@/shared/api';
+import type {
+  AirweaveDomainsSearchTypesPlanRetrievalStrategy,
+  FilterGroup,
+} from '@/shared/api';
 
 export const collectionSearchTierNames = [
   'instant',
@@ -40,6 +43,7 @@ export type CollectionSearchConfig = {
   agentic: {
     thinking: boolean;
   };
+  filter: Array<FilterGroup>;
   instant: {
     retrievalStrategy: CollectionSearchInstantRetrievalStrategy;
   };
@@ -54,6 +58,7 @@ export const defaultCollectionSearchConfig: CollectionSearchConfig = {
   agentic: {
     thinking: false,
   },
+  filter: [],
   instant: {
     retrievalStrategy: 'hybrid',
   },

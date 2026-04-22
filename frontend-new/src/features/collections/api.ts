@@ -95,10 +95,13 @@ export function useCreateCollectionMutation() {
 
 export function classicCollectionSearchQueryOptions(
   organizationId: string,
-  { collectionId, query }: ClassicCollectionSearchParams,
+  { collectionId, filter, query }: ClassicCollectionSearchParams,
 ) {
   const params: ClassicCollectionSearchQueryOptions = {
-    body: { query },
+    body: {
+      ...(filter ? { filter } : {}),
+      query,
+    },
     path: {
       readable_id: collectionId,
     },
@@ -114,10 +117,16 @@ export function classicCollectionSearchQueryOptions(
 
 export function instantCollectionSearchQueryOptions(
   organizationId: string,
-  { collectionId, query, retrievalStrategy }: InstantCollectionSearchParams,
+  {
+    collectionId,
+    filter,
+    query,
+    retrievalStrategy,
+  }: InstantCollectionSearchParams,
 ) {
   const params: InstantCollectionSearchQueryOptions = {
     body: {
+      ...(filter ? { filter } : {}),
       query,
       retrieval_strategy: retrievalStrategy,
     },
@@ -136,10 +145,11 @@ export function instantCollectionSearchQueryOptions(
 
 export function agenticCollectionSearchStreamQueryOptions(
   organizationId: string,
-  { collectionId, query, thinking }: AgenticCollectionSearchParams,
+  { collectionId, filter, query, thinking }: AgenticCollectionSearchParams,
 ) {
   const params: AgenticCollectionSearchStreamQueryOptions = {
     body: {
+      ...(filter ? { filter } : {}),
       query,
       thinking,
     },
@@ -157,7 +167,7 @@ export function agenticCollectionSearchStreamQueryOptions(
 }
 
 export function useClassicCollectionSearchQueryOptions(
-  params: Pick<ClassicCollectionSearchParams, 'collectionId' | 'query'> | null,
+  params: Pick<ClassicCollectionSearchParams, 'collectionId' | 'filter' | 'query'> | null,
 ) {
   const currentOrganizationId = useCurrentOrganizationId();
 
@@ -165,10 +175,11 @@ export function useClassicCollectionSearchQueryOptions(
     () =>
       classicCollectionSearchQueryOptions(currentOrganizationId, {
         collectionId: params?.collectionId ?? '',
+        filter: params?.filter,
         query: params?.query ?? '',
         tier: 'classic',
       }),
-    [currentOrganizationId, params?.collectionId, params?.query],
+    [currentOrganizationId, params?.collectionId, params?.filter, params?.query],
   );
 }
 
