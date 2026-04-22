@@ -423,7 +423,7 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
         event_stream(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache, no-transform",
+            "Cache-Control": "no-store, no-transform",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
             "Content-Type": "text/event-stream",
