@@ -124,6 +124,7 @@ class SourceConnectionService(SourceConnectionServiceProtocol):
                     is_active=stats.is_active,
                     last_job_status=last_job_status,
                     last_job_error_category=last_job_error_category,
+                    sync_status=stats.sync_status,
                 )
             )
 
