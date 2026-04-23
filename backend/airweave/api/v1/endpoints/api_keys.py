@@ -10,6 +10,7 @@ from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.router import TrailingSlashRouter
 from airweave.core import credentials
+from airweave.core.config import settings
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.domains.organizations import logic
 
@@ -21,7 +22,13 @@ async def create_api_key(
     *,
     db: AsyncSession = Depends(deps.get_db),
     api_key_in: schemas.APIKeyCreate = Body(default_factory=lambda: schemas.APIKeyCreate()),
-    ctx: ApiContext = deps.require_org_role(logic.can_manage_api_keys, block_api_key_auth=True),
+    # TODO(CASA-29): After PR #1705 merges, verify this matches the new
+    # endpoint signature (create may drop block_api_key_auth).
+    ctx: ApiContext = deps.require_org_role(
+        logic.can_manage_api_keys,
+        block_api_key_auth=True,
+        recent_auth_seconds=settings.REAUTH_MAX_AGE_SECONDS,
+    ),
 ) -> schemas.APIKey:
     """Create a new API key for the current user.
 
@@ -178,7 +185,11 @@ async def rotate_api_key(
     *,
     db: AsyncSession = Depends(deps.get_db),
     id: UUID,
-    ctx: ApiContext = deps.require_org_role(logic.can_manage_api_keys, block_api_key_auth=True),
+    ctx: ApiContext = deps.require_org_role(
+        logic.can_manage_api_keys,
+        block_api_key_auth=True,
+        recent_auth_seconds=settings.REAUTH_MAX_AGE_SECONDS,
+    ),
 ) -> schemas.APIKey:
     """Rotate an API key by creating a new one.
 
@@ -237,7 +248,11 @@ async def delete_api_key(
     *,
     db: AsyncSession = Depends(deps.get_db),
     id: UUID,
-    ctx: ApiContext = deps.require_org_role(logic.can_manage_api_keys, block_api_key_auth=True),
+    ctx: ApiContext = deps.require_org_role(
+        logic.can_manage_api_keys,
+        block_api_key_auth=True,
+        recent_auth_seconds=settings.REAUTH_MAX_AGE_SECONDS,
+    ),
 ) -> schemas.APIKey:
     """Delete an API key.
 
