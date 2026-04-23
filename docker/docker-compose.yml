@@ -157,7 +157,9 @@ services:
       ENABLE_CUDA: 0
       WORKERS_PER_NODE: 1
     healthcheck:
-      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:8080/health" ]
+      # The inference image is reachable via POST /vectors; use Python stdlib
+      # because this image may not include `wget` or `curl`.
+      test: [ "CMD-SHELL", "python -c \"import urllib.request, json; req=urllib.request.Request('http://localhost:8080/vectors', data=json.dumps({'text':'health'}).encode(), headers={'Content-Type':'application/json'}); urllib.request.urlopen(req, timeout=5)\" >/dev/null 2>&1" ]
       interval: 30s
       timeout: 10s
       retries: 3

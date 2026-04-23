@@ -243,6 +243,29 @@ SourcePermanentError = SourceServerError
 
 
 # ---------------------------------------------------------------------------
+# Cursor / watermark errors
+# ---------------------------------------------------------------------------
+
+
+class SourceCursorInvalidError(SourceError):
+    """Incremental cursor/watermark is invalid or expired upstream.
+
+    Example: Google Drive Changes API returns HTTP 410 for an invalid/expired pageToken.
+    These are typically recoverable by re-seeding the cursor and re-running the delta query.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        source_short_name: str = "",
+        status_code: int = 410,
+    ):
+        self.status_code = status_code
+        super().__init__(message, source_short_name=source_short_name)
+
+
+# ---------------------------------------------------------------------------
 # Per-entity errors (skip the entity, continue the sync)
 # ---------------------------------------------------------------------------
 
