@@ -36,7 +36,7 @@ export function CollectionDetailPage({
         isSnippetAsideCollapsed && 'lg:grid-cols-[minmax(0,1fr)_2.75rem]',
       )}
     >
-      <div className="min-w-0 space-y-4 px-4 lg:min-h-0 lg:overflow-y-auto">
+      <div className="min-w-0 space-y-4 px-4 pb-4 lg:min-h-0 lg:overflow-y-auto">
         <CollectionDetailHeader
           collection={collection}
           primarySource={sourceConnections[0]}
