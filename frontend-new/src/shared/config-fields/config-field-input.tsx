@@ -1,4 +1,9 @@
 import * as React from 'react';
+import type { ConfigField } from '@/shared/api';
+import {
+  type ConfigFieldValue,
+  isSupportedConfigFieldType,
+} from './schema';
 import {
   Field,
   FieldContent,
@@ -53,6 +58,17 @@ type ConfigFieldInputProps =
   | BooleanConfigFieldInputProps
   | NumberConfigFieldInputProps
   | ArrayConfigFieldInputProps;
+
+type DynamicConfigFieldInputProps = {
+  configField: ConfigField;
+  disabled?: boolean;
+  errors?: Errors;
+  name: string;
+  onBlur?: React.FocusEventHandler;
+  onChange: (value: ConfigFieldValue) => void;
+  placeholder?: string;
+  value: unknown;
+};
 
 export function ConfigFieldInput({
   description,
@@ -186,6 +202,95 @@ export function ConfigFieldInput({
       />
     </FormField>
   );
+}
+
+export function DynamicConfigFieldInput({
+  configField,
+  disabled,
+  errors,
+  name,
+  onBlur,
+  onChange,
+  placeholder,
+  value,
+}: DynamicConfigFieldInputProps) {
+  const fieldType = isSupportedConfigFieldType(configField.type)
+    ? configField.type
+    : 'string';
+
+  switch (fieldType) {
+    case 'string':
+      return (
+        <ConfigFieldInput
+          description={configField.description ?? undefined}
+          disabled={disabled}
+          errors={errors}
+          fieldType="string"
+          isSecret={configField.is_secret}
+          name={name}
+          onBlur={onBlur}
+          onChange={onChange}
+          placeholder={placeholder}
+          required={configField.required}
+          title={configField.title}
+          value={typeof value === 'string' ? value : ''}
+        />
+      );
+    case 'number':
+      return (
+        <ConfigFieldInput
+          description={configField.description ?? undefined}
+          disabled={disabled}
+          errors={errors}
+          fieldType="number"
+          name={name}
+          onBlur={onBlur}
+          onChange={onChange}
+          placeholder={placeholder}
+          required={configField.required}
+          title={configField.title}
+          value={typeof value === 'number' ? value : 0}
+        />
+      );
+    case 'boolean':
+      return (
+        <ConfigFieldInput
+          description={configField.description ?? undefined}
+          disabled={disabled}
+          errors={errors}
+          fieldType="boolean"
+          name={name}
+          onBlur={onBlur}
+          onChange={onChange}
+          required={configField.required}
+          title={configField.title}
+          value={typeof value === 'boolean' ? value : false}
+        />
+      );
+    case 'array':
+      return (
+        <ConfigFieldInput
+          description={configField.description ?? undefined}
+          disabled={disabled}
+          errors={errors}
+          fieldType="array"
+          name={name}
+          onBlur={onBlur}
+          onChange={onChange}
+          placeholder={placeholder}
+          required={configField.required}
+          title={configField.title}
+          value={
+            Array.isArray(value)
+              ? value.filter((item): item is string => typeof item === 'string')
+              : []
+          }
+        />
+      );
+    default:
+      fieldType satisfies never;
+      throw new Error(`Unsupported field.type ${fieldType}`);
+  }
 }
 
 export function FormField({

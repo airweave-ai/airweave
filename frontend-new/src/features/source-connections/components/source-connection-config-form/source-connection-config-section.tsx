@@ -4,9 +4,7 @@ import { withSourceConnectionForm } from './source-connection-form-hook';
 import type { SourceConnectionFormInput } from './source-connection-form-hook';
 import type { ConfigField, Source } from '@/shared/api';
 import {
-  ConfigFieldInput,
-  getDefaultValueForConfigFieldType,
-  isSupportedConfigFieldType,
+  DynamicConfigFieldInput,
 } from '@/shared/config-fields';
 import { FieldDescription, FieldTitle } from '@/shared/ui/field';
 import { Switch } from '@/shared/ui/switch';
@@ -112,25 +110,14 @@ function renderConfigField(
   return (
     <form.Field key={configField.name} name={`config.${configField.name}`}>
       {(field) => (
-        <ConfigFieldInput
-          description={configField.description ?? undefined}
+        <DynamicConfigFieldInput
+          configField={configField}
           disabled={form.state.isSubmitting}
           errors={field.state.meta.errors}
-          fieldType={
-            isSupportedConfigFieldType(configField.type)
-              ? configField.type
-              : 'string'
-          }
-          isSecret={configField.is_secret}
           name={field.name}
           onBlur={field.handleBlur}
           onChange={field.handleChange}
-          required={configField.required}
-          title={configField.title}
-          value={
-            (field.state.value ??
-              getDefaultValueForConfigFieldType(configField.type)) as any
-          }
+          value={field.state.value}
         />
       )}
     </form.Field>

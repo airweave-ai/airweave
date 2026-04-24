@@ -1,4 +1,8 @@
-export { ConfigFieldInput, FormField } from './config-field-input';
+export {
+  ConfigFieldInput,
+  DynamicConfigFieldInput,
+  FormField,
+} from './config-field-input';
 export type { ConfigFieldValue } from './schema';
 export {
   getDefaultConfigFieldsValues,
