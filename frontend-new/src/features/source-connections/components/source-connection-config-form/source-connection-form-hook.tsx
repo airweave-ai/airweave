@@ -11,6 +11,14 @@ import type {
   DirectAuthentication,
   Source,
 } from '@/shared/api';
+import {
+  getDefaultConfigFieldsValues,
+  getDynamicFieldsSchema,
+} from '@/shared/config-fields';
+import {
+  optionalTrimmedStringSchema,
+  trimmedStringSchema,
+} from '@/shared/forms/schema';
 
 const { fieldContext, formContext, useFieldContext, useFormContext } =
   createFormHookContexts();
@@ -29,16 +37,6 @@ export {
   useFieldContext as useSourceConnectionFieldContext,
   useFormContext as useSourceConnectionFormContext,
 };
-
-const trimmedStringSchema = z.string().trim();
-const optionalTrimmedStringSchema = z
-  .string()
-  .optional()
-  .transform((value) => {
-    const trimmedValue = value?.trim();
-
-    return trimmedValue === '' ? undefined : trimmedValue;
-  });
 
 const oauthBrowserBaseAuthenticationSchema = z.object({
   redirect_uri: z
@@ -185,44 +183,6 @@ export function getSourceConnectionFormOptions({
   });
 }
 
-function getDynamicFieldsSchema(fields: Array<ConfigField>) {
-  const schema: Record<string, z.ZodType> = {};
-  for (const field of fields) {
-    schema[field.name] = getDynamicFieldSchema(field);
-  }
-  return z.object(schema);
-}
-
-function getDynamicFieldSchema(field: ConfigField) {
-  const fieldType = isSupportedConfigFieldType(field.type)
-    ? field.type
-    : 'string';
-
-  switch (fieldType) {
-    case 'string':
-      return field.required
-        ? trimmedStringSchema.min(1, `${field.title} is required`)
-        : optionalTrimmedStringSchema;
-    case 'boolean':
-      return field.required
-        ? z.boolean(`${field.title} is required`)
-        : z.boolean().optional();
-    case 'number':
-      return field.required
-        ? z.number(`${field.title} is required`)
-        : z.number().optional();
-    case 'array': {
-      const itemSchema = trimmedStringSchema;
-      return field.required
-        ? z.array(itemSchema).min(1, `${field.title} is required`)
-        : z.array(itemSchema).optional();
-    }
-    default:
-      fieldType satisfies never;
-      throw new Error(`Unsupported field.type ${fieldType}`);
-  }
-}
-
 export function getDefaultAuthenticationValues(
   authVariant: SourceConnectionAuthVariant,
   source: Source,
@@ -266,37 +226,6 @@ export function getDefaultAuthenticationValues(
     provider_readable_id: '',
     provider_config: {},
   } satisfies AuthProviderAuthentication;
-}
-
-function getDefaultConfigFieldsValues(
-  configFields: Array<ConfigField> | undefined,
-) {
-  if (!configFields) {
-    return {};
-  }
-  return Object.fromEntries(
-    configFields
-      .filter((field) => field.required)
-      .map((field) => {
-        return [field.name, getDefaultValueForConfigFieldType(field.type)];
-      }),
-  );
-}
-
-function getDefaultValueForConfigFieldType(configFieldType: string) {
-  const supportedConfigFieldType = isSupportedConfigFieldType(configFieldType)
-    ? configFieldType
-    : 'string';
-  switch (supportedConfigFieldType) {
-    case 'string':
-      return '';
-    case 'number':
-      return 0;
-    case 'boolean':
-      return false;
-    case 'array':
-      return [] as Array<unknown>;
-  }
 }
 
 const SUPPORTED_AUTH_METHODS: Array<SourceConnectionAuthMethod> = [
@@ -370,23 +299,6 @@ export function getDefaultAuthVariantForMethod(
   return source.requires_byoc
     ? 'oauth_browser_custom'
     : 'oauth_browser_managed';
-}
-
-const SUPPORTED_CONFIG_FIELD_TYPES = [
-  'string',
-  'number',
-  'boolean',
-  'array',
-] as const;
-
-type SupportedConfigFieldType = (typeof SUPPORTED_CONFIG_FIELD_TYPES)[number];
-
-export function isSupportedConfigFieldType(
-  fieldType: string,
-): fieldType is SupportedConfigFieldType {
-  return SUPPORTED_CONFIG_FIELD_TYPES.includes(
-    fieldType as SupportedConfigFieldType,
-  );
 }
 
 export function isOAuth1Source(source: Source) {

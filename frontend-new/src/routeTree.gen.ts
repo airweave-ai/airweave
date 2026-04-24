@@ -15,11 +15,13 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated/onboarding'
 import { Route as AuthenticatedAppRouteRouteImport } from './routes/_authenticated/_app/route'
 import { Route as AuthenticatedAppIndexRouteImport } from './routes/_authenticated/_app/index'
+import { Route as AuthenticatedAppAuthProvidersRouteImport } from './routes/_authenticated/_app/auth-providers'
 import { Route as AuthenticatedAppApiKeysRouteImport } from './routes/_authenticated/_app/api-keys'
 import { Route as AuthenticatedAppCollectionsIndexRouteImport } from './routes/_authenticated/_app/collections/index'
 import { Route as AuthenticatedAppCollectionsCollectionIdRouteImport } from './routes/_authenticated/_app/collections/$collectionId'
 import { Route as AuthenticatedAppApiKeysCreateRouteImport } from './routes/_authenticated/_app/api-keys.create'
 import { Route as AuthenticatedAppCollectionsCollectionIdConnectSourceRouteImport } from './routes/_authenticated/_app/collections/$collectionId.connect-source'
+import { Route as AuthenticatedAppAuthProvidersShortNameConnectRouteImport } from './routes/_authenticated/_app/auth-providers.$shortName.connect'
 import { Route as AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRouteImport } from './routes/_authenticated/_app/collections/$collectionId.connect-source.index'
 import { Route as AuthenticatedAppCollectionsCollectionIdConnectSourceSourceSyncRouteImport } from './routes/_authenticated/_app/collections/$collectionId.connect-source.$source.sync'
 import { Route as AuthenticatedAppCollectionsCollectionIdConnectSourceSourceConfigRouteImport } from './routes/_authenticated/_app/collections/$collectionId.connect-source.$source.config'
@@ -53,6 +55,12 @@ const AuthenticatedAppIndexRoute = AuthenticatedAppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedAppRouteRoute,
 } as any)
+const AuthenticatedAppAuthProvidersRoute =
+  AuthenticatedAppAuthProvidersRouteImport.update({
+    id: '/auth-providers',
+    path: '/auth-providers',
+    getParentRoute: () => AuthenticatedAppRouteRoute,
+  } as any)
 const AuthenticatedAppApiKeysRoute = AuthenticatedAppApiKeysRouteImport.update({
   id: '/api-keys',
   path: '/api-keys',
@@ -81,6 +89,12 @@ const AuthenticatedAppCollectionsCollectionIdConnectSourceRoute =
     id: '/connect-source',
     path: '/connect-source',
     getParentRoute: () => AuthenticatedAppCollectionsCollectionIdRoute,
+  } as any)
+const AuthenticatedAppAuthProvidersShortNameConnectRoute =
+  AuthenticatedAppAuthProvidersShortNameConnectRouteImport.update({
+    id: '/$shortName/connect',
+    path: '/$shortName/connect',
+    getParentRoute: () => AuthenticatedAppAuthProvidersRoute,
   } as any)
 const AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRoute =
   AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRouteImport.update({
@@ -123,9 +137,11 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/api-keys': typeof AuthenticatedAppApiKeysRouteWithChildren
+  '/auth-providers': typeof AuthenticatedAppAuthProvidersRouteWithChildren
   '/api-keys/create': typeof AuthenticatedAppApiKeysCreateRoute
   '/collections/$collectionId': typeof AuthenticatedAppCollectionsCollectionIdRouteWithChildren
   '/collections/': typeof AuthenticatedAppCollectionsIndexRoute
+  '/auth-providers/$shortName/connect': typeof AuthenticatedAppAuthProvidersShortNameConnectRoute
   '/collections/$collectionId/connect-source': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceRouteWithChildren
   '/collections/$collectionId/connect-source/': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRoute
   '/collections/$collectionId/connect-source/$source/auth': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRoute
@@ -138,9 +154,11 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/api-keys': typeof AuthenticatedAppApiKeysRouteWithChildren
+  '/auth-providers': typeof AuthenticatedAppAuthProvidersRouteWithChildren
   '/api-keys/create': typeof AuthenticatedAppApiKeysCreateRoute
   '/collections/$collectionId': typeof AuthenticatedAppCollectionsCollectionIdRouteWithChildren
   '/collections': typeof AuthenticatedAppCollectionsIndexRoute
+  '/auth-providers/$shortName/connect': typeof AuthenticatedAppAuthProvidersShortNameConnectRoute
   '/collections/$collectionId/connect-source': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRoute
   '/collections/$collectionId/connect-source/$source/auth': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRoute
   '/collections/$collectionId/connect-source/$source/config': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceConfigRoute
@@ -154,10 +172,12 @@ export interface FileRoutesById {
   '/_authenticated/_app': typeof AuthenticatedAppRouteRouteWithChildren
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
   '/_authenticated/_app/api-keys': typeof AuthenticatedAppApiKeysRouteWithChildren
+  '/_authenticated/_app/auth-providers': typeof AuthenticatedAppAuthProvidersRouteWithChildren
   '/_authenticated/_app/': typeof AuthenticatedAppIndexRoute
   '/_authenticated/_app/api-keys/create': typeof AuthenticatedAppApiKeysCreateRoute
   '/_authenticated/_app/collections/$collectionId': typeof AuthenticatedAppCollectionsCollectionIdRouteWithChildren
   '/_authenticated/_app/collections/': typeof AuthenticatedAppCollectionsIndexRoute
+  '/_authenticated/_app/auth-providers/$shortName/connect': typeof AuthenticatedAppAuthProvidersShortNameConnectRoute
   '/_authenticated/_app/collections/$collectionId/connect-source': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceRouteWithChildren
   '/_authenticated/_app/collections/$collectionId/connect-source/': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRoute
   '/_authenticated/_app/collections/$collectionId/connect-source/$source/auth': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRoute
@@ -172,9 +192,11 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/api-keys'
+    | '/auth-providers'
     | '/api-keys/create'
     | '/collections/$collectionId'
     | '/collections/'
+    | '/auth-providers/$shortName/connect'
     | '/collections/$collectionId/connect-source'
     | '/collections/$collectionId/connect-source/'
     | '/collections/$collectionId/connect-source/$source/auth'
@@ -187,9 +209,11 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/api-keys'
+    | '/auth-providers'
     | '/api-keys/create'
     | '/collections/$collectionId'
     | '/collections'
+    | '/auth-providers/$shortName/connect'
     | '/collections/$collectionId/connect-source'
     | '/collections/$collectionId/connect-source/$source/auth'
     | '/collections/$collectionId/connect-source/$source/config'
@@ -202,10 +226,12 @@ export interface FileRouteTypes {
     | '/_authenticated/_app'
     | '/_authenticated/onboarding'
     | '/_authenticated/_app/api-keys'
+    | '/_authenticated/_app/auth-providers'
     | '/_authenticated/_app/'
     | '/_authenticated/_app/api-keys/create'
     | '/_authenticated/_app/collections/$collectionId'
     | '/_authenticated/_app/collections/'
+    | '/_authenticated/_app/auth-providers/$shortName/connect'
     | '/_authenticated/_app/collections/$collectionId/connect-source'
     | '/_authenticated/_app/collections/$collectionId/connect-source/'
     | '/_authenticated/_app/collections/$collectionId/connect-source/$source/auth'
@@ -263,6 +289,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppIndexRouteImport
       parentRoute: typeof AuthenticatedAppRouteRoute
     }
+    '/_authenticated/_app/auth-providers': {
+      id: '/_authenticated/_app/auth-providers'
+      path: '/auth-providers'
+      fullPath: '/auth-providers'
+      preLoaderRoute: typeof AuthenticatedAppAuthProvidersRouteImport
+      parentRoute: typeof AuthenticatedAppRouteRoute
+    }
     '/_authenticated/_app/api-keys': {
       id: '/_authenticated/_app/api-keys'
       path: '/api-keys'
@@ -297,6 +330,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/collections/$collectionId/connect-source'
       preLoaderRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceRouteImport
       parentRoute: typeof AuthenticatedAppCollectionsCollectionIdRoute
+    }
+    '/_authenticated/_app/auth-providers/$shortName/connect': {
+      id: '/_authenticated/_app/auth-providers/$shortName/connect'
+      path: '/$shortName/connect'
+      fullPath: '/auth-providers/$shortName/connect'
+      preLoaderRoute: typeof AuthenticatedAppAuthProvidersShortNameConnectRouteImport
+      parentRoute: typeof AuthenticatedAppAuthProvidersRoute
     }
     '/_authenticated/_app/collections/$collectionId/connect-source/': {
       id: '/_authenticated/_app/collections/$collectionId/connect-source/'
@@ -343,6 +383,21 @@ const AuthenticatedAppApiKeysRouteWithChildren =
     AuthenticatedAppApiKeysRouteChildren,
   )
 
+interface AuthenticatedAppAuthProvidersRouteChildren {
+  AuthenticatedAppAuthProvidersShortNameConnectRoute: typeof AuthenticatedAppAuthProvidersShortNameConnectRoute
+}
+
+const AuthenticatedAppAuthProvidersRouteChildren: AuthenticatedAppAuthProvidersRouteChildren =
+  {
+    AuthenticatedAppAuthProvidersShortNameConnectRoute:
+      AuthenticatedAppAuthProvidersShortNameConnectRoute,
+  }
+
+const AuthenticatedAppAuthProvidersRouteWithChildren =
+  AuthenticatedAppAuthProvidersRoute._addFileChildren(
+    AuthenticatedAppAuthProvidersRouteChildren,
+  )
+
 interface AuthenticatedAppCollectionsCollectionIdConnectSourceRouteChildren {
   AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRoute
   AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRoute: typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRoute
@@ -384,6 +439,7 @@ const AuthenticatedAppCollectionsCollectionIdRouteWithChildren =
 
 interface AuthenticatedAppRouteRouteChildren {
   AuthenticatedAppApiKeysRoute: typeof AuthenticatedAppApiKeysRouteWithChildren
+  AuthenticatedAppAuthProvidersRoute: typeof AuthenticatedAppAuthProvidersRouteWithChildren
   AuthenticatedAppIndexRoute: typeof AuthenticatedAppIndexRoute
   AuthenticatedAppCollectionsCollectionIdRoute: typeof AuthenticatedAppCollectionsCollectionIdRouteWithChildren
   AuthenticatedAppCollectionsIndexRoute: typeof AuthenticatedAppCollectionsIndexRoute
@@ -391,6 +447,8 @@ interface AuthenticatedAppRouteRouteChildren {
 
 const AuthenticatedAppRouteRouteChildren: AuthenticatedAppRouteRouteChildren = {
   AuthenticatedAppApiKeysRoute: AuthenticatedAppApiKeysRouteWithChildren,
+  AuthenticatedAppAuthProvidersRoute:
+    AuthenticatedAppAuthProvidersRouteWithChildren,
   AuthenticatedAppIndexRoute: AuthenticatedAppIndexRoute,
   AuthenticatedAppCollectionsCollectionIdRoute:
     AuthenticatedAppCollectionsCollectionIdRouteWithChildren,

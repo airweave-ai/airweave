@@ -13,34 +13,41 @@ import { Switch } from '@/shared/ui/switch';
 type Errors = Array<{ message?: string } | undefined>;
 
 type CommonConfigFieldInputProps = {
-  name: string;
-  title: string;
-  required?: boolean;
   description?: React.ReactNode;
+  disabled?: boolean;
   errors?: Errors;
+  isSecret?: boolean;
+  name: string;
   onBlur?: React.FocusEventHandler;
+  placeholder?: string;
+  required?: boolean;
+  title: string;
 };
 
 type StringConfigFieldInputProps = CommonConfigFieldInputProps & {
   fieldType: 'string';
-  value: string;
   onChange: (value: string) => void;
+  value: string;
 };
+
 type BooleanConfigFieldInputProps = CommonConfigFieldInputProps & {
   fieldType: 'boolean';
-  value: boolean;
   onChange: (value: boolean) => void;
+  value: boolean;
 };
+
 type NumberConfigFieldInputProps = CommonConfigFieldInputProps & {
   fieldType: 'number';
-  value: number;
   onChange: (value: number) => void;
+  value: number;
 };
+
 type ArrayConfigFieldInputProps = CommonConfigFieldInputProps & {
   fieldType: 'array';
-  value: Array<string>;
   onChange: (value: Array<string>) => void;
+  value: Array<string>;
 };
+
 type ConfigFieldInputProps =
   | StringConfigFieldInputProps
   | BooleanConfigFieldInputProps
@@ -48,22 +55,29 @@ type ConfigFieldInputProps =
   | ArrayConfigFieldInputProps;
 
 export function ConfigFieldInput({
-  fieldType,
-  name,
-  title,
-  required,
   description,
-  value,
-  onChange,
-  onBlur,
+  disabled,
   errors,
+  fieldType,
+  isSecret,
+  name,
+  onBlur,
+  onChange,
+  placeholder,
+  required,
+  title,
+  value,
 }: ConfigFieldInputProps) {
   const hasErrors = Boolean(errors?.length);
 
   if (fieldType === 'boolean') {
     return (
       <FieldLabel>
-        <Field data-invalid={hasErrors} orientation="horizontal">
+        <Field
+          data-disabled={disabled}
+          data-invalid={hasErrors}
+          orientation="horizontal"
+        >
           <FieldContent>
             <FieldTitle>{title}</FieldTitle>
             {description ? (
@@ -75,6 +89,7 @@ export function ConfigFieldInput({
           <Switch
             aria-invalid={hasErrors}
             checked={value}
+            disabled={disabled}
             id={name}
             onBlur={onBlur}
             onCheckedChange={(checked) => onChange(checked)}
@@ -88,6 +103,7 @@ export function ConfigFieldInput({
     return (
       <FormField
         description={description}
+        disabled={disabled}
         errors={errors}
         name={name}
         required={required}
@@ -95,12 +111,13 @@ export function ConfigFieldInput({
       >
         <Input
           aria-invalid={hasErrors}
+          disabled={disabled}
           id={name}
           onBlur={onBlur}
-          onChange={(e) => onChange(e.target.value)}
-          type="text"
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder ?? `Type ${title} here...`}
+          type={isSecret ? 'password' : 'text'}
           value={value}
-          placeholder={`Type ${title} here...`}
         />
       </FormField>
     );
@@ -110,6 +127,7 @@ export function ConfigFieldInput({
     return (
       <FormField
         description={description}
+        disabled={disabled}
         errors={errors}
         name={name}
         required={required}
@@ -117,10 +135,12 @@ export function ConfigFieldInput({
       >
         <Input
           aria-invalid={hasErrors}
+          disabled={disabled}
           id={name}
           inputMode="decimal"
           onBlur={onBlur}
-          onChange={(e) => onChange(e.target.valueAsNumber)}
+          onChange={(event) => onChange(event.target.valueAsNumber)}
+          placeholder={placeholder}
           type="number"
           value={value}
         />
@@ -142,6 +162,7 @@ export function ConfigFieldInput({
           </FieldDescription>
         </>
       }
+      disabled={disabled}
       errors={errors}
       name={name}
       required={required}
@@ -149,32 +170,39 @@ export function ConfigFieldInput({
     >
       <Input
         aria-invalid={hasErrors}
+        disabled={disabled}
         id={name}
         onBlur={onBlur}
-        onChange={(e) => {
-          const nextValue = e.target.value
-            .split(',')
-            .map((chunk) => chunk.trim());
+        onChange={(event) => {
+          const nextValue = event.target.value
+            .split(/[\n,]/)
+            .map((chunk) => chunk.trim())
+            .filter(Boolean);
+
           return onChange(nextValue);
         }}
-        value={value}
-        placeholder={`Type ${title} here...`}
+        placeholder={placeholder ?? `Type ${title} here...`}
+        value={value.join(', ')}
       />
     </FormField>
   );
 }
 
 export function FormField({
-  name,
-  title,
-  errors,
-  required,
-  description,
   children,
-}: React.PropsWithChildren<Omit<CommonConfigFieldInputProps, 'onBlur'>>) {
+  description,
+  disabled,
+  errors,
+  name,
+  required,
+  title,
+}: React.PropsWithChildren<
+  Omit<CommonConfigFieldInputProps, 'onBlur' | 'placeholder'>
+>) {
   const hasErrors = Boolean(errors?.length);
+
   return (
-    <Field data-invalid={hasErrors}>
+    <Field data-disabled={disabled} data-invalid={hasErrors}>
       <FieldLabel htmlFor={name}>
         {title}
         {required ? <RequiredMark /> : null}

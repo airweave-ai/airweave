@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { FormField } from './config-field-input';
+import { FormField } from '@/shared/config-fields';
 import { Input } from '@/shared/ui/input';
 
 export function SourceConnectionTextInput({
