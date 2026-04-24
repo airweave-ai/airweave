@@ -97,7 +97,7 @@ function CollectionSearchTabs({
 
   return (
     <Tabs
-      className="gap-4"
+      className="max-h-128 min-h-0 gap-4 overflow-hidden"
       value={selectedTab}
       onValueChange={(value) =>
         onSelectedTabChange(value as CollectionSearchTabValue)
@@ -123,16 +123,16 @@ function CollectionSearchTabs({
       </TabsList>
 
       {hasReasoningTab ? (
-        <TabsContent value="reasoning" className="space-y-1.5">
+        <TabsContent value="reasoning" className="min-h-0 overflow-y-auto">
           <CollectionSearchReasoningTab state={state} />
         </TabsContent>
       ) : null}
 
-      <TabsContent value="entities" className="space-y-1.5">
+      <TabsContent value="entities" className="min-h-0 overflow-y-auto pr-1">
         <CollectionSearchEntitiesTab state={state} />
       </TabsContent>
 
-      <TabsContent value="raw" className="space-y-1.5">
+      <TabsContent value="raw" className="min-h-0 overflow-hidden">
         <CollectionSearchRawTab state={state} />
       </TabsContent>
     </Tabs>
@@ -324,11 +324,7 @@ function CollectionSearchReasoningTabContent({
   );
 }
 
-function CollectionSearchErrorTabContent({
-  message,
-}: {
-  message?: string;
-}) {
+function CollectionSearchErrorTabContent({ message }: { message?: string }) {
   return (
     <CollectionSearchMessageTabContent
       copyLabel="Copy error message"

@@ -64,8 +64,22 @@ export function CollectionSearchRawTabContent({
     : `+${(rawResponse.length - RAW_RESPONSE_PREVIEW_CHARACTER_LIMIT).toLocaleString()} chars`;
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <div className="flex min-h-0 flex-1 items-start gap-6">
+        <div className="min-h-0 flex-1 overflow-auto rounded-sm pr-1">
+          {usePlainText ? (
+            <pre className="font-mono text-xs leading-5 break-words whitespace-pre-wrap text-foreground">
+              {displayedResponse}
+            </pre>
+          ) : (
+            <CodeSnippet
+              className="text-foreground"
+              code={displayedResponse}
+              language="json"
+            />
+          )}
+        </div>
+
         <Button
           aria-label="Copy raw response"
           className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
@@ -80,20 +94,6 @@ export function CollectionSearchRawTabContent({
             <IconCopy className="size-3.5" />
           )}
         </Button>
-      </div>
-
-      <div className="max-h-96 overflow-auto rounded-sm">
-        {usePlainText ? (
-          <pre className="font-mono text-xs leading-5 break-words whitespace-pre-wrap text-foreground">
-            {displayedResponse}
-          </pre>
-        ) : (
-          <CodeSnippet
-            className="text-foreground"
-            code={displayedResponse}
-            language="json"
-          />
-        )}
       </div>
 
       {shouldTruncate ? (
