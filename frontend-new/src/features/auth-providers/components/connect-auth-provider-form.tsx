@@ -4,14 +4,11 @@ import { ArrowUpRight } from 'lucide-react';
 import * as z from 'zod';
 import { generateRandomSuffix, generateReadableId } from '../lib/readable-id';
 import type { AuthProviderMetadata, ConfigField } from '@/shared/api';
-import type { ConfigFieldValue } from '@/shared/config-fields';
 import {
-  ConfigFieldInput,
+  DynamicConfigFieldInput,
   FormField,
   getDefaultConfigFieldsValues,
-  getDefaultValueForConfigFieldType,
   getDynamicFieldsSchema,
-  isSupportedConfigFieldType,
 } from '@/shared/config-fields';
 import {
   optionalTrimmedStringSchema,
@@ -189,34 +186,24 @@ export function ConnectAuthProviderForm({
         </form.Field>
 
         {authFields.map((authField) => {
-          const fieldType = isSupportedConfigFieldType(authField.type)
-            ? authField.type
-            : 'string';
-
           return (
             <form.Field
               key={authField.name}
               name={`auth_fields.${authField.name}`}
             >
               {(field) => (
-                <ConfigFieldInput
+                <DynamicConfigFieldInput
+                  configField={authField}
                   disabled={isPending}
                   errors={field.state.meta.errors}
-                  fieldType={fieldType}
-                  isSecret={authField.is_secret}
                   name={field.name}
                   onBlur={field.handleBlur}
-                  onChange={(value: ConfigFieldValue) => {
+                  onChange={(value) => {
                     onValueChange?.();
                     field.handleChange(value);
                   }}
                   placeholder={getAuthFieldPlaceholder(authField)}
-                  required={authField.required}
-                  title={authField.title}
-                  value={
-                    (field.state.value ??
-                      getDefaultValueForConfigFieldType(authField.type)) as any
-                  }
+                  value={field.state.value}
                 />
               )}
             </form.Field>
