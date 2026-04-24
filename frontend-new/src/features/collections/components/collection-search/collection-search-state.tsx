@@ -1,35 +1,19 @@
-import * as React from 'react';
 import {
   IconAlertTriangleFilled,
   IconCheck,
-  IconChevronDown,
-  IconChevronRight,
   IconCircleCheckFilled,
   IconCopy,
 } from '@tabler/icons-react';
-import {
-  formatCollectionSearchReasoningEvent,
-  getCollectionSearchReasoningSummarySections,
-} from './collection-search-reasoning-model';
+import { CollectionSearchReasoningTabContent } from './collection-search-reasoning-tab';
 import { CollectionSearchRawTabContent } from './collection-search-raw-tab';
 import { CollectionSearchStatusCard } from './collection-search-status-card';
-import type {
-  CollectionSearchReasoningEvent,
-  CollectionSearchTierState,
-} from './use-collection-search-tiers';
-import type { CollectionSearchReasoningSection } from './collection-search-reasoning-model';
+import type { CollectionSearchTierState } from './use-collection-search-tiers';
 import type { CollectionSearchTierName } from '../../lib/collection-search-model';
 import { formatNumber } from '@/shared/format/format-number';
 import { pluralize } from '@/shared/format/pluralize';
 import { useCopyToClipboard } from '@/shared/hooks/use-copy-to-clipboard';
 import { cn } from '@/shared/tailwind/cn';
 import { Button } from '@/shared/ui/button';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/shared/ui/collapsible';
-import { Separator } from '@/shared/ui/separator';
 import { Skeleton } from '@/shared/ui/skeleton';
 import { Spinner } from '@/shared/ui/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
@@ -97,7 +81,7 @@ function CollectionSearchTabs({
 
   return (
     <Tabs
-      className="max-h-128 min-h-0 gap-4 overflow-hidden"
+      className="max-h-132 min-h-0 gap-4 overflow-hidden"
       value={selectedTab}
       onValueChange={(value) =>
         onSelectedTabChange(value as CollectionSearchTabValue)
@@ -132,7 +116,10 @@ function CollectionSearchTabs({
         <CollectionSearchEntitiesTab state={state} />
       </TabsContent>
 
-      <TabsContent value="raw" className="min-h-0 overflow-hidden">
+      <TabsContent
+        value="raw"
+        className="flex min-h-0 flex-col overflow-hidden"
+      >
         <CollectionSearchRawTab state={state} />
       </TabsContent>
     </Tabs>
@@ -150,9 +137,13 @@ function CollectionSearchReasoningTab({
 
   return (
     <CollectionSearchReasoningTabContent
-      emptyCopyLabel="Copy reasoning placeholder message"
-      emptyLabel="Reasoning unavailable"
-      emptyMessage={unavailableReasoningMessage}
+      emptyState={
+        <CollectionSearchMessageTabContent
+          copyLabel="Copy reasoning placeholder message"
+          label="Reasoning unavailable"
+          message={unavailableReasoningMessage}
+        />
+      }
       events={state.reasoningEvents}
       finalEvent={state.status === 'success' ? state.rawFinalEvent : undefined}
       isFinished={state.status === 'success'}
@@ -221,109 +212,6 @@ function CollectionSearchRawTab({
   );
 }
 
-function CollectionSearchReasoningTabContent({
-  emptyCopyLabel = 'Copy reasoning placeholder message',
-  emptyLabel = 'Reasoning unavailable',
-  emptyMessage = unavailableReasoningMessage,
-  events,
-  finalEvent,
-  isFinished = false,
-  isLoading = false,
-}: {
-  emptyCopyLabel?: string;
-  emptyLabel?: string;
-  emptyMessage?: string;
-  events?: Array<CollectionSearchReasoningEvent>;
-  finalEvent?: CollectionSearchTierState['rawFinalEvent'];
-  isFinished?: boolean;
-  isLoading?: boolean;
-}) {
-  const reasoningEvents = events ?? [];
-
-  if (reasoningEvents.length === 0 && !isLoading) {
-    return (
-      <CollectionSearchMessageTabContent
-        copyLabel={emptyCopyLabel}
-        label={emptyLabel}
-        message={emptyMessage}
-      />
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="space-y-4">
-        {reasoningEvents.map((event, index) => {
-          const formattedEvent = formatCollectionSearchReasoningEvent(event);
-
-          if (!formattedEvent) {
-            return null;
-          }
-
-          return (
-            <div
-              key={`${event.type}-${index}`}
-              className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:gap-6"
-            >
-              <div className="min-w-0 space-y-1 md:max-w-[440px]">
-                <p
-                  className={cn(
-                    'font-mono text-xs text-muted-foreground',
-                    formattedEvent.isInvalid ? 'line-through opacity-50' : '',
-                  )}
-                >
-                  {formattedEvent.label}
-                  {formattedEvent.labelSuffix ? (
-                    <span className="ml-2">{formattedEvent.labelSuffix}</span>
-                  ) : null}
-                </p>
-
-                {formattedEvent.detailLines?.length ? (
-                  <div className="space-y-0.5">
-                    {formattedEvent.detailLines.map(
-                      (detailLine, detailIndex) => (
-                        <p
-                          key={`${detailLine}-${detailIndex}`}
-                          className="text-xs leading-4 text-foreground"
-                        >
-                          {detailLine}
-                        </p>
-                      ),
-                    )}
-                  </div>
-                ) : null}
-
-                {formattedEvent.sections?.length ? (
-                  <div className="space-y-0.5">
-                    {formattedEvent.sections.map((section, sectionIndex) => (
-                      <CollectionSearchReasoningSectionLine
-                        key={`${section.label}-${section.collapsed}-${sectionIndex}`}
-                        section={section}
-                      />
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-
-              {formattedEvent.metaLabel ? (
-                <span className="shrink-0 self-start font-mono text-xs text-muted-foreground sm:self-center">
-                  {formattedEvent.metaLabel}
-                </span>
-              ) : null}
-            </div>
-          );
-        })}
-
-        {isLoading ? <CollectionSearchReasoningPendingLine /> : null}
-      </div>
-
-      {isFinished ? (
-        <CollectionSearchReasoningSummary finalEvent={finalEvent} />
-      ) : null}
-    </div>
-  );
-}
-
 function CollectionSearchErrorTabContent({ message }: { message?: string }) {
   return (
     <CollectionSearchMessageTabContent
@@ -332,102 +220,6 @@ function CollectionSearchErrorTabContent({ message }: { message?: string }) {
       message={message ?? 'Search failed. Try again.'}
       messageClassName="text-destructive"
     />
-  );
-}
-
-function CollectionSearchReasoningPendingLine() {
-  return (
-    <div className="animate-pulse font-mono text-xs text-muted-foreground">
-      Thinking...
-    </div>
-  );
-}
-
-function CollectionSearchReasoningSummary({
-  finalEvent,
-}: {
-  finalEvent?: CollectionSearchTierState['rawFinalEvent'];
-}) {
-  const sections = getCollectionSearchReasoningSummarySections(finalEvent);
-
-  if (!sections.length) {
-    return null;
-  }
-
-  return (
-    <>
-      <Separator />
-
-      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-xs text-muted-foreground">
-        {sections.map((section, index) => (
-          <React.Fragment key={section}>
-            {index > 0 ? (
-              <Separator
-                aria-hidden="true"
-                orientation="vertical"
-                className="hidden h-5 sm:block"
-              />
-            ) : null}
-
-            <span>{section}</span>
-          </React.Fragment>
-        ))}
-      </div>
-    </>
-  );
-}
-
-function CollectionSearchReasoningSectionLine({
-  section,
-}: {
-  section: CollectionSearchReasoningSection;
-}) {
-  const [open, setOpen] = React.useState(false);
-
-  if (!section.collapsed) {
-    return null;
-  }
-
-  const label = `${section.label}: `;
-
-  if (section.expandedLines.length === 0) {
-    return (
-      <p className="ml-0.5 text-xs leading-4 text-muted-foreground">
-        <span className="opacity-50">{label}</span>
-        {section.collapsed}
-      </p>
-    );
-  }
-
-  return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger asChild>
-        <button
-          type="button"
-          className="flex items-center gap-0.5 text-xs leading-4 text-muted-foreground hover:underline"
-        >
-          {open ? (
-            <IconChevronDown className="size-3" />
-          ) : (
-            <IconChevronRight className="size-3" />
-          )}
-
-          <span className="opacity-50">{label}</span>
-          <span>{section.collapsed}</span>
-        </button>
-      </CollapsibleTrigger>
-
-      <CollapsibleContent className="ml-4 space-y-px">
-        {section.expandedLines.map((expandedLine, index) => (
-          <p
-            key={`${expandedLine}-${index}`}
-            className="text-xs leading-4 text-muted-foreground"
-          >
-            {expandedLine}
-          </p>
-        ))}
-      </CollapsibleContent>
-    </Collapsible>
   );
 }
 
@@ -508,19 +300,19 @@ function CollectionSearchEntitiesTabSkeleton() {
 
 function CollectionSearchRawTabSkeleton() {
   return (
-    <div className="space-y-3">
-      <div className="flex justify-end">
-        <Skeleton className="size-7 rounded-sm bg-muted/50" />
+    <div className="flex min-h-0 flex-1 gap-6">
+      <div className="min-h-0 flex-1 self-stretch overflow-auto rounded-sm border border-border bg-background/60 p-3 pr-1">
+        <div className="space-y-2">
+          <Skeleton className="h-3 w-28 bg-muted/50" />
+          <Skeleton className="h-3 w-full bg-muted/60" />
+          <Skeleton className="h-3 w-11/12 bg-muted/50" />
+          <Skeleton className="h-3 w-4/5 bg-muted/40" />
+          <Skeleton className="h-3 w-10/12 bg-muted/50" />
+          <Skeleton className="h-3 w-2/3 bg-muted/40" />
+        </div>
       </div>
 
-      <div className="space-y-2 rounded-sm border border-border bg-background/60 p-3">
-        <Skeleton className="h-3 w-28 bg-muted/50" />
-        <Skeleton className="h-3 w-full bg-muted/60" />
-        <Skeleton className="h-3 w-11/12 bg-muted/50" />
-        <Skeleton className="h-3 w-4/5 bg-muted/40" />
-        <Skeleton className="h-3 w-10/12 bg-muted/50" />
-        <Skeleton className="h-3 w-2/3 bg-muted/40" />
-      </div>
+      <Skeleton className="size-7 shrink-0 self-start rounded-sm bg-muted/50" />
     </div>
   );
 }

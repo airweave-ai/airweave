@@ -77,9 +77,20 @@ type CollectionSearchReasoningFilterGroup = {
 
 export type CollectionSearchReasoningSection = {
   collapsed: string;
-  expandedLines: Array<string>;
+  expandedLines: Array<CollectionSearchReasoningExpandedLine>;
   label: 'input' | 'output';
 };
+
+export type CollectionSearchReasoningExpandedLine =
+  | {
+      content: string;
+      type: 'text';
+    }
+  | {
+      label: string;
+      metadata: string;
+      type: 'entity';
+    };
 
 export type CollectionSearchReasoningRow = {
   detailLines?: Array<string>;
@@ -260,9 +271,10 @@ function formatToolCallReasoningEvent(
           event.diagnostics.stats.found,
         );
         if ((event.diagnostics.stats.not_found ?? 0) > 0) {
-          expandedLines.push(
-            `${formatNumber(event.diagnostics.stats.not_found ?? 0)} not found`,
-          );
+          expandedLines.push({
+            content: `${formatNumber(event.diagnostics.stats.not_found ?? 0)} not found`,
+            type: 'text',
+          });
         }
 
         pushReasoningSection(
@@ -294,9 +306,10 @@ function formatToolCallReasoningEvent(
           added,
         );
         if ((event.diagnostics.stats.not_found ?? 0) > 0) {
-          expandedLines.push(
-            `${formatNumber(event.diagnostics.stats.not_found ?? 0)} not found`,
-          );
+          expandedLines.push({
+            content: `${formatNumber(event.diagnostics.stats.not_found ?? 0)} not found`,
+            type: 'text',
+          });
         }
 
         pushReasoningSection(
@@ -443,13 +456,19 @@ function pushReasoningSection(
   sections: Array<CollectionSearchReasoningSection>,
   label: CollectionSearchReasoningSection['label'],
   collapsed: string,
-  expandedLines: Array<string>,
+  expandedLines: Array<
+    string | CollectionSearchReasoningExpandedLine
+  >,
 ) {
   if (!collapsed) {
     return;
   }
 
-  sections.push({ collapsed, expandedLines, label });
+  sections.push({
+    collapsed,
+    expandedLines: expandedLines.map(normalizeCollectionSearchReasoningExpandedLine),
+    label,
+  });
 }
 
 function getToolLabel(
@@ -525,29 +544,18 @@ function formatLimitOffsetLine(limit?: number, offset?: number) {
 function formatEntityList(
   entities: Array<CollectionSearchReasoningEntity>,
   totalCount?: number,
-  maxChars = 100,
 ) {
   if (entities.length === 0) {
     return '';
   }
 
-  const parts: Array<string> = [];
-  let totalLength = 0;
-
-  for (const entity of entities) {
+  const parts = entities.slice(0, 2).map((entity) => {
     const name = entity.name ?? '';
     const sourceName = entity.source_name ?? '?';
-    const truncatedName =
-      name.length > 30 ? `${name.slice(0, 27)}...` : name || 'Unknown entity';
-    const part = `${truncatedName} (${sourceName})`;
+    const truncatedName = name.length > 30 ? `${name.slice(0, 27)}...` : name;
 
-    if (parts.length > 0 && totalLength + part.length + 2 > maxChars) {
-      break;
-    }
-
-    parts.push(part);
-    totalLength += part.length + 2;
-  }
+    return `${truncatedName || 'Unknown entity'} (${sourceName})`;
+  });
 
   const total = totalCount ?? entities.length;
   const remaining = total - parts.length;
@@ -590,21 +598,34 @@ function formatEntityExpandedLines(
   totalCount?: number,
   includeScore = false,
 ) {
-  const lines = entities.map((entity) => {
+  const lines: Array<CollectionSearchReasoningExpandedLine> = entities.map(
+    (entity) => {
     const name = entity.name ?? 'Unknown entity';
     const sourceName = entity.source_name ?? '?';
     const entityType = entity.entity_type ?? '?';
     const entityId = entity.entity_id ?? '?';
 
     if (includeScore) {
-      return `${name} (${sourceName} · ${entityType} · ${entityId} · score: ${entity.relevance_score?.toFixed(3) ?? '?'})`;
+      return {
+        label: name,
+        metadata: ` (${sourceName} · ${entityType} · ${entityId} · score: ${entity.relevance_score?.toFixed(3) ?? '?'})`,
+        type: 'entity' as const,
+      };
     }
 
-    return `${name} (${sourceName} · ${entityType} · ${entityId})`;
-  });
+    return {
+      label: name,
+      metadata: ` (${sourceName} · ${entityType} · ${entityId})`,
+      type: 'entity' as const,
+    };
+    },
+  );
 
   if (totalCount !== undefined && totalCount > entities.length) {
-    lines.push(`+${formatNumber(totalCount - entities.length)} more`);
+    lines.push({
+      content: `+${formatNumber(totalCount - entities.length)} more`,
+      type: 'text',
+    });
   }
 
   return lines;
@@ -652,6 +673,14 @@ function formatThoughtTitle(durationMs: number) {
 
 function formatOptionalNumber(value?: number) {
   return value === undefined ? '?' : formatNumber(value);
+}
+
+function normalizeCollectionSearchReasoningExpandedLine(
+  expandedLine: string | CollectionSearchReasoningExpandedLine,
+): CollectionSearchReasoningExpandedLine {
+  return typeof expandedLine === 'string'
+    ? { content: expandedLine, type: 'text' }
+    : expandedLine;
 }
 
 function isCollectionSearchReasoningShortField(

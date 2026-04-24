@@ -65,8 +65,8 @@ export function CollectionSearchRawTabContent({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <div className="flex min-h-0 flex-1 items-start gap-6">
-        <div className="min-h-0 flex-1 overflow-auto rounded-sm pr-1">
+      <div className="flex min-h-0 flex-1 gap-6">
+        <div className="min-h-0 flex-1 self-stretch overflow-auto rounded-sm pr-1">
           {usePlainText ? (
             <pre className="font-mono text-xs leading-5 break-words whitespace-pre-wrap text-foreground">
               {displayedResponse}
@@ -82,7 +82,7 @@ export function CollectionSearchRawTabContent({
 
         <Button
           aria-label="Copy raw response"
-          className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
+          className="size-7 shrink-0 self-start text-muted-foreground hover:text-foreground"
           onClick={() => void copy(rawResponse)}
           size="icon-xs"
           type="button"
@@ -97,7 +97,7 @@ export function CollectionSearchRawTabContent({
       </div>
 
       {shouldTruncate ? (
-        <div className="flex items-center justify-center gap-2 border-t border-border/60 pt-3">
+        <div className="flex items-center justify-center gap-2 border-t border-border pt-3">
           <Button
             type="button"
             variant="ghost"
