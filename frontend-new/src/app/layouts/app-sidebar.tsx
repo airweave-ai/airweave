@@ -9,6 +9,7 @@ import {
   LogOut,
   Plus,
   Settings,
+  ShieldCheck,
   Users,
 } from 'lucide-react';
 import { Link, useMatchRoute } from '@tanstack/react-router';
@@ -54,7 +55,13 @@ type NavigationItem = {
 const navigationItems: Array<NavigationItem> = [
   { label: 'Dashboard', icon: Home, to: '/' },
   { label: 'Collections', icon: AppWindow, to: '/collections', fuzzy: true },
-  { label: 'API Keys', icon: KeyRound, to: '/api-keys' },
+  { label: 'API Keys', icon: KeyRound, to: '/api-keys', fuzzy: true },
+  {
+    label: 'Auth Providers',
+    icon: ShieldCheck,
+    to: '/auth-providers',
+    fuzzy: true,
+  },
 ];
 
 function SidebarIconFrame({ children }: { children: ReactNode }) {

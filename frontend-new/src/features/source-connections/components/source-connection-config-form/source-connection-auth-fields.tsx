@@ -1,19 +1,22 @@
 import * as React from 'react';
 import { IconInfoCircle } from '@tabler/icons-react';
 import { getSourceDocsUrl } from '../../lib/source-docs-url';
-import { ConfigFieldInput } from './config-field-input';
 import { SelectionCard } from './selection-card';
 import { SourceConnectionTextInput } from './source-connection-text-input';
 import {
   getAuthMethodForVariant,
   getDefaultAuthenticationValues,
   isOAuth1Source,
-  isSupportedConfigFieldType,
   sourceRequiresRefreshToken,
   withSourceConnectionForm,
 } from './source-connection-form-hook';
 import type { SourceConnectionFormInput } from './source-connection-form-hook';
 import type { Source } from '@/shared/api';
+import {
+  ConfigFieldInput,
+  getDefaultValueForConfigFieldType,
+  isSupportedConfigFieldType,
+} from '@/shared/config-fields';
 import { Button } from '@/shared/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import {
@@ -60,23 +63,28 @@ export const SourceConnectionAuthFields = withSourceConnectionForm({
                     name={`authentication.credentials.${authField.name}`}
                   >
                     {(field) => (
-                      <ConfigFieldInput
-                        description={authField.description ?? undefined}
-                        errors={field.state.meta.errors}
-                        fieldType={
-                          isSupportedConfigFieldType(authField.type)
-                            ? authField.type
-                            : 'string'
-                        }
-                        name={field.name}
-                        onBlur={field.handleBlur}
-                        onChange={field.handleChange}
-                        required={authField.required}
-                        title={authField.title}
-                        value={(field.state.value ?? '') as any}
-                      />
-                    )}
-                  </form.Field>
+                        <ConfigFieldInput
+                          description={authField.description ?? undefined}
+                          disabled={form.state.isSubmitting}
+                          errors={field.state.meta.errors}
+                          fieldType={
+                            isSupportedConfigFieldType(authField.type)
+                              ? authField.type
+                              : 'string'
+                          }
+                          isSecret={authField.is_secret}
+                          name={field.name}
+                          onBlur={field.handleBlur}
+                          onChange={field.handleChange}
+                          required={authField.required}
+                          title={authField.title}
+                          value={
+                            (field.state.value ??
+                              getDefaultValueForConfigFieldType(authField.type)) as any
+                          }
+                        />
+                      )}
+                    </form.Field>
                 ))}
               </React.Fragment>
             );

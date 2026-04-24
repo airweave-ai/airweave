@@ -1,0 +1,1 @@
+export { AuthProvidersPage } from './page';

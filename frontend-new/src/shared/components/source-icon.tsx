@@ -1,7 +1,7 @@
 import type { ComponentProps } from 'react';
+import { BrandIcon } from './brand-icon';
 import type { AppIconVariant } from '@/shared/icons/get-app-icon-url';
 import { getAppIconUrl } from '@/shared/icons/get-app-icon-url';
-import { cn } from '@/shared/tailwind/cn';
 
 interface SourceIconProps extends ComponentProps<'div'> {
   name: string;
@@ -19,24 +19,11 @@ export function SourceIcon({
   const sourceIconSrc = shortName ? getAppIconUrl(shortName, variant) : null;
 
   return (
-    <div
-      className={cn(
-        'flex size-5 shrink-0 items-center justify-center text-xs font-semibold',
-        !sourceIconSrc && 'rounded-sm border',
-        className,
-      )}
+    <BrandIcon
+      className={className}
+      fallback={<span>{name.charAt(0).toUpperCase()}</span>}
+      src={sourceIconSrc}
       {...props}
-    >
-      {sourceIconSrc ? (
-        <img
-          alt=""
-          aria-hidden="true"
-          className="size-full object-contain"
-          src={sourceIconSrc}
-        />
-      ) : (
-        <span>{name.charAt(0).toUpperCase()}</span>
-      )}
-    </div>
+    />
   );
 }
