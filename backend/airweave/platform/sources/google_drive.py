@@ -77,6 +77,8 @@ class GoogleDriveSource(BaseSource):
     while maintaining proper organization and access permissions.
     """
 
+    drive_id_filter: Optional[str] = None
+
     @classmethod
     async def create(
         cls,
@@ -89,6 +91,7 @@ class GoogleDriveSource(BaseSource):
         """Create a new Google Drive source instance."""
         instance = cls(auth=auth, logger=logger, http_client=http_client)
         instance.include_patterns = config.include_patterns if config else []
+        instance.drive_id_filter = config.drive_id if config else None
         instance.batch_size = 30
         instance.batch_generation = True
         instance.max_queue_size = 200
@@ -191,9 +194,11 @@ class GoogleDriveSource(BaseSource):
     # --- Changes API helpers ---
     async def _get_start_page_token(self) -> str:
         url = "https://www.googleapis.com/drive/v3/changes/startPageToken"
-        params = {
+        params: Dict[str, Any] = {
             "supportsAllDrives": "true",
         }
+        if self.drive_id_filter:
+            params["driveId"] = self.drive_id_filter
         data = await self._get(url, params=params)
         token = data.get("startPageToken")
         if not token:
@@ -207,9 +212,12 @@ class GoogleDriveSource(BaseSource):
         for use after the stream completes.
         """
         url = "https://www.googleapis.com/drive/v3/changes"
+        drive_id_filter = self.drive_id_filter
         params: Dict[str, Any] = {
             "pageToken": start_token,
             "includeRemoved": "true",
+            # Must be "true" even when driveId is set — otherwise the API omits
+            # shared-drive items entirely. driveId alone scopes changes to that drive.
             "includeItemsFromAllDrives": "true",
             "supportsAllDrives": "true",
             "pageSize": 1000,
@@ -221,6 +229,8 @@ class GoogleDriveSource(BaseSource):
                 ")"
             ),
         }
+        if drive_id_filter:
+            params["driveId"] = drive_id_filter
 
         latest_new_start: Optional[str] = None
 
@@ -1019,15 +1029,26 @@ class GoogleDriveSource(BaseSource):
             patterns: List[str] = getattr(self, "include_patterns", []) or []
             self.logger.debug(f"Include patterns: {patterns}")
 
+            drive_id_filter: Optional[str] = self.drive_id_filter
+
             drive_objs: List[Dict[str, Any]] = []
             try:
                 async for drive_obj in self._list_drives():
+                    if drive_id_filter and drive_obj.get("id") != drive_id_filter:
+                        continue
                     drive_objs.append(drive_obj)
                     yield self._build_drive_entity(drive_obj)
             except SourceAuthError:
                 raise
             except Exception as e:
                 self.logger.warning(f"Error generating drive entities: {str(e)}")
+
+            if drive_id_filter and not drive_objs:
+                self.logger.warning(
+                    f"Configured drive_id '{drive_id_filter}' was not found among the shared "
+                    "drives accessible to this account. Nothing will be synced. Verify the "
+                    "drive ID and that the authenticated user has access."
+                )
 
             self._setup_breadcrumbs(drive_objs)
             drive_breadcrumbs = self._drive_breadcrumbs
@@ -1070,19 +1091,20 @@ class GoogleDriveSource(BaseSource):
                             )
                             continue
 
-                    try:
-                        async for mydrive_file_entity in self._generate_file_entities(
-                            corpora="user",
-                            include_all_drives=False,
-                            context="MY DRIVE",
-                            parent_breadcrumb=self._my_drive_breadcrumb,
-                            files=files,
-                        ):
-                            yield mydrive_file_entity
-                    except SourceAuthError:
-                        raise
-                    except Exception as e:
-                        self.logger.warning(f"Error processing My Drive files: {str(e)}")
+                    if not drive_id_filter:
+                        try:
+                            async for mydrive_file_entity in self._generate_file_entities(
+                                corpora="user",
+                                include_all_drives=False,
+                                context="MY DRIVE",
+                                parent_breadcrumb=self._my_drive_breadcrumb,
+                                files=files,
+                            ):
+                                yield mydrive_file_entity
+                        except SourceAuthError:
+                            raise
+                        except Exception as e:
+                            self.logger.warning(f"Error processing My Drive files: {str(e)}")
 
                 # INCLUDE MODE: Resolve patterns and traverse only matched subtrees
                 # Shared drives first
@@ -1216,9 +1238,13 @@ class GoogleDriveSource(BaseSource):
                     except Exception as e:
                         self.logger.warning(f"Include mode error for drive {drive_id}: {str(e)}")
 
-                # My Drive include patterns
+                # My Drive include patterns (skipped when scoped to a specific shared drive)
                 try:
-                    for p in patterns:
+                    if drive_id_filter:
+                        patterns_for_mydrive: List[str] = []
+                    else:
+                        patterns_for_mydrive = patterns
+                    for p in patterns_for_mydrive:
                         roots, fname_glob = await self._resolve_pattern_to_roots(
                             corpora="user",
                             include_all_drives=False,
@@ -1281,7 +1307,7 @@ class GoogleDriveSource(BaseSource):
                                         )
                                         continue
 
-                    filename_only_patterns = [p for p in patterns if "/" not in p]
+                    filename_only_patterns = [p for p in patterns_for_mydrive if "/" not in p]
                     import fnmatch as _fn
 
                     for pat in filename_only_patterns:
