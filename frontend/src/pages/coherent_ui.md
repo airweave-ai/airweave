@@ -1,7 +1,7 @@
 # UI Coherence Plan for CollectionDetailView
 
 ## Overview
-After analyzing the CollectionDetailView, Search, SearchProcess, SearchResponse, and SourceConnectionStateView components, I've identified several inconsistencies in styling, spacing, colors, and component organization that need to be addressed for a cohesive, modern 2025 design aesthetic.
+After analyzing the CollectionDetailView, Search, SearchProcess, SearchResponse, and SourceConnectionStateView components, I've identified several inconsistencies in styling, spacing, colors, and component organization that need to be addressed for a cohesive, modern 2026 design aesthetic.
 
 ## Current Issues Analysis
 
