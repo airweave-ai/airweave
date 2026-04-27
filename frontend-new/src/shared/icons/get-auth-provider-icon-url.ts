@@ -24,9 +24,5 @@ function createIconUrlMap(iconUrls: Record<string, unknown>) {
 const authProviderIconUrlByShortName = createIconUrlMap(authProviderIconUrls);
 
 export function getAuthProviderIconUrl(shortName: string) {
-  return (
-    authProviderIconUrlByShortName[
-      shortName as keyof typeof authProviderIconUrlByShortName
-    ] ?? null
-  );
+  return authProviderIconUrlByShortName[shortName] ?? null;
 }

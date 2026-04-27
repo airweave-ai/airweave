@@ -41,59 +41,58 @@ export const collectionSearchFilterOperators = [
   'not_in',
 ] as const satisfies ReadonlyArray<FilterOperator>;
 
-export const collectionSearchFilterFieldOptions: Array<
-  CollectionSearchFilterFieldOption
-> = [
-  { category: 'Base', label: 'Name', value: 'name' },
-  { category: 'Base', label: 'Entity ID', value: 'entity_id' },
-  { category: 'Base', label: 'Created at', value: 'created_at' },
-  { category: 'Base', label: 'Updated at', value: 'updated_at' },
-  {
-    category: 'Breadcrumbs',
-    label: 'Breadcrumb name',
-    value: 'breadcrumbs.name',
-  },
-  {
-    category: 'Breadcrumbs',
-    label: 'Breadcrumb ID',
-    value: 'breadcrumbs.entity_id',
-  },
-  {
-    category: 'Breadcrumbs',
-    label: 'Breadcrumb type',
-    value: 'breadcrumbs.entity_type',
-  },
-  {
-    category: 'Metadata',
-    label: 'Source',
-    value: 'airweave_system_metadata.source_name',
-  },
-  {
-    category: 'Metadata',
-    label: 'Entity type',
-    value: 'airweave_system_metadata.entity_type',
-  },
-  {
-    category: 'Metadata',
-    label: 'Original ID',
-    value: 'airweave_system_metadata.original_entity_id',
-  },
-  {
-    category: 'Metadata',
-    label: 'Chunk index',
-    value: 'airweave_system_metadata.chunk_index',
-  },
-  {
-    category: 'Metadata',
-    label: 'Sync ID',
-    value: 'airweave_system_metadata.sync_id',
-  },
-  {
-    category: 'Metadata',
-    label: 'Sync job ID',
-    value: 'airweave_system_metadata.sync_job_id',
-  },
-];
+export const collectionSearchFilterFieldOptions: Array<CollectionSearchFilterFieldOption> =
+  [
+    { category: 'Base', label: 'Name', value: 'name' },
+    { category: 'Base', label: 'Entity ID', value: 'entity_id' },
+    { category: 'Base', label: 'Created at', value: 'created_at' },
+    { category: 'Base', label: 'Updated at', value: 'updated_at' },
+    {
+      category: 'Breadcrumbs',
+      label: 'Breadcrumb name',
+      value: 'breadcrumbs.name',
+    },
+    {
+      category: 'Breadcrumbs',
+      label: 'Breadcrumb ID',
+      value: 'breadcrumbs.entity_id',
+    },
+    {
+      category: 'Breadcrumbs',
+      label: 'Breadcrumb type',
+      value: 'breadcrumbs.entity_type',
+    },
+    {
+      category: 'Metadata',
+      label: 'Source',
+      value: 'airweave_system_metadata.source_name',
+    },
+    {
+      category: 'Metadata',
+      label: 'Entity type',
+      value: 'airweave_system_metadata.entity_type',
+    },
+    {
+      category: 'Metadata',
+      label: 'Original ID',
+      value: 'airweave_system_metadata.original_entity_id',
+    },
+    {
+      category: 'Metadata',
+      label: 'Chunk index',
+      value: 'airweave_system_metadata.chunk_index',
+    },
+    {
+      category: 'Metadata',
+      label: 'Sync ID',
+      value: 'airweave_system_metadata.sync_id',
+    },
+    {
+      category: 'Metadata',
+      label: 'Sync job ID',
+      value: 'airweave_system_metadata.sync_job_id',
+    },
+  ];
 
 export const collectionSearchFilterFieldGroups = [
   {
@@ -246,10 +245,15 @@ export function isCollectionSearchFilterEqual(
   left: Array<FilterGroup> | undefined,
   right: Array<FilterGroup> | undefined,
 ): boolean {
-  return serializeCollectionSearchFilter(left) === serializeCollectionSearchFilter(right);
+  return (
+    serializeCollectionSearchFilter(left) ===
+    serializeCollectionSearchFilter(right)
+  );
 }
 
-function serializeCollectionSearchFilter(filter: Array<FilterGroup> | undefined) {
+function serializeCollectionSearchFilter(
+  filter: Array<FilterGroup> | undefined,
+) {
   return filter && filter.length > 0 ? JSON.stringify(filter) : '';
 }
 

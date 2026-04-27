@@ -23,20 +23,14 @@ export const queryClient = new QueryClient({
 
       toast.error(message);
     },
-    onSuccess: async (
-      _data,
-      _variables,
-      _onMutateResult,
-      mutation,
-      context,
-    ) => {
+    onSuccess: (_data, _variables, _onMutateResult, mutation, context) => {
       const tags = mutation.meta?.invalidateTags;
 
       if (!tags?.length) {
         return;
       }
 
-      await invalidateQueriesByTags(context.client, tags);
+      void invalidateQueriesByTags(context.client, tags);
     },
   }),
   defaultOptions: {

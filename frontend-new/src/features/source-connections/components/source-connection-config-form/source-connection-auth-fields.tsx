@@ -12,9 +12,7 @@ import {
 } from './source-connection-form-hook';
 import type { SourceConnectionFormInput } from './source-connection-form-hook';
 import type { Source } from '@/shared/api';
-import {
-  DynamicConfigFieldInput,
-} from '@/shared/config-fields';
+import { DynamicConfigFieldInput } from '@/shared/config-fields';
 import { Button } from '@/shared/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import {
@@ -70,8 +68,8 @@ export const SourceConnectionAuthFields = withSourceConnectionForm({
                         onChange={field.handleChange}
                         value={field.state.value}
                       />
-                      )}
-                    </form.Field>
+                    )}
+                  </form.Field>
                 ))}
               </React.Fragment>
             );

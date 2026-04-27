@@ -3,9 +3,7 @@ import { SelectionCard } from './selection-card';
 import { withSourceConnectionForm } from './source-connection-form-hook';
 import type { SourceConnectionFormInput } from './source-connection-form-hook';
 import type { ConfigField, Source } from '@/shared/api';
-import {
-  DynamicConfigFieldInput,
-} from '@/shared/config-fields';
+import { DynamicConfigFieldInput } from '@/shared/config-fields';
 import { FieldDescription, FieldTitle } from '@/shared/ui/field';
 import { Switch } from '@/shared/ui/switch';
 

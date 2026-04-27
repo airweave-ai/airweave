@@ -143,7 +143,9 @@ function AuthProviderConnectionEditContent({
 }: {
   connection: AuthProviderConnection;
   onClose: () => void;
-  updateSubmission: ReturnType<typeof useAuthProviderConnectionUpdateSubmission>;
+  updateSubmission: ReturnType<
+    typeof useAuthProviderConnectionUpdateSubmission
+  >;
 }) {
   const authProviderQueryOptions = useGetAuthProviderDetailQueryOptions({
     shortName: connection.short_name,

@@ -1,4 +1,6 @@
 import { Search } from 'lucide-react';
+import { PageHeader, PageLayout } from './page-layout';
+import type { PageHeaderProps } from './page-layout';
 import { cn } from '@/shared/tailwind/cn';
 import {
   InputGroup,
@@ -6,7 +8,6 @@ import {
   InputGroupInput,
 } from '@/shared/ui/input-group';
 import { Spinner } from '@/shared/ui/spinner';
-import { PageHeader, PageLayout, type PageHeaderProps } from './page-layout';
 
 export function ListPage({
   className,
@@ -15,9 +16,7 @@ export function ListPage({
   return <PageLayout className={cn('gap-5', className)} {...props} />;
 }
 
-export function ListPageHeader({
-  ...props
-}: PageHeaderProps) {
+export function ListPageHeader({ ...props }: PageHeaderProps) {
   return <PageHeader {...props} />;
 }
 

@@ -24,6 +24,7 @@ import { Route as AuthenticatedAppCollectionsCollectionIdConnectSourceRouteImpor
 import { Route as AuthenticatedAppAuthProvidersShortNameConnectRouteImport } from './routes/_authenticated/_app/auth-providers.$shortName.connect'
 import { Route as AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRouteImport } from './routes/_authenticated/_app/collections/$collectionId.connect-source.index'
 import { Route as AuthenticatedAppAuthProvidersConnectionsReadableIdEditRouteImport } from './routes/_authenticated/_app/auth-providers.connections.$readableId.edit'
+import { Route as AuthenticatedAppAuthProvidersConnectionsReadableIdDeleteRouteImport } from './routes/_authenticated/_app/auth-providers.connections.$readableId.delete'
 import { Route as AuthenticatedAppCollectionsCollectionIdConnectSourceSourceSyncRouteImport } from './routes/_authenticated/_app/collections/$collectionId.connect-source.$source.sync'
 import { Route as AuthenticatedAppCollectionsCollectionIdConnectSourceSourceConfigRouteImport } from './routes/_authenticated/_app/collections/$collectionId.connect-source.$source.config'
 import { Route as AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRouteImport } from './routes/_authenticated/_app/collections/$collectionId.connect-source.$source.auth'
@@ -110,6 +111,12 @@ const AuthenticatedAppAuthProvidersConnectionsReadableIdEditRoute =
     path: '/connections/$readableId/edit',
     getParentRoute: () => AuthenticatedAppAuthProvidersRoute,
   } as any)
+const AuthenticatedAppAuthProvidersConnectionsReadableIdDeleteRoute =
+  AuthenticatedAppAuthProvidersConnectionsReadableIdDeleteRouteImport.update({
+    id: '/connections/$readableId/delete',
+    path: '/connections/$readableId/delete',
+    getParentRoute: () => AuthenticatedAppAuthProvidersRoute,
+  } as any)
 const AuthenticatedAppCollectionsCollectionIdConnectSourceSourceSyncRoute =
   AuthenticatedAppCollectionsCollectionIdConnectSourceSourceSyncRouteImport.update(
     {
@@ -150,6 +157,7 @@ export interface FileRoutesByFullPath {
   '/collections/': typeof AuthenticatedAppCollectionsIndexRoute
   '/auth-providers/$shortName/connect': typeof AuthenticatedAppAuthProvidersShortNameConnectRoute
   '/collections/$collectionId/connect-source': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceRouteWithChildren
+  '/auth-providers/connections/$readableId/delete': typeof AuthenticatedAppAuthProvidersConnectionsReadableIdDeleteRoute
   '/auth-providers/connections/$readableId/edit': typeof AuthenticatedAppAuthProvidersConnectionsReadableIdEditRoute
   '/collections/$collectionId/connect-source/': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRoute
   '/collections/$collectionId/connect-source/$source/auth': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRoute
@@ -167,6 +175,7 @@ export interface FileRoutesByTo {
   '/collections/$collectionId': typeof AuthenticatedAppCollectionsCollectionIdRouteWithChildren
   '/collections': typeof AuthenticatedAppCollectionsIndexRoute
   '/auth-providers/$shortName/connect': typeof AuthenticatedAppAuthProvidersShortNameConnectRoute
+  '/auth-providers/connections/$readableId/delete': typeof AuthenticatedAppAuthProvidersConnectionsReadableIdDeleteRoute
   '/auth-providers/connections/$readableId/edit': typeof AuthenticatedAppAuthProvidersConnectionsReadableIdEditRoute
   '/collections/$collectionId/connect-source': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRoute
   '/collections/$collectionId/connect-source/$source/auth': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRoute
@@ -188,6 +197,7 @@ export interface FileRoutesById {
   '/_authenticated/_app/collections/': typeof AuthenticatedAppCollectionsIndexRoute
   '/_authenticated/_app/auth-providers/$shortName/connect': typeof AuthenticatedAppAuthProvidersShortNameConnectRoute
   '/_authenticated/_app/collections/$collectionId/connect-source': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceRouteWithChildren
+  '/_authenticated/_app/auth-providers/connections/$readableId/delete': typeof AuthenticatedAppAuthProvidersConnectionsReadableIdDeleteRoute
   '/_authenticated/_app/auth-providers/connections/$readableId/edit': typeof AuthenticatedAppAuthProvidersConnectionsReadableIdEditRoute
   '/_authenticated/_app/collections/$collectionId/connect-source/': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceIndexRoute
   '/_authenticated/_app/collections/$collectionId/connect-source/$source/auth': typeof AuthenticatedAppCollectionsCollectionIdConnectSourceSourceAuthRoute
@@ -208,6 +218,7 @@ export interface FileRouteTypes {
     | '/collections/'
     | '/auth-providers/$shortName/connect'
     | '/collections/$collectionId/connect-source'
+    | '/auth-providers/connections/$readableId/delete'
     | '/auth-providers/connections/$readableId/edit'
     | '/collections/$collectionId/connect-source/'
     | '/collections/$collectionId/connect-source/$source/auth'
@@ -225,6 +236,7 @@ export interface FileRouteTypes {
     | '/collections/$collectionId'
     | '/collections'
     | '/auth-providers/$shortName/connect'
+    | '/auth-providers/connections/$readableId/delete'
     | '/auth-providers/connections/$readableId/edit'
     | '/collections/$collectionId/connect-source'
     | '/collections/$collectionId/connect-source/$source/auth'
@@ -245,6 +257,7 @@ export interface FileRouteTypes {
     | '/_authenticated/_app/collections/'
     | '/_authenticated/_app/auth-providers/$shortName/connect'
     | '/_authenticated/_app/collections/$collectionId/connect-source'
+    | '/_authenticated/_app/auth-providers/connections/$readableId/delete'
     | '/_authenticated/_app/auth-providers/connections/$readableId/edit'
     | '/_authenticated/_app/collections/$collectionId/connect-source/'
     | '/_authenticated/_app/collections/$collectionId/connect-source/$source/auth'
@@ -365,6 +378,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppAuthProvidersConnectionsReadableIdEditRouteImport
       parentRoute: typeof AuthenticatedAppAuthProvidersRoute
     }
+    '/_authenticated/_app/auth-providers/connections/$readableId/delete': {
+      id: '/_authenticated/_app/auth-providers/connections/$readableId/delete'
+      path: '/connections/$readableId/delete'
+      fullPath: '/auth-providers/connections/$readableId/delete'
+      preLoaderRoute: typeof AuthenticatedAppAuthProvidersConnectionsReadableIdDeleteRouteImport
+      parentRoute: typeof AuthenticatedAppAuthProvidersRoute
+    }
     '/_authenticated/_app/collections/$collectionId/connect-source/$source/sync': {
       id: '/_authenticated/_app/collections/$collectionId/connect-source/$source/sync'
       path: '/$source/sync'
@@ -405,6 +425,7 @@ const AuthenticatedAppApiKeysRouteWithChildren =
 
 interface AuthenticatedAppAuthProvidersRouteChildren {
   AuthenticatedAppAuthProvidersShortNameConnectRoute: typeof AuthenticatedAppAuthProvidersShortNameConnectRoute
+  AuthenticatedAppAuthProvidersConnectionsReadableIdDeleteRoute: typeof AuthenticatedAppAuthProvidersConnectionsReadableIdDeleteRoute
   AuthenticatedAppAuthProvidersConnectionsReadableIdEditRoute: typeof AuthenticatedAppAuthProvidersConnectionsReadableIdEditRoute
 }
 
@@ -412,6 +433,8 @@ const AuthenticatedAppAuthProvidersRouteChildren: AuthenticatedAppAuthProvidersR
   {
     AuthenticatedAppAuthProvidersShortNameConnectRoute:
       AuthenticatedAppAuthProvidersShortNameConnectRoute,
+    AuthenticatedAppAuthProvidersConnectionsReadableIdDeleteRoute:
+      AuthenticatedAppAuthProvidersConnectionsReadableIdDeleteRoute,
     AuthenticatedAppAuthProvidersConnectionsReadableIdEditRoute:
       AuthenticatedAppAuthProvidersConnectionsReadableIdEditRoute,
   }

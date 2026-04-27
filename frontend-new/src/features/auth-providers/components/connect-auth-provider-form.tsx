@@ -63,8 +63,7 @@ export function ConnectAuthProviderForm({
       readable_id: generateReadableId(defaultName, readableIdSuffixRef.current),
     };
   }, [authProvider]);
-  const [isReadableIdManual, setIsReadableIdManual] =
-    React.useState(false);
+  const [isReadableIdManual, setIsReadableIdManual] = React.useState(false);
   const authFields = authProvider.auth_fields?.fields ?? [];
 
   const form = useForm({

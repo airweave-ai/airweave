@@ -208,7 +208,9 @@ type RawSearchAgenticToolCallEvent = Extract<
 type SearchAgenticRecord = Record<string, unknown>;
 
 export type SearchAgenticEntitySummary = z.infer<typeof entitySummarySchema>;
-export type SearchAgenticFilterCondition = z.infer<typeof filterConditionSchema>;
+export type SearchAgenticFilterCondition = z.infer<
+  typeof filterConditionSchema
+>;
 export type SearchAgenticFilterGroup = z.infer<typeof filterGroupSchema>;
 export type SearchAgenticSearchQuery = z.infer<typeof searchQuerySchema>;
 export type SearchAgenticSearchToolArguments = z.infer<
@@ -224,15 +226,23 @@ export type SearchAgenticNavigateToolArguments = z.infer<
   typeof navigateToolArgumentsSchema
 >;
 export type SearchAgenticEmptyArguments = z.infer<typeof emptyArgumentsSchema>;
-export type SearchAgenticSearchToolStats = z.infer<typeof searchToolStatsSchema>;
+export type SearchAgenticSearchToolStats = z.infer<
+  typeof searchToolStatsSchema
+>;
 export type SearchAgenticReadToolStats = z.infer<typeof readToolStatsSchema>;
-export type SearchAgenticCollectToolStats = z.infer<typeof collectToolStatsSchema>;
+export type SearchAgenticCollectToolStats = z.infer<
+  typeof collectToolStatsSchema
+>;
 export type SearchAgenticCountToolStats = z.infer<typeof countToolStatsSchema>;
 export type SearchAgenticNavigateToolStats = z.infer<
   typeof navigateToolStatsSchema
 >;
-export type SearchAgenticReviewToolStats = z.infer<typeof reviewToolStatsSchema>;
-export type SearchAgenticFinishToolStats = z.infer<typeof finishToolStatsSchema>;
+export type SearchAgenticReviewToolStats = z.infer<
+  typeof reviewToolStatsSchema
+>;
+export type SearchAgenticFinishToolStats = z.infer<
+  typeof finishToolStatsSchema
+>;
 export type SearchAgenticThinkingDiagnostics = z.infer<
   typeof thinkingDiagnosticsSchema
 >;
@@ -246,7 +256,9 @@ export type SearchAgenticToolCallDiagnostics<
 export type SearchAgenticRerankingDiagnostics = z.infer<
   typeof rerankingDiagnosticsSchema
 >;
-export type SearchAgenticDoneDiagnostics = z.infer<typeof doneDiagnosticsSchema>;
+export type SearchAgenticDoneDiagnostics = z.infer<
+  typeof doneDiagnosticsSchema
+>;
 export type SearchAgenticToolKind =
   | 'add_to_results'
   | 'count'
@@ -453,7 +465,8 @@ const initialSearchAgenticStreamState: SearchAgenticStreamState = {
 
 export const searchAgenticStreamEventSchema =
   rawSearchAgenticStreamEventSchema.transform(
-    (event): SearchAgenticStreamEvent => normalizeSearchAgenticStreamEvent(event),
+    (event): SearchAgenticStreamEvent =>
+      normalizeSearchAgenticStreamEvent(event),
   );
 
 function isTerminalSearchAgenticStreamEvent(event: SearchAgenticStreamEvent) {
@@ -605,7 +618,8 @@ function normalizeToolCallEvent(
         defaultSearchToolArguments,
         defaultSearchToolStats,
       );
-      const retrievalStrategy = diagnostics.arguments.retrieval_strategy ?? 'hybrid';
+      const retrievalStrategy =
+        diagnostics.arguments.retrieval_strategy ?? 'hybrid';
 
       if (retrievalStrategy === 'semantic') {
         return buildToolCallEvent(
@@ -834,7 +848,11 @@ function parseToolCallDiagnostics<
 
   return {
     ...diagnostics,
-    arguments: parseObject(argumentsSchema, diagnostics.arguments, defaultArguments),
+    arguments: parseObject(
+      argumentsSchema,
+      diagnostics.arguments,
+      defaultArguments,
+    ),
     stats: parseObject(statsSchema, diagnostics.stats, defaultStats),
   };
 }

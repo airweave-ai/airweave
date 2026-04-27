@@ -9,6 +9,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import {
   connectAuthProviderAuthProvidersPostMutation,
   queryClient as defaultQueryClient,
+  deleteAuthProviderConnectionAuthProvidersReadableIdDeleteMutation,
   getAuthProviderAuthProvidersDetailShortNameGetOptions,
   getAuthProviderConnectionAuthProvidersConnectionsReadableIdGetOptions,
   listAuthProviderConnectionsAuthProvidersConnectionsGetOptions,
@@ -60,7 +61,9 @@ export function ensureListAuthProviders({
   queryClient: QueryClient;
   organizationId: string;
 }) {
-  return queryClient.ensureQueryData(listAuthProvidersQueryOptions(organizationId));
+  return queryClient.ensureQueryData(
+    listAuthProvidersQueryOptions(organizationId),
+  );
 }
 
 export function getAuthProviderDetailQueryOptions(
@@ -82,7 +85,9 @@ export function getAuthProviderDetailQueryOptions(
     initialData: () => {
       const authProviders = queryClient.getQueryData(listQueryOptions.queryKey);
 
-      return authProviders?.find((provider) => provider.short_name === shortName);
+      return authProviders?.find(
+        (provider) => provider.short_name === shortName,
+      );
     },
     initialDataUpdatedAt: () =>
       queryClient.getQueryState(listQueryOptions.queryKey)?.dataUpdatedAt,
@@ -122,7 +127,9 @@ export function prefetchAuthProviderDetail({
   );
 }
 
-export function listAuthProviderConnectionsQueryOptions(organizationId: string) {
+export function listAuthProviderConnectionsQueryOptions(
+  organizationId: string,
+) {
   return listAuthProviderConnectionsAuthProvidersConnectionsGetOptions(
     withOrganizationHeaders({ organizationId }),
   );
@@ -159,7 +166,8 @@ export function getAuthProviderConnectionQueryOptions(
       readable_id: readableId,
     },
   };
-  const listQueryOptions = listAuthProviderConnectionsQueryOptions(organizationId);
+  const listQueryOptions =
+    listAuthProviderConnectionsQueryOptions(organizationId);
 
   return queryOptions({
     ...getAuthProviderConnectionAuthProvidersConnectionsReadableIdGetOptions(
@@ -235,6 +243,35 @@ export function useConnectAuthProviderMutationOptions() {
 
 export function useConnectAuthProviderMutation() {
   const options = useConnectAuthProviderMutationOptions();
+
+  return useMutation(options);
+}
+
+export function deleteAuthProviderConnectionMutationOptions(
+  organizationId: string,
+) {
+  return mutationOptions({
+    ...deleteAuthProviderConnectionAuthProvidersReadableIdDeleteMutation(
+      withOrganizationHeaders({ organizationId }),
+    ),
+    meta: {
+      errorToast: 'Could not delete auth provider connection.',
+      invalidateTags: authProviderInvalidationTags,
+    },
+  });
+}
+
+export function useDeleteAuthProviderConnectionMutationOptions() {
+  const currentOrganizationId = useCurrentOrganizationId();
+
+  return React.useMemo(
+    () => deleteAuthProviderConnectionMutationOptions(currentOrganizationId),
+    [currentOrganizationId],
+  );
+}
+
+export function useDeleteAuthProviderConnectionMutation() {
+  const options = useDeleteAuthProviderConnectionMutationOptions();
 
   return useMutation(options);
 }

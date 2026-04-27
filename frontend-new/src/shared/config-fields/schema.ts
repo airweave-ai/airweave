@@ -5,7 +5,12 @@ import {
   trimmedStringSchema,
 } from '@/shared/forms/schema';
 
-export type ConfigFieldValue = string | number | boolean | Array<string> | undefined;
+export type ConfigFieldValue =
+  | string
+  | number
+  | boolean
+  | Array<string>
+  | undefined;
 
 const SUPPORTED_CONFIG_FIELD_TYPES = [
   'string',

@@ -31,7 +31,10 @@ const OP_SYMBOLS = {
 
 type CollectionSearchReasoningToolLabelKey =
   | Exclude<
-      Extract<CollectionSearchReasoningEvent, { type: 'tool_call' }>['tool_kind'],
+      Extract<
+        CollectionSearchReasoningEvent,
+        { type: 'tool_call' }
+      >['tool_kind'],
       'unknown'
     >
   | 'reranking';
@@ -127,7 +130,9 @@ export function formatCollectionSearchReasoningEvent(
         sections: event.diagnostics.first_results.length
           ? [
               {
-                collapsed: formatRerankResultList(event.diagnostics.first_results),
+                collapsed: formatRerankResultList(
+                  event.diagnostics.first_results,
+                ),
                 expandedLines: formatEntityExpandedLines(
                   event.diagnostics.first_results,
                   undefined,
@@ -148,9 +153,12 @@ export function getCollectionSearchReasoningSummarySections(
     return [];
   }
 
-  const foundCount = finalEvent.diagnostics?.all_seen_entity_ids.length ?? finalEvent.results.length;
+  const foundCount =
+    finalEvent.diagnostics?.all_seen_entity_ids.length ??
+    finalEvent.results.length;
   const readCount = finalEvent.diagnostics?.all_read_entity_ids.length ?? 0;
-  const collectedCount = finalEvent.diagnostics?.all_collected_entity_ids.length ?? 0;
+  const collectedCount =
+    finalEvent.diagnostics?.all_collected_entity_ids.length ?? 0;
   const promptTokens = finalEvent.diagnostics?.prompt_tokens ?? 0;
   const completionTokens = finalEvent.diagnostics?.completion_tokens ?? 0;
   const cachedTokens =
@@ -186,7 +194,10 @@ function formatToolCallReasoningEvent(
     return null;
   }
 
-  if ('error' in event.diagnostics.stats && typeof event.diagnostics.stats.error === 'string') {
+  if (
+    'error' in event.diagnostics.stats &&
+    typeof event.diagnostics.stats.error === 'string'
+  ) {
     return {
       isInvalid: true,
       label: getToolLabel(event),
@@ -215,7 +226,9 @@ function formatToolCallReasoningEvent(
             : `${formatNumber(resultCount)} results`
           : '? results';
 
-      const inputParts = [primaryQuery ? `"${primaryQuery}"` : ''].filter(Boolean);
+      const inputParts = [primaryQuery ? `"${primaryQuery}"` : ''].filter(
+        Boolean,
+      );
       if (variations.length > 0) {
         inputParts.push(
           `${formatNumber(variations.length)} ${pluralize(variations.length, 'variation')}`,
@@ -296,7 +309,8 @@ function formatToolCallReasoningEvent(
 
     case 'add_to_results': {
       const added =
-        event.diagnostics.stats.added ?? event.diagnostics.stats.entities.length;
+        event.diagnostics.stats.added ??
+        event.diagnostics.stats.entities.length;
 
       labelSuffix = `${formatOptionalNumber(added)} added (${formatOptionalNumber(event.diagnostics.stats.total_collected)} total)`;
 
@@ -319,7 +333,9 @@ function formatToolCallReasoningEvent(
           expandedLines,
         );
       } else if (event.diagnostics.arguments.entity_ids.length > 0) {
-        const expandedLines = [event.diagnostics.arguments.entity_ids.join(', ')];
+        const expandedLines = [
+          event.diagnostics.arguments.entity_ids.join(', '),
+        ];
         if ((event.diagnostics.stats.not_found ?? 0) > 0) {
           expandedLines.push(
             `${formatNumber(event.diagnostics.stats.not_found ?? 0)} not found`,
@@ -332,9 +348,10 @@ function formatToolCallReasoningEvent(
     }
 
     case 'remove_from_results': {
-      const removedCount = event.diagnostics.arguments.entity_ids.length > 0
-        ? formatNumber(event.diagnostics.arguments.entity_ids.length)
-        : '?';
+      const removedCount =
+        event.diagnostics.arguments.entity_ids.length > 0
+          ? formatNumber(event.diagnostics.arguments.entity_ids.length)
+          : '?';
 
       labelSuffix = `${removedCount} removed (${formatOptionalNumber(event.diagnostics.stats.total_collected)} total)`;
 
@@ -381,7 +398,8 @@ function formatToolCallReasoningEvent(
       pushReasoningSection(
         sections,
         'input',
-        event.diagnostics.stats.context_label ?? `"${event.diagnostics.arguments.entity_id ?? '?'}"`,
+        event.diagnostics.stats.context_label ??
+          `"${event.diagnostics.arguments.entity_id ?? '?'}"`,
         [],
       );
       pushReasoningSection(
@@ -407,7 +425,8 @@ function formatToolCallReasoningEvent(
       pushReasoningSection(
         sections,
         'input',
-        event.diagnostics.stats.context_label ?? `"${event.diagnostics.arguments.entity_id ?? '?'}"`,
+        event.diagnostics.stats.context_label ??
+          `"${event.diagnostics.arguments.entity_id ?? '?'}"`,
         [],
       );
       pushReasoningSection(
@@ -456,9 +475,7 @@ function pushReasoningSection(
   sections: Array<CollectionSearchReasoningSection>,
   label: CollectionSearchReasoningSection['label'],
   collapsed: string,
-  expandedLines: Array<
-    string | CollectionSearchReasoningExpandedLine
-  >,
+  expandedLines: Array<string | CollectionSearchReasoningExpandedLine>,
 ) {
   if (!collapsed) {
     return;
@@ -466,7 +483,9 @@ function pushReasoningSection(
 
   sections.push({
     collapsed,
-    expandedLines: expandedLines.map(normalizeCollectionSearchReasoningExpandedLine),
+    expandedLines: expandedLines.map(
+      normalizeCollectionSearchReasoningExpandedLine,
+    ),
     label,
   });
 }
@@ -474,7 +493,9 @@ function pushReasoningSection(
 function getToolLabel(
   event: Extract<CollectionSearchReasoningEvent, { type: 'tool_call' }>,
 ) {
-  return event.tool_kind === 'unknown' ? event.tool_name : TOOL_LABELS[event.tool_kind];
+  return event.tool_kind === 'unknown'
+    ? event.tool_name
+    : TOOL_LABELS[event.tool_kind];
 }
 
 function shortenField(field: string) {
@@ -486,9 +507,10 @@ function shortenField(field: string) {
 function formatCondition(condition: CollectionSearchReasoningFilterCondition) {
   const field = shortenField(condition.field ?? '');
   const operator =
-    condition.operator && isCollectionSearchReasoningFilterOperator(condition.operator)
+    condition.operator &&
+    isCollectionSearchReasoningFilterOperator(condition.operator)
       ? OP_SYMBOLS[condition.operator]
-      : condition.operator ?? '?';
+      : (condition.operator ?? '?');
   const rawValue = condition.value;
 
   if (typeof rawValue === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(rawValue)) {
@@ -518,10 +540,7 @@ function formatFilterGroupLines(
 function getTotalFilterConditions(
   filterGroups: Array<CollectionSearchReasoningFilterGroup>,
 ) {
-  return filterGroups.reduce(
-    (sum, group) => sum + group.conditions.length,
-    0,
-  );
+  return filterGroups.reduce((sum, group) => sum + group.conditions.length, 0);
 }
 
 function formatVariationLines(variations: Array<string>) {
@@ -600,24 +619,24 @@ function formatEntityExpandedLines(
 ) {
   const lines: Array<CollectionSearchReasoningExpandedLine> = entities.map(
     (entity) => {
-    const name = entity.name ?? 'Unknown entity';
-    const sourceName = entity.source_name ?? '?';
-    const entityType = entity.entity_type ?? '?';
-    const entityId = entity.entity_id ?? '?';
+      const name = entity.name ?? 'Unknown entity';
+      const sourceName = entity.source_name ?? '?';
+      const entityType = entity.entity_type ?? '?';
+      const entityId = entity.entity_id ?? '?';
 
-    if (includeScore) {
+      if (includeScore) {
+        return {
+          label: name,
+          metadata: ` (${sourceName} · ${entityType} · ${entityId} · score: ${entity.relevance_score?.toFixed(3) ?? '?'})`,
+          type: 'entity' as const,
+        };
+      }
+
       return {
         label: name,
-        metadata: ` (${sourceName} · ${entityType} · ${entityId} · score: ${entity.relevance_score?.toFixed(3) ?? '?'})`,
+        metadata: ` (${sourceName} · ${entityType} · ${entityId})`,
         type: 'entity' as const,
       };
-    }
-
-    return {
-      label: name,
-      metadata: ` (${sourceName} · ${entityType} · ${entityId})`,
-      type: 'entity' as const,
-    };
     },
   );
 
@@ -632,7 +651,10 @@ function formatEntityExpandedLines(
 }
 
 function formatThinkingTokenSummary(
-  diagnostics: Extract<CollectionSearchReasoningEvent, { type: 'thinking' }>['diagnostics'],
+  diagnostics: Extract<
+    CollectionSearchReasoningEvent,
+    { type: 'thinking' }
+  >['diagnostics'],
 ) {
   if (
     diagnostics.prompt_tokens === undefined &&

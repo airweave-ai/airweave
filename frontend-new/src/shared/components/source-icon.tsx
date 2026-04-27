@@ -1,5 +1,5 @@
-import type { ComponentProps } from 'react';
 import { BrandIcon } from './brand-icon';
+import type { ComponentProps } from 'react';
 import type { AppIconVariant } from '@/shared/icons/get-app-icon-url';
 import { getAppIconUrl } from '@/shared/icons/get-app-icon-url';
 

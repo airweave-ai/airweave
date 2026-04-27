@@ -50,19 +50,22 @@ const collectionSearchSubmitBaseSchema = z.object({
   query: collectionSearchQuerySchema,
 });
 
-const collectionSearchClassicSubmitSchema = collectionSearchSubmitBaseSchema.extend({
-  tier: z.literal('classic'),
-});
+const collectionSearchClassicSubmitSchema =
+  collectionSearchSubmitBaseSchema.extend({
+    tier: z.literal('classic'),
+  });
 
-const collectionSearchInstantSubmitSchema = collectionSearchSubmitBaseSchema.extend({
-  retrievalStrategy: z.enum(collectionSearchInstantRetrievalStrategies),
-  tier: z.literal('instant'),
-});
+const collectionSearchInstantSubmitSchema =
+  collectionSearchSubmitBaseSchema.extend({
+    retrievalStrategy: z.enum(collectionSearchInstantRetrievalStrategies),
+    tier: z.literal('instant'),
+  });
 
-const collectionSearchAgenticSubmitSchema = collectionSearchSubmitBaseSchema.extend({
-  thinking: z.boolean(),
-  tier: z.literal('agentic'),
-});
+const collectionSearchAgenticSubmitSchema =
+  collectionSearchSubmitBaseSchema.extend({
+    thinking: z.boolean(),
+    tier: z.literal('agentic'),
+  });
 
 export const collectionSearchSubmitSchema = z.discriminatedUnion('tier', [
   collectionSearchClassicSubmitSchema,

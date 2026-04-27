@@ -182,9 +182,7 @@ function formatPythonRequestProperty(name: string, value: unknown) {
 
   return literal
     .split('\n')
-    .map((line, index) =>
-      index === 0 ? `    ${name}=${line}` : `    ${line}`,
-    )
+    .map((line, index) => (index === 0 ? `    ${name}=${line}` : `    ${line}`))
     .join('\n');
 }
 

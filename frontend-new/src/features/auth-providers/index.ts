@@ -1,5 +1,6 @@
 export {
   connectAuthProviderMutationOptions,
+  deleteAuthProviderConnectionMutationOptions,
   ensureListAuthProviders,
   ensureListAuthProviderConnections,
   getAuthProviderDetailQueryOptions,
@@ -9,6 +10,8 @@ export {
   prefetchAuthProviderConnection,
   prefetchAuthProviderDetail,
   useConnectAuthProviderMutation,
+  useDeleteAuthProviderConnectionMutation,
+  useDeleteAuthProviderConnectionMutationOptions,
   useGetAuthProviderConnectionQueryOptions,
   useConnectAuthProviderMutationOptions,
   useGetAuthProviderDetailQueryOptions,

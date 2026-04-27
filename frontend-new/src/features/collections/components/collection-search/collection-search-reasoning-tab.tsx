@@ -69,14 +69,16 @@ export function CollectionSearchReasoningTabContent({
 
                 {formattedEvent.detailLines?.length ? (
                   <div className="space-y-0.5">
-                    {formattedEvent.detailLines.map((detailLine, detailIndex) => (
-                      <p
-                        key={`${detailLine}-${detailIndex}`}
-                        className="text-xs leading-4 text-foreground"
-                      >
-                        {detailLine}
-                      </p>
-                    ))}
+                    {formattedEvent.detailLines.map(
+                      (detailLine, detailIndex) => (
+                        <p
+                          key={`${detailLine}-${detailIndex}`}
+                          className="text-xs leading-4 text-foreground"
+                        >
+                          {detailLine}
+                        </p>
+                      ),
+                    )}
                   </div>
                 ) : null}
 

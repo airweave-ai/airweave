@@ -39,7 +39,10 @@ export function generateReadableIdBase(name: string) {
     .replace(/^-|-$/g, '');
 }
 
-export function generateReadableId(name: string, suffix = generateRandomSuffix()) {
+export function generateReadableId(
+  name: string,
+  suffix = generateRandomSuffix(),
+) {
   const base = generateReadableIdBase(name);
 
   return base ? `${base}-${suffix}` : '';

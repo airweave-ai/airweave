@@ -167,7 +167,10 @@ export function agenticCollectionSearchStreamQueryOptions(
 }
 
 export function useClassicCollectionSearchQueryOptions(
-  params: Pick<ClassicCollectionSearchParams, 'collectionId' | 'filter' | 'query'> | null,
+  params: Pick<
+    ClassicCollectionSearchParams,
+    'collectionId' | 'filter' | 'query'
+  > | null,
 ) {
   const currentOrganizationId = useCurrentOrganizationId();
 
@@ -179,7 +182,12 @@ export function useClassicCollectionSearchQueryOptions(
         query: params?.query ?? '',
         tier: 'classic',
       }),
-    [currentOrganizationId, params?.collectionId, params?.filter, params?.query],
+    [
+      currentOrganizationId,
+      params?.collectionId,
+      params?.filter,
+      params?.query,
+    ],
   );
 }
 

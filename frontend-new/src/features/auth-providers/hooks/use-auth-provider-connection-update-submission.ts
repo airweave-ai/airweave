@@ -68,7 +68,9 @@ function buildAuthProviderConnectionUpdatePayload({
     body.name = values.name;
   }
 
-  const authFields = removeUndefinedValues(values.auth_fields ?? {}) as ConfigValues;
+  const authFields = removeUndefinedValues(
+    values.auth_fields ?? {},
+  ) as ConfigValues;
 
   if (Object.keys(authFields).length > 0) {
     body.auth_fields = authFields;
