@@ -1,9 +1,7 @@
 import * as React from 'react';
+import { isSupportedConfigFieldType } from './schema';
+import type { ConfigFieldValue } from './schema';
 import type { ConfigField } from '@/shared/api';
-import {
-  type ConfigFieldValue,
-  isSupportedConfigFieldType,
-} from './schema';
 import {
   Field,
   FieldContent,
@@ -67,6 +65,7 @@ type DynamicConfigFieldInputProps = {
   onBlur?: React.FocusEventHandler;
   onChange: (value: ConfigFieldValue) => void;
   placeholder?: string;
+  required?: boolean;
   value: unknown;
 };
 
@@ -212,11 +211,13 @@ export function DynamicConfigFieldInput({
   onBlur,
   onChange,
   placeholder,
+  required,
   value,
 }: DynamicConfigFieldInputProps) {
   const fieldType = isSupportedConfigFieldType(configField.type)
     ? configField.type
     : 'string';
+  const isRequired = required ?? configField.required;
 
   switch (fieldType) {
     case 'string':
@@ -231,7 +232,7 @@ export function DynamicConfigFieldInput({
           onBlur={onBlur}
           onChange={onChange}
           placeholder={placeholder}
-          required={configField.required}
+          required={isRequired}
           title={configField.title}
           value={typeof value === 'string' ? value : ''}
         />
@@ -247,7 +248,7 @@ export function DynamicConfigFieldInput({
           onBlur={onBlur}
           onChange={onChange}
           placeholder={placeholder}
-          required={configField.required}
+          required={isRequired}
           title={configField.title}
           value={typeof value === 'number' ? value : 0}
         />
@@ -262,7 +263,7 @@ export function DynamicConfigFieldInput({
           name={name}
           onBlur={onBlur}
           onChange={onChange}
-          required={configField.required}
+          required={isRequired}
           title={configField.title}
           value={typeof value === 'boolean' ? value : false}
         />
@@ -278,7 +279,7 @@ export function DynamicConfigFieldInput({
           onBlur={onBlur}
           onChange={onChange}
           placeholder={placeholder}
-          required={configField.required}
+          required={isRequired}
           title={configField.title}
           value={
             Array.isArray(value)

@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { useForm } from '@tanstack/react-form';
-import { ArrowUpRight } from 'lucide-react';
 import * as z from 'zod';
 import { generateRandomSuffix, generateReadableId } from '../lib/readable-id';
+import { AuthProviderSettingsLink } from './auth-provider-settings-link';
 import type { AuthProviderMetadata, ConfigField } from '@/shared/api';
 import {
   DynamicConfigFieldInput,
@@ -14,22 +14,10 @@ import {
   optionalTrimmedStringSchema,
   trimmedStringSchema,
 } from '@/shared/forms/schema';
-import { Button } from '@/shared/ui/button';
 import { FieldError, FieldGroup } from '@/shared/ui/field';
 import { Input } from '@/shared/ui/input';
 
 const readableIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-
-const authProviderSettingsLinks = {
-  composio: {
-    href: 'https://platform.composio.dev/',
-    label: 'Get API Key from Composio',
-  },
-  pipedream: {
-    href: 'https://pipedream.com/settings/api',
-    label: 'Get Client ID & Secret from Pipedream',
-  },
-} as const;
 
 type ConnectAuthProviderFormProps = {
   authProvider: AuthProviderMetadata;
@@ -88,8 +76,6 @@ export function ConnectAuthProviderForm({
       return onSubmit(formSchema.parse(value));
     },
   });
-
-  const settingsLink = getAuthProviderSettingsLink(authProvider.short_name);
 
   return (
     <form
@@ -210,13 +196,8 @@ export function ConnectAuthProviderForm({
           );
         })}
 
-        {settingsLink !== null && authFields.length > 0 ? (
-          <Button asChild className="w-fit" variant="outline">
-            <a href={settingsLink.href} rel="noreferrer" target="_blank">
-              {settingsLink.label}
-              <ArrowUpRight className="size-4" />
-            </a>
-          </Button>
+        {authFields.length > 0 ? (
+          <AuthProviderSettingsLink shortName={authProvider.short_name} />
         ) : null}
       </FieldGroup>
 
@@ -242,14 +223,4 @@ function getDefaultConnectionName(authProviderName: string) {
 
 function getAuthFieldPlaceholder(authField: ConfigField) {
   return `Enter your ${authField.title}`;
-}
-
-function getAuthProviderSettingsLink(shortName: string) {
-  if (!(shortName in authProviderSettingsLinks)) {
-    return null;
-  }
-
-  return authProviderSettingsLinks[
-    shortName as keyof typeof authProviderSettingsLinks
-  ];
 }

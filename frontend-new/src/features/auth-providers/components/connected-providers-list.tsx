@@ -1,7 +1,9 @@
+import { Link } from '@tanstack/react-router';
 import { ProvidersListEmptyState } from './providers-list-empty-state';
 import type { AuthProviderConnection } from '@/shared/api';
 import { ErrorState } from '@/shared/components/error-state';
 import { Badge } from '@/shared/ui/badge';
+import { Button } from '@/shared/ui/button';
 import { Skeleton } from '@/shared/ui/skeleton';
 
 type ConnectedProvidersListProps = {
@@ -75,12 +77,22 @@ function ConnectedProviderRow({
         </p>
       </div>
 
-      <Badge
-        variant="outline"
-        className="shrink-0 rounded-full border-border/70 bg-transparent font-mono text-[0.625rem] text-muted-foreground"
-      >
-        {connection.short_name}
-      </Badge>
+      <div className="flex shrink-0 items-center gap-2">
+        <Badge
+          variant="outline"
+          className="rounded-full border-border/70 bg-transparent font-mono text-[0.625rem] text-muted-foreground"
+        >
+          {connection.short_name}
+        </Badge>
+        <Button asChild size="sm" variant="outline">
+          <Link
+            params={{ readableId: connection.readable_id }}
+            to="/auth-providers/connections/$readableId/edit"
+          >
+            Edit
+          </Link>
+        </Button>
+      </div>
     </div>
   );
 }
