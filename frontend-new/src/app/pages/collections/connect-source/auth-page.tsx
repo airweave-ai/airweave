@@ -1,6 +1,10 @@
 import * as React from 'react';
 import { useQuery, useSuspenseQueries } from '@tanstack/react-query';
-import { SearchParamError, getRouteApi } from '@tanstack/react-router';
+import {
+  SearchParamError,
+  getRouteApi,
+  useRouter,
+} from '@tanstack/react-router';
 import type { ErrorComponentProps } from '@tanstack/react-router';
 import type { SourceConnection } from '@/shared/api';
 import {
@@ -25,6 +29,7 @@ const routeApi = getRouteApi(
 
 export function ConnectSourceAuthPage() {
   const navigate = routeApi.useNavigate();
+  const router = useRouter();
   const { sourceConnectionId } = routeApi.useLoaderData();
   const { collectionId, source: sourceShortName } = routeApi.useParams();
   const search = routeApi.useSearch();
@@ -63,17 +68,18 @@ export function ConnectSourceAuthPage() {
       }),
     [collectionId, navigate, sourceShortName],
   );
-  const handleBack = React.useCallback(
-    () =>
-      void navigate({
-        params: {
-          collectionId,
-          source: sourceShortName,
-        },
-        to: '/collections/$collectionId/connect-source/$source/config',
-      }),
-    [collectionId, navigate, sourceShortName],
-  );
+  const handleBack = React.useCallback(() => {
+    if (router.history.canGoBack()) {
+      router.history.back();
+      return;
+    }
+
+    void navigate({
+      params: { collectionId },
+      to: '/collections/$collectionId',
+      viewTransition: true,
+    });
+  }, [collectionId, navigate, router]);
 
   const isCallbackReturn = search.status === 'success';
 
@@ -124,6 +130,7 @@ export function ConnectSourceAuthPage() {
 
 export function ConnectSourceAuthErrorPage({ error }: ErrorComponentProps) {
   const navigate = routeApi.useNavigate();
+  const router = useRouter();
   const { collectionId, source: sourceShortName } = routeApi.useParams();
   const { source_connection_id: sourceConnectionId } = routeApi.useSearch();
   const sourceQueryOptions = useGetSourceQueryOptions({
@@ -139,23 +146,6 @@ export function ConnectSourceAuthErrorPage({ error }: ErrorComponentProps) {
       }),
     [collectionId, navigate],
   );
-  const handleReauthorized = React.useCallback(() => {
-    if (!sourceConnectionId) {
-      return;
-    }
-
-    return navigate({
-      params: {
-        collectionId,
-        source: sourceShortName,
-      },
-      replace: true,
-      search: {
-        source_connection_id: sourceConnectionId,
-      },
-      to: '/collections/$collectionId/connect-source/$source/auth',
-    });
-  }, [collectionId, navigate, sourceConnectionId, sourceShortName]);
   const sourceForLayout = source ?? {
     name: getFallbackSourceName(sourceShortName),
     short_name: sourceShortName,
@@ -212,7 +202,7 @@ export function ConnectSourceAuthErrorPage({ error }: ErrorComponentProps) {
             sourceConnectionId={sourceConnectionId}
             hints={content.hints}
             onBack={handleClose}
-            onReauthorized={handleReauthorized}
+            onReauthorized={() => router.invalidate()}
             sourceName={sourceForLayout.name}
             title={content.title}
           />

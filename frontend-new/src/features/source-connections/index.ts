@@ -48,5 +48,6 @@ export type {
   SourceConnectionAuthVariant,
   SourceConnectionFormOutput,
 } from './components/source-connection-config-form';
+export { useReinitiateSourceConnectionOAuthMutation } from './hooks/use-reinitiate-source-connection-oauth-mutation';
 export { useSourceConnectionConfigSubmission } from './hooks/use-source-connection-config-submission';
 export { useSourcePicker } from './hooks/use-source-picker';

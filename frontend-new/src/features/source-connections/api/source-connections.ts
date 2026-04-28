@@ -132,9 +132,14 @@ export function useVerifySourceConnectionOAuthMutationOptions() {
 export function reinitiateSourceConnectionOAuthMutationOptions(
   organizationId: string,
 ) {
-  return reinitiateOauthSourceConnectionsSourceConnectionIdReinitiateOauthPostMutation(
-    withOrganizationHeaders({ organizationId }),
-  );
+  return mutationOptions({
+    ...reinitiateOauthSourceConnectionsSourceConnectionIdReinitiateOauthPostMutation(
+      withOrganizationHeaders({ organizationId }),
+    ),
+    meta: {
+      invalidateTags: sourceConnectionInvalidationTags,
+    },
+  });
 }
 
 export function useReinitiateSourceConnectionOAuthMutationOptions() {

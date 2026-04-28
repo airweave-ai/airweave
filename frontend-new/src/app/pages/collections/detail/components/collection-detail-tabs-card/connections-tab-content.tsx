@@ -1,14 +1,12 @@
 import { Link } from '@tanstack/react-router';
-import {
-  IconAlertTriangleFilled,
-  IconPlus,
-  IconRefresh,
-} from '@tabler/icons-react';
+import { IconAlertTriangleFilled, IconPlus } from '@tabler/icons-react';
 import {
   ConnectionStatusIndicator,
   SourceConnectionStatusHeader,
   SourceConnectionStatusHeaderSkeleton,
 } from './source-connection-status';
+import { SourceConnectionCredentialErrorCard } from './source-connection-credential-error-card';
+import { SourceConnectionSyncErrorCard } from './source-connection-sync-error-card';
 import { useSelectedSourceConnection } from './use-selected-source-connection';
 import { useSourceConnectionSyncState } from './use-source-connection-sync-state';
 import type { SourceConnection, SourceConnectionListItem } from '@/shared/api';
@@ -16,12 +14,6 @@ import { getApiErrorMessage } from '@/shared/api';
 import { ErrorState } from '@/shared/components/error-state';
 import { LoadingState } from '@/shared/components/loading-state';
 import { SourceIcon } from '@/shared/components/source-icon';
-import {
-  Alert,
-  AlertAction,
-  AlertDescription,
-  AlertTitle,
-} from '@/shared/ui/alert';
 import { AirweaveLogo } from '@/shared/ui/airweave-logo';
 import { Button } from '@/shared/ui/button';
 import {
@@ -70,7 +62,7 @@ export function ConnectionsTabContent({
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="min-w-0 flex-1 basis-64 lg:w-50 lg:flex-none">
           <SourceConnectionSelect
@@ -162,8 +154,6 @@ function SourceConnectionEntitiesPanel({
     return null;
   }
 
-  const lastJobError = sourceConnection.sync?.last_job?.error;
-
   if (sourceConnection.status === 'pending_auth') {
     return (
       <Empty>
@@ -192,27 +182,19 @@ function SourceConnectionEntitiesPanel({
   }
 
   return (
-    <div>
-      {lastJobError && (
-        <Alert variant="destructive">
-          <IconAlertTriangleFilled />
-          <AlertTitle>Last sync failed on our side</AlertTitle>
-          <AlertDescription>
-            Your existing data is still searchable. Only the latest sync was
-            affected.
-          </AlertDescription>
-          <AlertAction className="top-1/2 -translate-y-1/2">
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-foreground"
-              onClick={onResync}
-            >
-              <IconRefresh className="size-3.5" /> Resync
-            </Button>
-          </AlertAction>
-        </Alert>
-      )}
+    <div className="flex-1 space-y-4">
+      {sourceConnection.status === 'needs_reauth' ? (
+        <SourceConnectionCredentialErrorCard
+          sourceConnection={sourceConnection}
+        />
+      ) : null}
+
+      {sourceConnection.status === 'error' ? (
+        <SourceConnectionSyncErrorCard
+          error={sourceConnection.sync?.last_job?.error ?? undefined}
+          onResync={onResync}
+        />
+      ) : null}
 
       <pre>{JSON.stringify(sourceConnection.entities ?? null, null, 2)}</pre>
     </div>

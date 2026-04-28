@@ -37,7 +37,7 @@ export function ConnectSourceAuthorize({
   const authUrl = sourceConnection.auth.auth_url;
   const authUrlExpiresAt = sourceConnection.auth.auth_url_expires ?? null;
 
-  if (authUrl) {
+  if (authUrl && !isAuthUrlExpired(authUrlExpiresAt)) {
     return (
       <AuthorizeReadyCard
         authUrl={authUrl}
@@ -202,4 +202,12 @@ function getRelativeExpirationLabel(expiresAt: string) {
   return remainingMinutes <= 1
     ? 'in 1 minute'
     : `in ${remainingMinutes} minutes`;
+}
+
+function isAuthUrlExpired(expiresAt: string | null) {
+  if (!expiresAt) {
+    return true;
+  }
+
+  return Date.parse(expiresAt) <= Date.now() + 30_000;
 }

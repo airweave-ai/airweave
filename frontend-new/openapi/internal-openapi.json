@@ -7784,7 +7784,7 @@
           "admin"
         ],
         "summary": "Admin List All Syncs",
-        "description": "Admin-only: List all syncs across organizations with entity counts.\n\nSupports extensive filtering for migration and monitoring purposes.\n\n**Note**: Orphaned syncs (deleted source connections) are excluded by default.\nSet `has_source_connection=false` to see only orphaned syncs.\n\n**Entity Counts**:\n    - total_entity_count: Count from Postgres (EntityCount table) - always included\n    - total_arf_entity_count: Count from ARF storage (None unless include_arf_counts=true)\n    - total_vespa_entity_count: Count from Vespa (None unless include_destination_counts=true)\n\n**Performance Note**: Setting `include_destination_counts=true` or `include_arf_counts=true`\nqueries external storage for each sync. Optimized with connection pooling but still slower.\nUses approximate counts for better performance. Recommended for result sets <50 syncs.\n\nArgs:\n    db: Database session\n    ctx: API context\n    skip: Number of syncs to skip for pagination\n    limit: Maximum number of syncs to return\n    sync_ids: Optional comma-separated list of sync IDs\n    organization_id: Optional filter by organization ID\n    collection_id: Optional filter by collection readable ID\n    source_type: Optional filter by source short name\n    has_source_connection: Include syncs with source connections (default true)\n    is_authenticated: Optional filter by authentication status\n    status: Optional filter by sync status\n    last_job_status: Optional filter by last job status\n    ghost_syncs_last_n: Optional filter to syncs with N consecutive failures\n    tags: Optional comma-separated list of tags to filter by\n    exclude_tags: Optional comma-separated list of tags to exclude\n    include_destination_counts: Whether to fetch Vespa counts (slower)\n    include_arf_counts: Whether to fetch ARF entity counts (slower)\n\nReturns:\n    List of syncs with extended information including entity counts\n\nRaises:\n    HTTPException: If not admin or invalid parameters",
+        "description": "Admin-only: List all syncs across organizations with entity counts.\n\nSupports extensive filtering for migration and monitoring purposes.\n\n**Note**: Orphaned syncs (deleted source connections) are excluded by default.\nSet `has_source_connection=false` to see only orphaned syncs.\n\n**Entity Counts**:\n    - total_entity_count: Count from Postgres (EntityCount table) - always included\n    - total_arf_entity_count: Count from ARF storage (None unless include_arf_counts=true)\n    - total_vespa_entity_count: Count from Vespa (None unless include_destination_counts=true)\n\n**Performance Note**: Setting `include_destination_counts=true` or `include_arf_counts=true`\nqueries external storage for each sync. Optimized with connection pooling but still slower.\nUses approximate counts for better performance. Recommended for result sets <50 syncs.\n\nArgs:\n    db: Database session\n    ctx: API context\n    skip: Number of syncs to skip for pagination\n    limit: Maximum number of syncs to return\n    sync_ids: Optional comma-separated list of sync IDs\n    organization_id: Optional filter by organization ID\n    collection_id: Optional filter by collection readable ID\n    source_type: Optional filter by source short name\n    has_source_connection: Include syncs with source connections (default true)\n    is_authenticated: Optional filter by authentication status\n    status: Optional filter by sync status\n    last_job_status: Optional filter by last job status\n    ghost_syncs_last_n: Optional filter to syncs with N consecutive failures\n    tags: Optional comma-separated list of tags to filter by\n    exclude_tags: Optional comma-separated list of tags to exclude\n    include_destination_counts: Whether to fetch Vespa counts (slower)\n    include_arf_counts: Whether to fetch ARF entity counts (slower)\n    schedule_svc: Temporal schedule service (injected)\n\nReturns:\n    List of syncs with extended information including entity counts\n\nRaises:\n    HTTPException: If not admin or invalid parameters",
         "operationId": "admin_list_all_syncs_admin_syncs_get",
         "security": [
           {
@@ -8416,6 +8416,309 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/collections/{readable_id}/search/instant/as-user": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Instant Search as User (Admin)",
+        "description": "Admin-only: Instant search with access control applied for a specific user principal.",
+        "operationId": "admin_instant_search_as_user_admin_collections__readable_id__search_instant_as_user_post",
+        "security": [
+          {
+            "Auth0HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "readable_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Readable Id"
+            }
+          },
+          {
+            "name": "user_principal",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User principal (email) to search as. Access control filtering will use this user's resolved group memberships.",
+              "title": "User Principal"
+            },
+            "description": "User principal (email) to search as. Access control filtering will use this user's resolved group memberships."
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          },
+          {
+            "name": "X-Organization-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Organization-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstantSearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchV2Response"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/collections/{readable_id}/search/classic/as-user": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Classic Search as User (Admin)",
+        "description": "Admin-only: Classic search with access control applied for a specific user principal.",
+        "operationId": "admin_classic_search_as_user_admin_collections__readable_id__search_classic_as_user_post",
+        "security": [
+          {
+            "Auth0HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "readable_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Readable Id"
+            }
+          },
+          {
+            "name": "user_principal",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User principal (email) to search as. Access control filtering will use this user's resolved group memberships.",
+              "title": "User Principal"
+            },
+            "description": "User principal (email) to search as. Access control filtering will use this user's resolved group memberships."
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          },
+          {
+            "name": "X-Organization-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Organization-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassicSearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchV2Response"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/collections/{readable_id}/search/agentic/as-user": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Agentic Search as User (Admin)",
+        "description": "Admin-only: Agentic search with access control applied for a specific user principal.",
+        "operationId": "admin_agentic_search_as_user_admin_collections__readable_id__search_agentic_as_user_post",
+        "security": [
+          {
+            "Auth0HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "readable_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Readable Id"
+            }
+          },
+          {
+            "name": "user_principal",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "User principal (email) to search as. Access control filtering will use this user's resolved group memberships.",
+              "title": "User Principal"
+            },
+            "description": "User principal (email) to search as. Access control filtering will use this user's resolved group memberships."
+          },
+          {
+            "name": "X-API-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          },
+          {
+            "name": "X-Organization-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Organization-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgenticSearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchV2Response"
+                }
               }
             }
           },
@@ -10364,6 +10667,51 @@
         "title": "ActionCheckResponse",
         "description": "Response containing per-action check results."
       },
+      "AdminScheduleInfo": {
+        "properties": {
+          "schedule_id": {
+            "type": "string",
+            "title": "Schedule Id"
+          },
+          "schedule_type": {
+            "type": "string",
+            "title": "Schedule Type"
+          },
+          "paused": {
+            "type": "boolean",
+            "title": "Paused"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "default": ""
+          },
+          "next_action_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Action At"
+          },
+          "num_recent_actions": {
+            "type": "integer",
+            "title": "Num Recent Actions",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "schedule_id",
+          "schedule_type",
+          "paused"
+        ],
+        "title": "AdminScheduleInfo",
+        "description": "Temporal schedule state for a sync."
+      },
       "AdminSearchDestination": {
         "type": "string",
         "enum": [
@@ -10617,6 +10965,14 @@
               }
             ],
             "title": "Readable Collection Id"
+          },
+          "schedules": {
+            "items": {
+              "$ref": "#/components/schemas/AdminScheduleInfo"
+            },
+            "type": "array",
+            "title": "Schedules",
+            "default": []
           }
         },
         "type": "object",
@@ -10680,7 +11036,16 @@
           "query"
         ],
         "title": "AgenticSearchRequest",
-        "description": "Agentic search request — full agent loop with tool calling."
+        "description": "Agentic search request — full agent loop with tool calling.",
+        "examples": [
+          {
+            "query": "find all deployment-related docs from last month",
+            "thinking": true
+          },
+          {
+            "query": "what authentication methods do we support?"
+          }
+        ]
       },
       "AuthProviderAuthentication": {
         "properties": {
@@ -10980,6 +11345,11 @@
                 "type": "null"
               }
             ]
+          },
+          "settings_url": {
+            "type": "string",
+            "title": "Settings Url",
+            "default": ""
           }
         },
         "type": "object",
@@ -11688,7 +12058,16 @@
           "query"
         ],
         "title": "ClassicSearchRequest",
-        "description": "Classic search request — LLM generates a search plan, execute against Vespa."
+        "description": "Classic search request — LLM generates a search plan, execute against Vespa.",
+        "examples": [
+          {
+            "limit": 10,
+            "query": "quarterly revenue report"
+          },
+          {
+            "query": "find the onboarding documentation"
+          }
+        ]
       },
       "Collection": {
         "properties": {
@@ -12007,6 +12386,20 @@
             "type": "boolean",
             "title": "Is Secret",
             "default": false
+          },
+          "enum_values": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enum Values"
           }
         },
         "type": "object",
@@ -12667,6 +13060,7 @@
         "enum": [
           "sync.pending",
           "sync.running",
+          "sync.cancelling",
           "sync.completed",
           "sync.failed",
           "sync.cancelled",
@@ -12700,7 +13094,8 @@
           "zephyr_scale",
           "sharepoint_2019_v2",
           "api_key_admin_sync",
-          "connect"
+          "connect",
+          "custom_auth_provider"
         ],
         "title": "FeatureFlag",
         "description": "Available feature flags in Airweave.\n\nAdd new flags here to enable feature gating at the organization level."
@@ -12921,7 +13316,17 @@
           "query"
         ],
         "title": "InstantSearchRequest",
-        "description": "Instant search request — embed query, fire at Vespa, return results."
+        "description": "Instant search request — embed query, fire at Vespa, return results.",
+        "examples": [
+          {
+            "limit": 10,
+            "query": "How do I reset my password?",
+            "retrieval_strategy": "hybrid"
+          },
+          {
+            "query": "quarterly revenue report"
+          }
+        ]
       },
       "InternalAgenticSearchRequest": {
         "properties": {
@@ -12982,7 +13387,16 @@
           "query"
         ],
         "title": "InternalAgenticSearchRequest",
-        "description": "Admin-only agentic search request with model override for evals."
+        "description": "Admin-only agentic search request with model override for evals.",
+        "examples": [
+          {
+            "query": "find all deployment-related docs from last month",
+            "thinking": true
+          },
+          {
+            "query": "what authentication methods do we support?"
+          }
+        ]
       },
       "InvitationCreate": {
         "properties": {
@@ -15323,6 +15737,53 @@
             ],
             "description": "Summary of synced entities by type"
           },
+          "error_category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceConnectionErrorCategory"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Error category when status is needs_reauth (e.g. oauth_credentials_expired)"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "Human-readable error message when status is needs_reauth"
+          },
+          "provider_settings_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Settings Url",
+            "description": "URL to the auth provider's settings dashboard (for auth_provider errors)"
+          },
+          "provider_short_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Short Name",
+            "description": "Auth provider short_name (e.g. 'composio', 'pipedream') for display"
+          },
           "federated_search": {
             "type": "boolean",
             "title": "Federated Search",
@@ -15558,6 +16019,17 @@
           }
         ]
       },
+      "SourceConnectionErrorCategory": {
+        "type": "string",
+        "enum": [
+          "oauth_credentials_expired",
+          "api_key_invalid",
+          "auth_provider_account_gone",
+          "auth_provider_credentials_invalid"
+        ],
+        "title": "SourceConnectionErrorCategory",
+        "description": "Error categories for credential/auth failures on source connections."
+      },
       "SourceConnectionJob": {
         "properties": {
           "id": {
@@ -15659,6 +16131,17 @@
             ],
             "title": "Error",
             "description": "Error message if the job failed"
+          },
+          "error_category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceConnectionErrorCategory"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Error category for credential errors (e.g. oauth_credentials_expired)"
           },
           "error_details": {
             "anyOf": [
@@ -15802,6 +16285,7 @@
           "pending_auth",
           "syncing",
           "error",
+          "needs_reauth",
           "inactive",
           "pending_sync"
         ],
@@ -16480,6 +16964,16 @@
             ],
             "title": "Error"
           },
+          "error_category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceConnectionErrorCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "access_token": {
             "anyOf": [
               {
@@ -16668,6 +17162,16 @@
               }
             ],
             "title": "Error"
+          },
+          "error_category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceConnectionErrorCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -16696,6 +17200,7 @@
         "type": "string",
         "enum": [
           "active",
+          "paused",
           "inactive",
           "error"
         ],

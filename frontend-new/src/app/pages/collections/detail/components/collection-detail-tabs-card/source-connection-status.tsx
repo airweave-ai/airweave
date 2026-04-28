@@ -30,6 +30,8 @@ export function SourceConnectionStatusHeader({
   sourceConnection,
 }: SourceConnectionStatusHeaderProps) {
   const resolvedStatus = isSyncing ? 'syncing' : sourceConnection.status;
+  const isSyncDisabled =
+    isSyncing || ['pending_auth', 'needs_reauth'].includes(sourceConnection.status);
 
   return (
     <div className="flex flex-wrap items-center gap-1">
@@ -67,7 +69,7 @@ export function SourceConnectionStatusHeader({
         size="icon-sm"
         variant="ghost"
         className="shrink-0 sm:ml-1"
-        disabled={isSyncing}
+        disabled={isSyncDisabled}
         onClick={onSync}
       >
         {isSyncing ? (

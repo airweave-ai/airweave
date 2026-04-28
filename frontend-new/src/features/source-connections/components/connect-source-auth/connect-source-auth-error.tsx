@@ -1,20 +1,12 @@
 import * as React from 'react';
 import { IconExclamationCircle, IconRefresh } from '@tabler/icons-react';
-import { useMutation } from '@tanstack/react-query';
-import {
-  sourceConnectionInvalidationTags,
-  useReinitiateSourceConnectionOAuthMutationOptions,
-} from '../../api';
+import { useReinitiateSourceConnectionOAuthMutation } from '../../hooks/use-reinitiate-source-connection-oauth-mutation';
 import {
   ConnectSourceBackActionButton,
   ConnectSourcePrimaryActionButton,
   ConnectSourceStepLayoutActions,
   ConnectSourceStepLayoutContent,
 } from '../connect-source-step-layout';
-import {
-  clearConnectSourceAuthClaimToken,
-  setConnectSourceAuthClaimToken,
-} from './connect-source-auth-storage';
 import { getApiErrorMessage } from '@/shared/api';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { FieldError } from '@/shared/ui/field';
@@ -103,26 +95,8 @@ function ReconnectActions({
   sourceConnectionId: string;
   sourceName: string;
 }) {
-  const reauthorizeMutationOptions =
-    useReinitiateSourceConnectionOAuthMutationOptions();
-
-  const reauthorizeMutation = useMutation({
-    ...reauthorizeMutationOptions,
-    meta: {
-      errorToast: false,
-      invalidateTags: sourceConnectionInvalidationTags,
-    },
-    onSuccess: async (nextSourceConnection) => {
-      const nextClaimToken = nextSourceConnection.auth.claim_token;
-
-      if (nextClaimToken) {
-        setConnectSourceAuthClaimToken(sourceConnectionId, nextClaimToken);
-      } else {
-        clearConnectSourceAuthClaimToken(sourceConnectionId);
-      }
-
-      await onReauthorized?.();
-    },
+  const reauthorizeMutation = useReinitiateSourceConnectionOAuthMutation({
+    sourceConnectionId,
   });
 
   const reauthorizeErrorMessage = getApiErrorMessage(
@@ -149,11 +123,16 @@ function ReconnectActions({
         <ConnectSourcePrimaryActionButton
           type="button"
           onClick={() =>
-            void reauthorizeMutation.mutateAsync({
-              path: {
-                source_connection_id: sourceConnectionId,
+            reauthorizeMutation.mutate(
+              {
+                path: {
+                  source_connection_id: sourceConnectionId,
+                },
               },
-            })
+              {
+                onSuccess: () => void onReauthorized?.(),
+              },
+            )
           }
           icon={<IconRefresh className="size-4" />}
           isLoading={reauthorizeMutation.isPending}
