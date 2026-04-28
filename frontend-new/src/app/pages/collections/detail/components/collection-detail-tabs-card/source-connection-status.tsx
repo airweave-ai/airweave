@@ -12,6 +12,7 @@ const sourceConnectionStatusLabel = {
   active: 'Sync completed',
   error: 'Sync failed',
   inactive: 'Sync disabled',
+  needs_reauth: 'Reconnect source',
   pending_auth: 'Source not connected',
   pending_sync: 'Sync not started',
   syncing: 'Syncing...',
@@ -150,7 +151,7 @@ export function ConnectionStatusIndicator({
 }) {
   const variant = ['active', 'syncing'].includes(status)
     ? 'success'
-    : ['pending_auth', 'error'].includes(status)
+    : ['pending_auth', 'needs_reauth', 'error'].includes(status)
       ? 'destructive'
       : 'muted';
 

@@ -1,12 +1,17 @@
 import { getRouteApi } from '@tanstack/react-router';
-import { useSuspenseQuery } from '@tanstack/react-query';
+import { useSuspenseQueries } from '@tanstack/react-query';
 import { router } from '@/app/router/router';
+import {
+  useListAuthProviderConnectionsQueryOptions,
+  useListAuthProvidersQueryOptions,
+} from '@/features/auth-providers';
 import {
   ConnectSourceConfigSdkAside,
   ConnectSourceStepDialogHeader,
   ConnectSourceStepLayoutAside,
   ConnectSourceStepLayoutMain,
   SourceConnectionConfigForm,
+  getSourceConnectionAuthProviderOptions,
   isBrowserOAuthMethod,
   useGetSourceQueryOptions,
   useSourceConnectionConfigSubmission,
@@ -23,7 +28,25 @@ export function ConnectSourceConfigPage() {
   const getSourceQueryOptions = useGetSourceQueryOptions({
     sourceShortName,
   });
-  const { data: source } = useSuspenseQuery(getSourceQueryOptions);
+  const listAuthProvidersQueryOptions = useListAuthProvidersQueryOptions();
+  const listAuthProviderConnectionsQueryOptions =
+    useListAuthProviderConnectionsQueryOptions();
+  const [sourceQuery, authProvidersQuery, authProviderConnectionsQuery] =
+    useSuspenseQueries({
+      queries: [
+        getSourceQueryOptions,
+        listAuthProvidersQueryOptions,
+        listAuthProviderConnectionsQueryOptions,
+      ],
+    });
+  const source = sourceQuery.data;
+  const authProviders = authProvidersQuery.data;
+  const authProviderConnections = authProviderConnectionsQuery.data;
+  const authProviderOptions = getSourceConnectionAuthProviderOptions({
+    authProviderConnections,
+    authProviders,
+    source,
+  });
   const { handleSubmit, submitError } = useSourceConnectionConfigSubmission({
     collectionId,
     redirectUrl: buildConnectSourceAuthRedirectUrl({
@@ -49,6 +72,7 @@ export function ConnectSourceConfigPage() {
       <FlowDialogBody>
         <ConnectSourceStepLayoutMain>
           <SourceConnectionConfigForm
+            authProviderOptions={authProviderOptions}
             onBack={() =>
               void navigate({
                 params: { collectionId },

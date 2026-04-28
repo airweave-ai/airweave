@@ -12,6 +12,7 @@ import type {
   SourceConnectionAuthMethod,
   SourceConnectionFormInput,
 } from './source-connection-form-hook';
+import type { SourceConnectionAuthProviderOption } from '../../lib/source-connection-auth-provider-options';
 import { Field, FieldTitle } from '@/shared/ui/field';
 import { RadioGroup, RadioGroupItem } from '@/shared/ui/radio-group';
 
@@ -25,13 +26,23 @@ const authMethodLabels = {
 export const SourceConnectionAuthSection = withSourceConnectionForm({
   defaultValues: {} as SourceConnectionFormInput,
   props: {
+    authProviderOptions: [] as Array<SourceConnectionAuthProviderOption>,
     source: undefined as unknown as Source,
   },
-  render: ({ form, source }) => {
-    const availableAuthMethods = getAvailableAuthMethods(source);
+  render: ({ authProviderOptions, form, source }) => {
+    const availableAuthMethods = getAvailableAuthMethods(
+      source,
+      authProviderOptions,
+    );
 
     if (availableAuthMethods.length === 1) {
-      return <SourceConnectionAuthFields form={form} source={source} />;
+      return (
+        <SourceConnectionAuthFields
+          authProviderOptions={authProviderOptions}
+          form={form}
+          source={source}
+        />
+      );
     }
 
     return (
@@ -82,6 +93,7 @@ export const SourceConnectionAuthSection = withSourceConnectionForm({
                         selected={selected}
                       >
                         <SourceConnectionAuthFields
+                          authProviderOptions={authProviderOptions}
                           form={form}
                           source={source}
                         />

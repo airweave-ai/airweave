@@ -6,12 +6,18 @@ import type {
   AddSelfToOrganizationAdminOrganizationsOrganizationIdAddSelfPostData,
   AddSelfToOrganizationAdminOrganizationsOrganizationIdAddSelfPostErrors,
   AddSelfToOrganizationAdminOrganizationsOrganizationIdAddSelfPostResponses,
+  AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostData,
+  AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostErrors,
+  AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostResponses,
   AdminCancelSyncByIdAdminSyncsSyncIdCancelPostData,
   AdminCancelSyncByIdAdminSyncsSyncIdCancelPostErrors,
   AdminCancelSyncByIdAdminSyncsSyncIdCancelPostResponses,
   AdminCancelSyncJobAdminSyncJobsJobIdCancelPostData,
   AdminCancelSyncJobAdminSyncJobsJobIdCancelPostErrors,
   AdminCancelSyncJobAdminSyncJobsJobIdCancelPostResponses,
+  AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostData,
+  AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostErrors,
+  AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostResponses,
   AdminDeleteCursorAdminSourceConnectionsSourceConnectionIdCursorDeleteData,
   AdminDeleteCursorAdminSourceConnectionsSourceConnectionIdCursorDeleteErrors,
   AdminDeleteCursorAdminSourceConnectionsSourceConnectionIdCursorDeleteResponses,
@@ -24,6 +30,9 @@ import type {
   AdminGetUserPrincipalsAdminCollectionsReadableIdUserPrincipalsGetData,
   AdminGetUserPrincipalsAdminCollectionsReadableIdUserPrincipalsGetErrors,
   AdminGetUserPrincipalsAdminCollectionsReadableIdUserPrincipalsGetResponses,
+  AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostData,
+  AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostErrors,
+  AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostResponses,
   AdminListAllSyncsAdminSyncsGetData,
   AdminListAllSyncsAdminSyncsGetErrors,
   AdminListAllSyncsAdminSyncsGetResponses,
@@ -3042,6 +3051,7 @@ export const adminGetCursorAdminSourceConnectionsSourceConnectionIdCursorGet = <
  * exclude_tags: Optional comma-separated list of tags to exclude
  * include_destination_counts: Whether to fetch Vespa counts (slower)
  * include_arf_counts: Whether to fetch ARF entity counts (slower)
+ * schedule_svc: Temporal schedule service (injected)
  *
  * Returns:
  * List of syncs with extended information including entity counts
@@ -3197,6 +3207,84 @@ export const adminStreamAgenticSearchAdminCollectionsReadableIdSearchAgenticStre
     >({
       security: [{ scheme: 'bearer', type: 'http' }],
       url: '/admin/collections/{readable_id}/search/agentic/stream',
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    });
+
+/**
+ * Instant Search as User (Admin)
+ *
+ * Admin-only: Instant search with access control applied for a specific user principal.
+ */
+export const adminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPost =
+  <ThrowOnError extends boolean = false>(
+    options: Options<
+      AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostData,
+      ThrowOnError
+    >,
+  ) =>
+    (options.client ?? client).post<
+      AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostResponses,
+      AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostErrors,
+      ThrowOnError
+    >({
+      security: [{ scheme: 'bearer', type: 'http' }],
+      url: '/admin/collections/{readable_id}/search/instant/as-user',
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    });
+
+/**
+ * Classic Search as User (Admin)
+ *
+ * Admin-only: Classic search with access control applied for a specific user principal.
+ */
+export const adminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPost =
+  <ThrowOnError extends boolean = false>(
+    options: Options<
+      AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostData,
+      ThrowOnError
+    >,
+  ) =>
+    (options.client ?? client).post<
+      AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostResponses,
+      AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostErrors,
+      ThrowOnError
+    >({
+      security: [{ scheme: 'bearer', type: 'http' }],
+      url: '/admin/collections/{readable_id}/search/classic/as-user',
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    });
+
+/**
+ * Agentic Search as User (Admin)
+ *
+ * Admin-only: Agentic search with access control applied for a specific user principal.
+ */
+export const adminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPost =
+  <ThrowOnError extends boolean = false>(
+    options: Options<
+      AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostData,
+      ThrowOnError
+    >,
+  ) =>
+    (options.client ?? client).post<
+      AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostResponses,
+      AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostErrors,
+      ThrowOnError
+    >({
+      security: [{ scheme: 'bearer', type: 'http' }],
+      url: '/admin/collections/{readable_id}/search/agentic/as-user',
       ...options,
       headers: {
         'Content-Type': 'application/json',

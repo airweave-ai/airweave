@@ -10,7 +10,6 @@ import { SourceConnectionHeader } from '../source-connection-header';
 import { SourceConnectionAuthSection } from './source-connection-auth-section';
 import { SourceConnectionConfigSection } from './source-connection-config-section';
 import {
-  getAuthMethodForVariant,
   getSourceConnectionFormOptions,
   getSourceConnectionFormSchema,
   useSourceConnectionForm,
@@ -18,10 +17,12 @@ import {
 import { SourceConnectionTextInput } from './source-connection-text-input';
 import { SourceConnectionProgress } from './source-connection-progress';
 import type { SourceConnectionFormOutput } from './source-connection-form-hook';
+import type { SourceConnectionAuthProviderOption } from '../../lib/source-connection-auth-provider-options';
 import type { Source } from '@/shared/api';
 import { FieldError, FieldGroup } from '@/shared/ui/field';
 
 interface SourceConnectionConfigFormProps {
+  authProviderOptions?: Array<SourceConnectionAuthProviderOption>;
   onBack: () => void;
   onSubmit: (values: SourceConnectionFormOutput) => Promise<void> | void;
   source: Source;
@@ -29,18 +30,24 @@ interface SourceConnectionConfigFormProps {
 }
 
 export function SourceConnectionConfigForm({
+  authProviderOptions = [],
   onBack,
   onSubmit,
   source,
   submitError,
 }: SourceConnectionConfigFormProps) {
   const formSchema = React.useMemo(
-    () => getSourceConnectionFormSchema({ source }),
-    [source],
+    () => getSourceConnectionFormSchema({ authProviderOptions, source }),
+    [authProviderOptions, source],
   );
   const sourceConnectionFormOptions = React.useMemo(
-    () => getSourceConnectionFormOptions({ formSchema, source }),
-    [formSchema, source],
+    () =>
+      getSourceConnectionFormOptions({
+        authProviderOptions,
+        formSchema,
+        source,
+      }),
+    [authProviderOptions, formSchema, source],
   );
   const formId = React.useId();
 
@@ -86,7 +93,11 @@ export function SourceConnectionConfigForm({
               )}
             </form.Field>
           </FieldGroup>
-          <SourceConnectionAuthSection form={form} source={source} />
+          <SourceConnectionAuthSection
+            authProviderOptions={authProviderOptions}
+            form={form}
+            source={source}
+          />
           <SourceConnectionConfigSection form={form} source={source} />
         </form>
       </ConnectSourceStepLayoutContent>
@@ -96,13 +107,10 @@ export function SourceConnectionConfigForm({
 
         <form.Subscribe
           selector={(state) => ({
-            authVariant: state.values.authVariant,
             isSubmitting: state.isSubmitting,
           })}
         >
-          {({ authVariant, isSubmitting }) => {
-            const authMethod = getAuthMethodForVariant(authVariant);
-
+          {({ isSubmitting }) => {
             return (
               <ConnectSourceStepLayoutActions
                 backAction={
@@ -117,7 +125,6 @@ export function SourceConnectionConfigForm({
                 <ConnectSourcePrimaryActionButton
                   type="submit"
                   form={formId}
-                  disabled={authMethod === 'auth_provider'}
                   icon={<IconArrowRight className="size-4" />}
                   isLoading={isSubmitting}
                 >

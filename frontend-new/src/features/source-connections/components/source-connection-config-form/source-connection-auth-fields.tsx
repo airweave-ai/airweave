@@ -11,17 +11,26 @@ import {
   withSourceConnectionForm,
 } from './source-connection-form-hook';
 import type { SourceConnectionFormInput } from './source-connection-form-hook';
+import type { SourceConnectionAuthProviderOption } from '../../lib/source-connection-auth-provider-options';
 import type { Source } from '@/shared/api';
-import { DynamicConfigFieldInput } from '@/shared/config-fields';
+import { AuthProviderIcon } from '@/shared/components/auth-provider-icon';
+import {
+  DynamicConfigFieldInput,
+  getDefaultConfigFieldsValues,
+} from '@/shared/config-fields';
 import { Button } from '@/shared/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import {
+  Field,
   FieldDescription,
   FieldError,
   FieldLabel,
+  FieldLegend,
+  FieldSet,
   FieldTitle,
 } from '@/shared/ui/field';
 import { Input } from '@/shared/ui/input';
+import { RadioGroup, RadioGroupItem } from '@/shared/ui/radio-group';
 import { Separator } from '@/shared/ui/separator';
 import { Switch } from '@/shared/ui/switch';
 
@@ -36,9 +45,10 @@ function getRedirectUri(
 export const SourceConnectionAuthFields = withSourceConnectionForm({
   defaultValues: {} as SourceConnectionFormInput,
   props: {
+    authProviderOptions: [] as Array<SourceConnectionAuthProviderOption>,
     source: undefined as unknown as Source,
   },
-  render: ({ form, source }) => {
+  render: ({ authProviderOptions, form, source }) => {
     return (
       <form.Subscribe
         selector={(state) => ({
@@ -333,10 +343,95 @@ export const SourceConnectionAuthFields = withSourceConnectionForm({
             );
           }
 
+          if (authProviderOptions.length === 0) {
+            return (
+              <FieldSet>
+                <FieldLegend variant="label">
+                  Use your auth provider
+                </FieldLegend>
+                <FieldDescription>
+                  No matching auth provider connections are available.
+                </FieldDescription>
+              </FieldSet>
+            );
+          }
+
           return (
-            <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
-              Auth provider configuration is not implemented yet.
-            </div>
+            <form.Field name="authentication.provider_readable_id">
+              {(field) => {
+                const selectedOption = authProviderOptions.find(
+                  (option) => option.readableId === field.state.value,
+                );
+
+                return (
+                  <FieldSet>
+                    <FieldLegend variant="label">
+                      Use your auth provider
+                    </FieldLegend>
+
+                    <RadioGroup
+                      orientation="horizontal"
+                      className="grid-cols-3"
+                      value={field.state.value}
+                      onValueChange={(readableId) => {
+                        const nextOption = authProviderOptions.find(
+                          (option) => option.readableId === readableId,
+                        );
+
+                        form.setFieldValue('authentication', {
+                          provider_readable_id: readableId,
+                          provider_config: getDefaultConfigFieldsValues(
+                            nextOption?.configFields,
+                          ),
+                        });
+                      }}
+                    >
+                      {authProviderOptions.map((option) => {
+                        const radioId = `auth-provider-${option.readableId}`;
+
+                        return (
+                          <FieldLabel key={option.readableId}>
+                            <Field orientation="horizontal">
+                              <RadioGroupItem
+                                id={radioId}
+                                value={option.readableId}
+                              />
+                              <AuthProviderIcon
+                                className="size-5 shrink-0"
+                                name={option.providerName}
+                                shortName={option.providerShortName}
+                              />
+                              {option.connectionName}
+                            </Field>
+                          </FieldLabel>
+                        );
+                      })}
+                    </RadioGroup>
+
+                    <FieldError errors={field.state.meta.errors} />
+
+                    {selectedOption?.configFields.map((configField) => (
+                      <form.Field
+                        key={configField.name}
+                        name={`authentication.provider_config.${configField.name}`}
+                      >
+                        {(configFieldFormField) => (
+                          <DynamicConfigFieldInput
+                            configField={configField}
+                            disabled={form.state.isSubmitting}
+                            errors={configFieldFormField.state.meta.errors}
+                            name={configFieldFormField.name}
+                            onBlur={configFieldFormField.handleBlur}
+                            onChange={configFieldFormField.handleChange}
+                            value={configFieldFormField.state.value}
+                          />
+                        )}
+                      </form.Field>
+                    ))}
+                  </FieldSet>
+                );
+              }}
+            </form.Field>
           );
         }}
       </form.Subscribe>

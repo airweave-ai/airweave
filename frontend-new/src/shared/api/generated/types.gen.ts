@@ -93,6 +93,38 @@ export type ActionCheckResponse = {
 };
 
 /**
+ * AdminScheduleInfo
+ *
+ * Temporal schedule state for a sync.
+ */
+export type AdminScheduleInfo = {
+  /**
+   * Schedule Id
+   */
+  schedule_id: string;
+  /**
+   * Schedule Type
+   */
+  schedule_type: string;
+  /**
+   * Paused
+   */
+  paused: boolean;
+  /**
+   * Note
+   */
+  note?: string;
+  /**
+   * Next Action At
+   */
+  next_action_at?: string | null;
+  /**
+   * Num Recent Actions
+   */
+  num_recent_actions?: number;
+};
+
+/**
  * AdminSearchDestination
  *
  * Destination options for admin search.
@@ -209,6 +241,10 @@ export type AdminSyncInfo = {
    * Readable Collection Id
    */
   readable_collection_id?: string | null;
+  /**
+   * Schedules
+   */
+  schedules?: Array<AdminScheduleInfo>;
 };
 
 /**
@@ -415,6 +451,10 @@ export type AuthProviderMetadata = {
   config_class: string;
   auth_fields?: Fields | null;
   config_fields?: Fields | null;
+  /**
+   * Settings Url
+   */
+  settings_url?: string;
 };
 
 /**
@@ -1033,6 +1073,10 @@ export type ConfigField = {
    * Is Secret
    */
   is_secret?: boolean;
+  /**
+   * Enum Values
+   */
+  enum_values?: Array<string> | null;
 };
 
 /**
@@ -1496,6 +1540,7 @@ export type EntityTypeStats = {
 export type EventType =
   | 'sync.pending'
   | 'sync.running'
+  | 'sync.cancelling'
   | 'sync.completed'
   | 'sync.failed'
   | 'sync.cancelled'
@@ -1532,7 +1577,8 @@ export type FeatureFlag =
   | 'zephyr_scale'
   | 'sharepoint_2019_v2'
   | 'api_key_admin_sync'
-  | 'connect';
+  | 'connect'
+  | 'custom_auth_provider';
 
 /**
  * Fields
@@ -3140,6 +3186,28 @@ export type SourceConnection = {
    */
   entities?: EntitySummary | null;
   /**
+   * Error category when status is needs_reauth (e.g. oauth_credentials_expired)
+   */
+  error_category?: SourceConnectionErrorCategory | null;
+  /**
+   * Error Message
+   *
+   * Human-readable error message when status is needs_reauth
+   */
+  error_message?: string | null;
+  /**
+   * Provider Settings Url
+   *
+   * URL to the auth provider's settings dashboard (for auth_provider errors)
+   */
+  provider_settings_url?: string | null;
+  /**
+   * Provider Short Name
+   *
+   * Auth provider short_name (e.g. 'composio', 'pipedream') for display
+   */
+  provider_short_name?: string | null;
+  /**
    * Federated Search
    *
    * Whether this source uses federated (real-time) search instead of syncing
@@ -3219,6 +3287,17 @@ export type SourceConnectionCreate = {
 };
 
 /**
+ * SourceConnectionErrorCategory
+ *
+ * Error categories for credential/auth failures on source connections.
+ */
+export type SourceConnectionErrorCategory =
+  | 'oauth_credentials_expired'
+  | 'api_key_invalid'
+  | 'auth_provider_account_gone'
+  | 'auth_provider_credentials_invalid';
+
+/**
  * SourceConnectionJob
  *
  * A sync job representing a single synchronization run.
@@ -3291,6 +3370,10 @@ export type SourceConnectionJob = {
    * Error message if the job failed
    */
   error?: string | null;
+  /**
+   * Error category for credential errors (e.g. oauth_credentials_expired)
+   */
+  error_category?: SourceConnectionErrorCategory | null;
   /**
    * Error Details
    *
@@ -3384,6 +3467,7 @@ export type SourceConnectionStatus =
   | 'pending_auth'
   | 'syncing'
   | 'error'
+  | 'needs_reauth'
   | 'inactive'
   | 'pending_sync';
 
@@ -3782,6 +3866,7 @@ export type SyncJob = {
    * Error
    */
   error?: string | null;
+  error_category?: SourceConnectionErrorCategory | null;
   /**
    * Access Token
    */
@@ -3868,6 +3953,7 @@ export type SyncJobDetails = {
    * Error
    */
   error?: string | null;
+  error_category?: SourceConnectionErrorCategory | null;
 };
 
 /**
@@ -3889,7 +3975,7 @@ export type SyncJobStatus =
  *
  * Sync status enum.
  */
-export type SyncStatus = 'active' | 'inactive' | 'error';
+export type SyncStatus = 'active' | 'paused' | 'inactive' | 'error';
 
 /**
  * UpdatePlanRequest
@@ -8846,6 +8932,162 @@ export type AdminStreamAgenticSearchAdminCollectionsReadableIdSearchAgenticStrea
      */
     200: unknown;
   };
+
+export type AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostData =
+  {
+    body: InstantSearchRequest;
+    headers?: {
+      /**
+       * X-Api-Key
+       */
+      'X-API-Key'?: string | null;
+      /**
+       * X-Organization-Id
+       */
+      'X-Organization-ID'?: string | null;
+    };
+    path: {
+      /**
+       * Readable Id
+       */
+      readable_id: string;
+    };
+    query: {
+      /**
+       * User Principal
+       *
+       * User principal (email) to search as. Access control filtering will use this user's resolved group memberships.
+       */
+      user_principal: string;
+    };
+    url: '/admin/collections/{readable_id}/search/instant/as-user';
+  };
+
+export type AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostErrors =
+  {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+  };
+
+export type AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostError =
+  AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostErrors[keyof AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostErrors];
+
+export type AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostResponses =
+  {
+    /**
+     * Successful Response
+     */
+    200: SearchV2Response;
+  };
+
+export type AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostResponse =
+  AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostResponses[keyof AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostResponses];
+
+export type AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostData =
+  {
+    body: ClassicSearchRequest;
+    headers?: {
+      /**
+       * X-Api-Key
+       */
+      'X-API-Key'?: string | null;
+      /**
+       * X-Organization-Id
+       */
+      'X-Organization-ID'?: string | null;
+    };
+    path: {
+      /**
+       * Readable Id
+       */
+      readable_id: string;
+    };
+    query: {
+      /**
+       * User Principal
+       *
+       * User principal (email) to search as. Access control filtering will use this user's resolved group memberships.
+       */
+      user_principal: string;
+    };
+    url: '/admin/collections/{readable_id}/search/classic/as-user';
+  };
+
+export type AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostErrors =
+  {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+  };
+
+export type AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostError =
+  AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostErrors[keyof AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostErrors];
+
+export type AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostResponses =
+  {
+    /**
+     * Successful Response
+     */
+    200: SearchV2Response;
+  };
+
+export type AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostResponse =
+  AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostResponses[keyof AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostResponses];
+
+export type AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostData =
+  {
+    body: AgenticSearchRequest;
+    headers?: {
+      /**
+       * X-Api-Key
+       */
+      'X-API-Key'?: string | null;
+      /**
+       * X-Organization-Id
+       */
+      'X-Organization-ID'?: string | null;
+    };
+    path: {
+      /**
+       * Readable Id
+       */
+      readable_id: string;
+    };
+    query: {
+      /**
+       * User Principal
+       *
+       * User principal (email) to search as. Access control filtering will use this user's resolved group memberships.
+       */
+      user_principal: string;
+    };
+    url: '/admin/collections/{readable_id}/search/agentic/as-user';
+  };
+
+export type AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostErrors =
+  {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+  };
+
+export type AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostError =
+  AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostErrors[keyof AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostErrors];
+
+export type AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostResponses =
+  {
+    /**
+     * Successful Response
+     */
+    200: SearchV2Response;
+  };
+
+export type AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostResponse =
+  AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostResponses[keyof AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostResponses];
 
 export type GetSelectionsSourceConnectionsSourceConnectionIdBrowseTreeSelectionsGetData =
   {

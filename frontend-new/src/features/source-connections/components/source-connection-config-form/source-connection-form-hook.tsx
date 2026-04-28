@@ -11,6 +11,7 @@ import type {
   DirectAuthentication,
   Source,
 } from '@/shared/api';
+import type { SourceConnectionAuthProviderOption } from '../../lib/source-connection-auth-provider-options';
 import {
   getDefaultConfigFieldsValues,
   getDynamicFieldsSchema,
@@ -62,10 +63,42 @@ const oauthBrowserOAuth1AuthenticationSchema =
     consumer_secret: trimmedStringSchema.min(1, 'Consumer secret is required'),
   });
 
-const authProviderAuthenticationSchema = z.object({
-  provider_readable_id: trimmedStringSchema.min(1, 'Provider is required'),
-  provider_config: z.record(z.string(), z.unknown()),
-});
+function getAuthProviderAuthenticationSchema(
+  authProviderOptions: Array<SourceConnectionAuthProviderOption>,
+) {
+  return z
+    .object({
+      provider_readable_id: trimmedStringSchema.min(1, 'Provider is required'),
+      provider_config: z.record(z.string(), z.unknown()),
+    })
+    .superRefine((value, ctx) => {
+      const selectedOption = authProviderOptions.find(
+        (option) => option.readableId === value.provider_readable_id,
+      );
+
+      if (!selectedOption) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Provider is required',
+          path: ['provider_readable_id'],
+        });
+        return;
+      }
+
+      const validationResult = getDynamicFieldsSchema(
+        selectedOption.configFields,
+      ).safeParse(value.provider_config);
+
+      if (!validationResult.success) {
+        for (const issue of validationResult.error.issues) {
+          ctx.addIssue({
+            ...issue,
+            path: ['provider_config', ...issue.path],
+          });
+        }
+      }
+    });
+}
 
 export type SourceConnectionAuthMethod = Exclude<
   AuthenticationMethod,
@@ -95,7 +128,13 @@ function getOAuthBrowserCustomAuthenticationSchema(source: Source) {
     : oauthBrowserOAuth2AuthenticationSchema;
 }
 
-export function getSourceConnectionFormSchema({ source }: { source: Source }) {
+export function getSourceConnectionFormSchema({
+  authProviderOptions = [],
+  source,
+}: {
+  authProviderOptions?: Array<SourceConnectionAuthProviderOption>;
+  source: Source;
+}) {
   const configSchema = getDynamicFieldsSchema(source.config_fields.fields);
   const credentialsSchema = source.auth_fields
     ? getDynamicFieldsSchema(source.auth_fields.fields)
@@ -120,7 +159,7 @@ export function getSourceConnectionFormSchema({ source }: { source: Source }) {
 
   const authProviderSchema = commonFormSchema.extend({
     authVariant: z.literal('auth_provider'),
-    authentication: authProviderAuthenticationSchema,
+    authentication: getAuthProviderAuthenticationSchema(authProviderOptions),
   });
 
   const oauthBrowserCustomSchema = commonFormSchema.extend({
@@ -158,13 +197,15 @@ export type SourceConnectionFormInput = z.input<SourceConnectionFormSchema>;
 export type SourceConnectionFormOutput = z.output<SourceConnectionFormSchema>;
 
 export function getSourceConnectionFormOptions({
+  authProviderOptions = [],
   formSchema,
   source,
 }: {
+  authProviderOptions?: Array<SourceConnectionAuthProviderOption>;
   formSchema: SourceConnectionFormSchema;
   source: Source;
 }) {
-  const defaultAuthVariant = getDefaultAuthVariant(source);
+  const defaultAuthVariant = getDefaultAuthVariant(source, authProviderOptions);
 
   return formOptions({
     defaultValues: {
@@ -249,7 +290,10 @@ function normalizeAuthMethod(
     : null;
 }
 
-export function getAvailableAuthMethods(source: Source) {
+export function getAvailableAuthMethods(
+  source: Source,
+  authProviderOptions: Array<SourceConnectionAuthProviderOption> = [],
+) {
   const methods = new Set(
     (source.auth_methods ?? [])
       .map((method) => normalizeAuthMethod(method))
@@ -258,6 +302,10 @@ export function getAvailableAuthMethods(source: Source) {
 
   if (methods.has('oauth_browser')) {
     methods.delete('oauth_token');
+  }
+
+  if (authProviderOptions.length === 0) {
+    methods.delete('auth_provider');
   }
 
   return SUPPORTED_AUTH_METHODS.filter((method) => methods.has(method));
@@ -276,16 +324,23 @@ export function getAuthMethodForVariant(
   return authVariant;
 }
 
-function getDefaultAuthMethod(source: Source): SourceConnectionAuthMethod {
-  const methods = getAvailableAuthMethods(source);
+function getDefaultAuthMethod(
+  source: Source,
+  authProviderOptions: Array<SourceConnectionAuthProviderOption> = [],
+): SourceConnectionAuthMethod {
+  const methods = getAvailableAuthMethods(source, authProviderOptions);
 
   return methods[0] ?? 'direct';
 }
 
 export function getDefaultAuthVariant(
   source: Source,
+  authProviderOptions: Array<SourceConnectionAuthProviderOption> = [],
 ): SourceConnectionAuthVariant {
-  return getDefaultAuthVariantForMethod(getDefaultAuthMethod(source), source);
+  return getDefaultAuthVariantForMethod(
+    getDefaultAuthMethod(source, authProviderOptions),
+    source,
+  );
 }
 
 export function getDefaultAuthVariantForMethod(

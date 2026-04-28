@@ -1,4 +1,8 @@
 export { isBrowserOAuthMethod } from './lib/source-connection-auth-methods';
+export {
+  getSourceConnectionAuthProviderOptions,
+  type SourceConnectionAuthProviderOption,
+} from './lib/source-connection-auth-provider-options';
 export { isActiveSyncJobStatus } from './lib/sync-job-status';
 export {
   ensureSourceConnection,

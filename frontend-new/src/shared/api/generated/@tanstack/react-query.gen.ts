@@ -11,12 +11,15 @@ import {
 import { client } from '../client.gen';
 import {
   addSelfToOrganizationAdminOrganizationsOrganizationIdAddSelfPost,
+  adminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPost,
   adminCancelSyncByIdAdminSyncsSyncIdCancelPost,
   adminCancelSyncJobAdminSyncJobsJobIdCancelPost,
+  adminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPost,
   adminDeleteCursorAdminSourceConnectionsSourceConnectionIdCursorDelete,
   adminDeleteSyncAdminSyncsSyncIdDelete,
   adminGetCursorAdminSourceConnectionsSourceConnectionIdCursorGet,
   adminGetUserPrincipalsAdminCollectionsReadableIdUserPrincipalsGet,
+  adminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPost,
   adminListAllSyncsAdminSyncsGet,
   adminSearchCollectionAdminCollectionsReadableIdSearchPost,
   adminSearchCollectionAsUserAdminCollectionsReadableIdSearchAsUserPost,
@@ -135,12 +138,18 @@ import type {
   AddSelfToOrganizationAdminOrganizationsOrganizationIdAddSelfPostData,
   AddSelfToOrganizationAdminOrganizationsOrganizationIdAddSelfPostError,
   AddSelfToOrganizationAdminOrganizationsOrganizationIdAddSelfPostResponse,
+  AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostData,
+  AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostError,
+  AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostResponse,
   AdminCancelSyncByIdAdminSyncsSyncIdCancelPostData,
   AdminCancelSyncByIdAdminSyncsSyncIdCancelPostError,
   AdminCancelSyncByIdAdminSyncsSyncIdCancelPostResponse,
   AdminCancelSyncJobAdminSyncJobsJobIdCancelPostData,
   AdminCancelSyncJobAdminSyncJobsJobIdCancelPostError,
   AdminCancelSyncJobAdminSyncJobsJobIdCancelPostResponse,
+  AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostData,
+  AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostError,
+  AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostResponse,
   AdminDeleteCursorAdminSourceConnectionsSourceConnectionIdCursorDeleteData,
   AdminDeleteCursorAdminSourceConnectionsSourceConnectionIdCursorDeleteError,
   AdminDeleteCursorAdminSourceConnectionsSourceConnectionIdCursorDeleteResponse,
@@ -153,6 +162,9 @@ import type {
   AdminGetUserPrincipalsAdminCollectionsReadableIdUserPrincipalsGetData,
   AdminGetUserPrincipalsAdminCollectionsReadableIdUserPrincipalsGetError,
   AdminGetUserPrincipalsAdminCollectionsReadableIdUserPrincipalsGetResponse,
+  AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostData,
+  AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostError,
+  AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostResponse,
   AdminListAllSyncsAdminSyncsGetData,
   AdminListAllSyncsAdminSyncsGetError,
   AdminListAllSyncsAdminSyncsGetResponse,
@@ -4954,6 +4966,7 @@ export const adminListAllSyncsAdminSyncsGetQueryKey = (
  * exclude_tags: Optional comma-separated list of tags to exclude
  * include_destination_counts: Whether to fetch Vespa counts (slower)
  * include_arf_counts: Whether to fetch ARF entity counts (slower)
+ * schedule_svc: Temporal schedule service (injected)
  *
  * Returns:
  * List of syncs with extended information including entity counts
@@ -5024,6 +5037,7 @@ export const adminListAllSyncsAdminSyncsGetInfiniteQueryKey = (
  * exclude_tags: Optional comma-separated list of tags to exclude
  * include_destination_counts: Whether to fetch Vespa counts (slower)
  * include_arf_counts: Whether to fetch ARF entity counts (slower)
+ * schedule_svc: Temporal schedule service (injected)
  *
  * Returns:
  * List of syncs with extended information including entity counts
@@ -5233,6 +5247,111 @@ export const adminStreamAgenticSearchAdminCollectionsReadableIdSearchAgenticStre
       mutationFn: async (fnOptions) => {
         const { data } =
           await adminStreamAgenticSearchAdminCollectionsReadableIdSearchAgenticStreamPost(
+            {
+              ...options,
+              ...fnOptions,
+              throwOnError: true,
+            },
+          );
+        return data;
+      },
+    };
+    return mutationOptions;
+  };
+
+/**
+ * Instant Search as User (Admin)
+ *
+ * Admin-only: Instant search with access control applied for a specific user principal.
+ */
+export const adminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostMutation =
+  (
+    options?: Partial<
+      Options<AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostData>
+    >,
+  ): UseMutationOptions<
+    AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostResponse,
+    AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostError,
+    Options<AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostData>
+  > => {
+    const mutationOptions: UseMutationOptions<
+      AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostResponse,
+      AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostError,
+      Options<AdminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPostData>
+    > = {
+      mutationFn: async (fnOptions) => {
+        const { data } =
+          await adminInstantSearchAsUserAdminCollectionsReadableIdSearchInstantAsUserPost(
+            {
+              ...options,
+              ...fnOptions,
+              throwOnError: true,
+            },
+          );
+        return data;
+      },
+    };
+    return mutationOptions;
+  };
+
+/**
+ * Classic Search as User (Admin)
+ *
+ * Admin-only: Classic search with access control applied for a specific user principal.
+ */
+export const adminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostMutation =
+  (
+    options?: Partial<
+      Options<AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostData>
+    >,
+  ): UseMutationOptions<
+    AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostResponse,
+    AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostError,
+    Options<AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostData>
+  > => {
+    const mutationOptions: UseMutationOptions<
+      AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostResponse,
+      AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostError,
+      Options<AdminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPostData>
+    > = {
+      mutationFn: async (fnOptions) => {
+        const { data } =
+          await adminClassicSearchAsUserAdminCollectionsReadableIdSearchClassicAsUserPost(
+            {
+              ...options,
+              ...fnOptions,
+              throwOnError: true,
+            },
+          );
+        return data;
+      },
+    };
+    return mutationOptions;
+  };
+
+/**
+ * Agentic Search as User (Admin)
+ *
+ * Admin-only: Agentic search with access control applied for a specific user principal.
+ */
+export const adminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostMutation =
+  (
+    options?: Partial<
+      Options<AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostData>
+    >,
+  ): UseMutationOptions<
+    AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostResponse,
+    AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostError,
+    Options<AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostData>
+  > => {
+    const mutationOptions: UseMutationOptions<
+      AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostResponse,
+      AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostError,
+      Options<AdminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPostData>
+    > = {
+      mutationFn: async (fnOptions) => {
+        const { data } =
+          await adminAgenticSearchAsUserAdminCollectionsReadableIdSearchAgenticAsUserPost(
             {
               ...options,
               ...fnOptions,
