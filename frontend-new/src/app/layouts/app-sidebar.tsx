@@ -13,13 +13,14 @@ import {
   Users,
 } from 'lucide-react';
 import { Link, useMatchRoute } from '@tanstack/react-router';
-import type { ReactNode } from 'react';
+import * as React from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { CreateCollectionButton } from '@/app/components/create-collection-button';
 import { useAuth } from '@/shared/auth';
 import { UserAvatar } from '@/shared/components/user-avatar';
 import { useAppSession } from '@/shared/session';
 import {
+  CreateOrganizationSwitcherAction,
   OrganizationSwitcher,
   OrganizationSwitcherMenu,
   OrganizationSwitcherTrigger,
@@ -64,7 +65,11 @@ const navigationItems: Array<NavigationItem> = [
   },
 ];
 
-function SidebarIconFrame({ children }: { children: ReactNode }) {
+interface AppSidebarProps {
+  onCreateOrganization: () => void;
+}
+
+function SidebarIconFrame({ children }: { children: React.ReactNode }) {
   return (
     <span className="flex size-5 shrink-0 items-center justify-center rounded-[0.35rem] border border-sidebar-border">
       {children}
@@ -72,7 +77,7 @@ function SidebarIconFrame({ children }: { children: ReactNode }) {
   );
 }
 
-export function AppSidebar() {
+export function AppSidebar({ onCreateOrganization }: AppSidebarProps) {
   const auth = useAuth();
   const matchRoute = useMatchRoute();
   const {
@@ -106,6 +111,11 @@ export function AppSidebar() {
                 </SidebarMenuButton>
               </OrganizationSwitcherTrigger>
               <OrganizationSwitcherMenu
+                actions={
+                  <CreateOrganizationSwitcherAction
+                    onClick={onCreateOrganization}
+                  />
+                }
                 className="min-w-79"
                 currentOrganizationId={currentOrganizationId}
                 onCurrentOrganizationChange={setCurrentOrganizationId}

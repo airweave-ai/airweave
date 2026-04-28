@@ -1,4 +1,4 @@
-import type { ComponentProps } from 'react';
+import * as React from 'react';
 import type { OrganizationWithRole } from '@/shared/api';
 import { cn } from '@/shared/tailwind/cn';
 import {
@@ -12,20 +12,23 @@ import {
 } from '@/shared/ui/dropdown-menu';
 import { LogoMark } from '@/shared/ui/logo-mark';
 
-interface OrganizationSwitcherMenuProps extends ComponentProps<
+interface OrganizationSwitcherMenuProps extends React.ComponentProps<
   typeof DropdownMenuContent
 > {
+  actions?: React.ReactNode;
   currentOrganizationId: string;
   onCurrentOrganizationChange: (organizationId: string) => void;
   organizations: Array<OrganizationWithRole>;
 }
 
-function OrganizationSwitcher(props: ComponentProps<typeof DropdownMenu>) {
+function OrganizationSwitcher(
+  props: React.ComponentProps<typeof DropdownMenu>,
+) {
   return <DropdownMenu data-slot="organization-switcher" {...props} />;
 }
 
 function OrganizationSwitcherTrigger(
-  props: ComponentProps<typeof DropdownMenuTrigger>,
+  props: React.ComponentProps<typeof DropdownMenuTrigger>,
 ) {
   return (
     <DropdownMenuTrigger data-slot="organization-switcher-trigger" {...props} />
@@ -33,6 +36,7 @@ function OrganizationSwitcherTrigger(
 }
 
 function OrganizationSwitcherMenu({
+  actions,
   className,
   currentOrganizationId,
   onCurrentOrganizationChange,
@@ -73,6 +77,7 @@ function OrganizationSwitcherMenu({
           No organizations yet
         </DropdownMenuItem>
       )}
+      {actions}
     </DropdownMenuContent>
   );
 }

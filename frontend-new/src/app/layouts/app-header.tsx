@@ -1,9 +1,10 @@
-import { Fragment } from 'react';
+import * as React from 'react';
 import { IconBrandGithub } from '@tabler/icons-react';
 import { Link, useMatches } from '@tanstack/react-router';
 import { ChevronsUpDown } from 'lucide-react';
 import type { BreadcrumbResolverMatch } from '@/app/router/breadcrumbs';
 import {
+  CreateOrganizationSwitcherAction,
   OrganizationSwitcher,
   OrganizationSwitcherMenu,
   OrganizationSwitcherTrigger,
@@ -33,7 +34,11 @@ const resourceLinks = [
   },
 ] as const;
 
-export function AppHeader() {
+interface AppHeaderProps {
+  onCreateOrganization: () => void;
+}
+
+export function AppHeader({ onCreateOrganization }: AppHeaderProps) {
   const {
     currentOrganization,
     currentOrganizationId,
@@ -119,6 +124,11 @@ export function AppHeader() {
                     </Button>
                   </OrganizationSwitcherTrigger>
                   <OrganizationSwitcherMenu
+                    actions={
+                      <CreateOrganizationSwitcherAction
+                        onClick={onCreateOrganization}
+                      />
+                    }
                     className="min-w-79"
                     currentOrganizationId={currentOrganizationId}
                     onCurrentOrganizationChange={setCurrentOrganizationId}
@@ -132,7 +142,7 @@ export function AppHeader() {
                 const isLast = index === routeBreadcrumbs.length - 1;
 
                 return (
-                  <Fragment key={crumb.id}>
+                  <React.Fragment key={crumb.id}>
                     <BreadcrumbSeparator className="text-foreground/20">
                       <span>/</span>
                     </BreadcrumbSeparator>
@@ -150,7 +160,7 @@ export function AppHeader() {
                         </BreadcrumbLink>
                       )}
                     </BreadcrumbItem>
-                  </Fragment>
+                  </React.Fragment>
                 );
               })}
             </BreadcrumbList>
