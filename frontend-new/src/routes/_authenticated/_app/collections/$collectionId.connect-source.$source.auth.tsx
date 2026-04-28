@@ -54,10 +54,13 @@ export const Route = createFileRoute(
       });
     }
 
-    if (
-      sourceConnection.auth.authenticated &&
-      deps.callbackStatus !== 'success'
-    ) {
+    const isCallbackReturn = deps.callbackStatus === 'success';
+    const requiresAuth =
+      sourceConnection.status === 'pending_auth' ||
+      sourceConnection.status === 'needs_reauth' ||
+      isCallbackReturn;
+
+    if (sourceConnection.auth.authenticated && !requiresAuth) {
       throw redirect({
         params: {
           collectionId: params.collectionId,
