@@ -1,7 +1,6 @@
 import { SettingsDialogLayout } from './settings-dialog-layout';
 
-import { AvatarForm } from '@/features/account/components/avatar-form';
-import { UsernameForm } from '@/features/account/components/username-form';
+import { AvatarForm, DeleteAccountForm, UsernameForm } from '@/features/account';
 import { OrganizationsCard } from '@/features/organizations';
 import { useAppSession } from '@/shared/session';
 
@@ -24,6 +23,7 @@ function SettingsDialogAccountPage({
       <AvatarForm viewer={viewer} />
       <UsernameForm viewer={viewer} />
       <OrganizationsCard organizations={organizations} />
+      <DeleteAccountForm />
     </SettingsDialogLayout>
   );
 }
