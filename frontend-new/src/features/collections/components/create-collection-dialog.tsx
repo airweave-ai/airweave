@@ -19,9 +19,10 @@ import {
 import {
   FlowDialogAside,
   FlowDialogBody,
+  FlowDialogContent,
   FlowDialogHeader,
   FlowDialogMain,
-} from '@/shared/ui/flow-dialog';
+} from '@/shared/components/flow-dialog';
 import { Input } from '@/shared/ui/input';
 import { Separator } from '@/shared/ui/separator';
 import { Spinner } from '@/shared/ui/spinner';
@@ -90,7 +91,7 @@ export function CreateCollectionDialogScreen({
   }, [isPending]);
 
   return (
-    <>
+    <FlowDialogContent>
       <FlowDialogHeader onClose={handleClose}>
         <div className="min-w-0 space-y-1">
           <DialogTitle className="text-xl font-semibold text-foreground">
@@ -245,7 +246,7 @@ export function CreateCollectionDialogScreen({
           </p>
         </FlowDialogAside>
       </FlowDialogBody>
-    </>
+    </FlowDialogContent>
   );
 }
 

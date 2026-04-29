@@ -9,7 +9,7 @@ import {
   useGetSourceConnectionQueryOptions,
   useGetSourceQueryOptions,
 } from '@/features/source-connections';
-import { FlowDialogBody } from '@/shared/ui/flow-dialog';
+import { FlowDialogBody } from '@/shared/components/flow-dialog';
 
 const routeApi = getRouteApi(
   '/_authenticated/_app/collections/$collectionId/connect-source/$source/sync',

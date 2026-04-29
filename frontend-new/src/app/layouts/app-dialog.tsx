@@ -1,22 +1,21 @@
-import { getRouteApi, useNavigate } from '@tanstack/react-router';
-import { CreateCollectionDialogScreen } from '@/features/collections';
-import { FlowDialog, FlowDialogContent } from '@/shared/ui/flow-dialog';
+import { getRouteApi } from '@tanstack/react-router';
+import { CreateCollectionAppDialog } from '@/app/dialogs/create-collection-dialog';
+import { SettingsDialog } from '@/app/dialogs/settings-dialog';
+import { FlowDialog } from '@/shared/components/flow-dialog';
 
 const routeApi = getRouteApi('/_authenticated/_app');
 
 export function AppDialog() {
-  const navigate = useNavigate();
+  const navigate = routeApi.useNavigate();
   const { dialog } = routeApi.useSearch();
 
   const handleClose = () => removeDialogSearchParams();
 
   const removeDialogSearchParams = () =>
     void navigate({
+      to: '.',
       replace: true,
-      search: ((prev: Record<string, unknown>) => ({
-        ...prev,
-        dialog: undefined,
-      })) as never,
+      search: (prev) => ({ ...prev, dialog: undefined }),
       viewTransition: true,
     });
 
@@ -25,20 +24,12 @@ export function AppDialog() {
       open={Boolean(dialog)}
       onOpenChange={(nextOpen) => !nextOpen && handleClose()}
     >
-      <FlowDialogContent>
-        {dialog?.type === 'create-collection' ? (
-          <CreateCollectionDialogScreen
-            onClose={handleClose}
-            onCreated={(collection) =>
-              void navigate({
-                params: { collectionId: collection.readable_id },
-                replace: true,
-                to: '/collections/$collectionId/connect-source',
-              })
-            }
-          />
-        ) : null}
-      </FlowDialogContent>
+      {dialog?.type === 'create-collection' ? (
+        <CreateCollectionAppDialog onClose={handleClose} />
+      ) : null}
+      {dialog?.type === 'settings' ? (
+        <SettingsDialog page={dialog.page} onClose={handleClose} />
+      ) : null}
     </FlowDialog>
   );
 }

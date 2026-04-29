@@ -31,7 +31,8 @@ export function SourceConnectionStatusHeader({
 }: SourceConnectionStatusHeaderProps) {
   const resolvedStatus = isSyncing ? 'syncing' : sourceConnection.status;
   const isSyncDisabled =
-    isSyncing || ['pending_auth', 'needs_reauth'].includes(sourceConnection.status);
+    isSyncing ||
+    ['pending_auth', 'needs_reauth'].includes(sourceConnection.status);
 
   return (
     <div className="flex flex-wrap items-center gap-1">

@@ -6,7 +6,7 @@ import {
   FlowDialogAside,
   FlowDialogHeader,
   FlowDialogMain,
-} from '@/shared/ui/flow-dialog';
+} from '@/shared/components/flow-dialog';
 import { Spinner } from '@/shared/ui/spinner';
 import { cn } from '@/shared/tailwind/cn';
 

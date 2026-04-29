@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Outlet, createFileRoute } from '@tanstack/react-router';
 import { AirweaveLoader } from '@/shared/components/airweave-loader';
-import { FlowDialog, FlowDialogContent } from '@/shared/ui/flow-dialog';
+import { FlowDialog, FlowDialogContent } from '@/shared/components/flow-dialog';
 
 export const Route = createFileRoute(
   '/_authenticated/_app/collections/$collectionId/connect-source',

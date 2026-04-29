@@ -7,7 +7,7 @@ import {
   FlowDialogFooter,
   FlowDialogHeader,
   FlowDialogMain,
-} from '@/shared/ui/flow-dialog';
+} from '@/shared/components/flow-dialog';
 
 interface CreateOrganizationDialogLayoutProps {
   description: React.ReactNode;

@@ -6,7 +6,7 @@ import type { CreateOrganizationStep } from './steps';
 import type { Organization } from '@/shared/api';
 import type { OrganizationNameFormOutput } from './organization-name-step';
 import type { OrganizationSizeFormOutput } from './organization-size-step';
-import { FlowDialog } from '@/shared/ui/flow-dialog';
+import { FlowDialog } from '@/shared/components/flow-dialog';
 
 type CreateOrganizationStepValues = Partial<{
   'organization-name': OrganizationNameFormOutput;

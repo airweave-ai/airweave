@@ -16,6 +16,7 @@ import { Link, useMatchRoute } from '@tanstack/react-router';
 import * as React from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { CreateCollectionButton } from '@/app/components/create-collection-button';
+import { SettingsLink } from '@/app/components/settings-link';
 import { useAuth } from '@/shared/auth';
 import { UserAvatar } from '@/shared/components/user-avatar';
 import { useAppSession } from '@/shared/session';
@@ -127,10 +128,12 @@ export function AppSidebar({ onCreateOrganization }: AppSidebarProps) {
           <div className="flex flex-none items-center gap-1">
             <SidebarMenuButton
               className="size-7 flex-none justify-center p-0 text-sidebar-foreground/50"
-              type="button"
+              asChild
             >
-              <Settings className="size-3.5" />
-              <span className="sr-only">Open settings</span>
+              <SettingsLink page="account">
+                <Settings className="size-3.5" />
+                <span className="sr-only">Open settings</span>
+              </SettingsLink>
             </SidebarMenuButton>
 
             <SidebarTrigger className="text-sidebar-foreground/50" />
@@ -202,35 +205,46 @@ export function AppSidebar({ onCreateOrganization }: AppSidebarProps) {
                 side="right"
                 sideOffset={8}
               >
-                <div className="flex items-center gap-2 rounded-md px-1 py-1.5">
-                  <UserAvatar
-                    email={viewer.email}
-                    name={viewer.name}
-                    picture={viewer.picture}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm leading-none font-semibold">
-                      {viewerLabel}
-                    </p>
-                    <p className="truncate font-mono text-xs text-muted-foreground">
-                      {viewer.email}
-                    </p>
-                  </div>
-                </div>
+                <DropdownMenuItem
+                  className="flex items-center gap-2 rounded-md px-1 py-1.5"
+                  asChild
+                >
+                  <SettingsLink page="account">
+                    <UserAvatar
+                      email={viewer.email}
+                      name={viewer.name}
+                      picture={viewer.picture}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm leading-none font-semibold">
+                        {viewerLabel}
+                      </p>
+                      <p className="truncate font-mono text-xs text-muted-foreground">
+                        {viewer.email}
+                      </p>
+                    </div>
+                  </SettingsLink>
+                </DropdownMenuItem>
 
                 <DropdownMenuSeparator />
 
-                <DropdownMenuItem>
-                  <Users />
-                  People
+                <DropdownMenuItem asChild>
+                  <SettingsLink page="people">
+                    <Users />
+                    People
+                  </SettingsLink>
                 </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <LineChart />
-                  Usage
+                <DropdownMenuItem asChild>
+                  <SettingsLink page="usage">
+                    <LineChart />
+                    Usage
+                  </SettingsLink>
                 </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <CreditCard />
-                  Access & Billing
+                <DropdownMenuItem asChild>
+                  <SettingsLink page="billing">
+                    <CreditCard />
+                    Access & Billing
+                  </SettingsLink>
                 </DropdownMenuItem>
 
                 <DropdownMenuSeparator />

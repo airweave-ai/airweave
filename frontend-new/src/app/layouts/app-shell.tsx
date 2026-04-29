@@ -23,24 +23,26 @@ export function AppShell({ children }: PropsWithChildren) {
   );
 
   return (
-    <SidebarProvider className="h-svh overflow-hidden">
+    <>
       <CreateOrganizationDialog
         onCreated={handleOrganizationCreated}
         onOpenChange={setCreateOrganizationOpen}
         open={createOrganizationOpen}
       />
-      <AppSidebar
-        onCreateOrganization={() => setCreateOrganizationOpen(true)}
-      />
-      <SidebarInset className="min-h-0 overflow-hidden">
-        <AppHeader
+      <AppDialog />
+      <SidebarProvider className="h-svh overflow-hidden">
+        <AppSidebar
           onCreateOrganization={() => setCreateOrganizationOpen(true)}
         />
-        <div className="flex min-h-0 flex-1 flex-col overflow-auto">
-          {children}
-        </div>
-        <AppDialog />
-      </SidebarInset>
-    </SidebarProvider>
+        <SidebarInset className="min-h-0 overflow-hidden">
+          <AppHeader
+            onCreateOrganization={() => setCreateOrganizationOpen(true)}
+          />
+          <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+            {children}
+          </div>
+        </SidebarInset>
+      </SidebarProvider>
+    </>
   );
 }
