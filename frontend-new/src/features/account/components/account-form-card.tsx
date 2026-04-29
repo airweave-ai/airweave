@@ -24,7 +24,9 @@ function AccountFormCard({
 }: AccountFormCardProps) {
   return (
     <Card className="gap-0 rounded-lg bg-foreground/5 py-0 shadow-xs">
-      <CardHeader className={cn('gap-1.5 px-4 pt-4', children ? 'pb-0' : 'pb-4')}>
+      <CardHeader
+        className={cn('gap-1.5 px-4 pt-4', children ? 'pb-0' : 'pb-4')}
+      >
         <CardTitle className="text-xl leading-7 font-semibold">
           {title}
         </CardTitle>

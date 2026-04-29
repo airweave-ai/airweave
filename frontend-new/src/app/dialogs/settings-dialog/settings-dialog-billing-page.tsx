@@ -4,7 +4,9 @@ type SettingsDialogBillingPageProps = {
   onClose: () => void;
 };
 
-function SettingsDialogBillingPage({ onClose }: SettingsDialogBillingPageProps) {
+function SettingsDialogBillingPage({
+  onClose,
+}: SettingsDialogBillingPageProps) {
   return (
     <SettingsDialogPlaceholderPage
       title="Billing"

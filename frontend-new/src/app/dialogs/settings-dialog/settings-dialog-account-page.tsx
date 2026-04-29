@@ -1,6 +1,10 @@
 import { SettingsDialogLayout } from './settings-dialog-layout';
 
-import { AvatarForm, DeleteAccountForm, UsernameForm } from '@/features/account';
+import {
+  AvatarForm,
+  DeleteAccountForm,
+  UsernameForm,
+} from '@/features/account';
 import { OrganizationsCard } from '@/features/organizations';
 import { useAppSession } from '@/shared/session';
 

@@ -53,7 +53,8 @@ function OrganizationsCard({ organizations }: OrganizationsCardProps) {
                   </div>
                 </TableCell>
                 <TableCell className="font-mono text-muted-foreground">
-                  {formatDate(organization.created_at) ?? organization.created_at}
+                  {formatDate(organization.created_at) ??
+                    organization.created_at}
                 </TableCell>
                 <TableCell className="text-right">
                   <OrganizationRoleBadge role={organization.role} />
