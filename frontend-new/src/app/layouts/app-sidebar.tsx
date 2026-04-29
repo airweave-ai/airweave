@@ -22,6 +22,7 @@ import { UserAvatar } from '@/shared/components/user-avatar';
 import { useAppSession } from '@/shared/session';
 import {
   CreateOrganizationSwitcherAction,
+  OrganizationIcon,
   OrganizationSwitcher,
   OrganizationSwitcherMenu,
   OrganizationSwitcherTrigger,
@@ -33,7 +34,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/shared/ui/dropdown-menu';
-import { LogoMark } from '@/shared/ui/logo-mark';
 import {
   Sidebar,
   SidebarContent,
@@ -101,7 +101,7 @@ export function AppSidebar({ onCreateOrganization }: AppSidebarProps) {
                   className="w-full min-w-0 gap-2 font-semibold data-[state=open]:[&_svg[data-role=indicator]]:rotate-180"
                   type="button"
                 >
-                  <LogoMark />
+                  <OrganizationIcon name={currentOrganization.name} />
                   <span className="min-w-0 flex-1 truncate">
                     {currentOrganization.name}
                   </span>

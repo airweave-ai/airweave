@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { OrganizationIcon } from './organization-icon';
 import type { OrganizationWithRole } from '@/shared/api';
 import { cn } from '@/shared/tailwind/cn';
 import {
@@ -10,7 +11,6 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/shared/ui/dropdown-menu';
-import { LogoMark } from '@/shared/ui/logo-mark';
 
 interface OrganizationSwitcherMenuProps extends React.ComponentProps<
   typeof DropdownMenuContent
@@ -64,7 +64,7 @@ function OrganizationSwitcherMenu({
               className="gap-2 truncate rounded-xs p-2"
               value={organization.id}
             >
-              <LogoMark />
+              <OrganizationIcon name={organization.name} />
               {organization.name}
             </DropdownMenuRadioItem>
           ))}

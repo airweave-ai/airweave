@@ -19,7 +19,7 @@ function SettingsDialogLayout({
   className,
 }: SettingsDialogLayoutProps) {
   return (
-    <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
+    <section className="grid h-full grid-rows-[auto_minmax(0,1fr)]">
       <header className="flex items-center justify-between gap-6 px-6 py-4">
         <div className="min-w-0 space-y-1">
           <DialogTitle className="text-xl font-semibold">{title}</DialogTitle>

@@ -5,6 +5,7 @@ import { ChevronsUpDown } from 'lucide-react';
 import type { BreadcrumbResolverMatch } from '@/app/router/breadcrumbs';
 import {
   CreateOrganizationSwitcherAction,
+  OrganizationIcon,
   OrganizationSwitcher,
   OrganizationSwitcherMenu,
   OrganizationSwitcherTrigger,
@@ -20,7 +21,6 @@ import {
 } from '@/shared/ui/breadcrumb';
 import { AirweaveLogo } from '@/shared/ui/airweave-logo';
 import { Button } from '@/shared/ui/button';
-import { LogoMark } from '@/shared/ui/logo-mark';
 import { SidebarTrigger } from '@/shared/ui/sidebar';
 
 const resourceLinks = [
@@ -113,7 +113,10 @@ export function AppHeader({ onCreateOrganization }: AppHeaderProps) {
                       variant="ghost"
                       size="sm"
                     >
-                      <LogoMark className="size-3 rounded-xs" />
+                      <OrganizationIcon
+                        className="size-3 text-[0.5rem]"
+                        name={currentOrganization.name}
+                      />
                       <span className="truncate">
                         {currentOrganization.name}
                       </span>
