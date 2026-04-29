@@ -1,4 +1,4 @@
-import { getRouteApi } from '@tanstack/react-router';
+import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import { CreateCollectionAppDialog } from '@/app/dialogs/create-collection-dialog';
 import { SettingsDialog } from '@/app/dialogs/settings-dialog';
 import { FlowDialog } from '@/shared/components/flow-dialog';
@@ -6,7 +6,7 @@ import { FlowDialog } from '@/shared/components/flow-dialog';
 const routeApi = getRouteApi('/_authenticated/_app');
 
 export function AppDialog() {
-  const navigate = routeApi.useNavigate();
+  const navigate = useNavigate();
   const { dialog } = routeApi.useSearch();
 
   const handleClose = () => removeDialogSearchParams();
