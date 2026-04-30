@@ -117,7 +117,7 @@ function InviteOrganizationMemberDialog({
         onOpenChange(nextOpen);
       }}
     >
-      <DialogContent className="bg-background sm:max-w-3xl">
+      <DialogContent className="bg-background sm:max-w-2xl">
         <form
           noValidate
           className="grid gap-4"
@@ -129,7 +129,7 @@ function InviteOrganizationMemberDialog({
           <DialogHeader>
             <DialogTitle>Add Member</DialogTitle>
             <DialogDescription className="font-mono">
-              Type or paste one email below.
+              Type or paste email below.
             </DialogDescription>
           </DialogHeader>
 

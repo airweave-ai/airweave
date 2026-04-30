@@ -2,7 +2,6 @@ import { toast } from 'sonner';
 import { IconUserX } from '@tabler/icons-react';
 import { useRemoveOrganizationMemberMutation } from '../../api';
 import type { MemberResponse } from '@/shared/api/generated';
-import { useCurrentOrganizationId } from '@/shared/session';
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -18,13 +17,14 @@ import { Button } from '@/shared/ui/button';
 type RemoveOrganizationMemberAlertDialogProps = {
   member: MemberResponse | null;
   onOpenChange: (open: boolean) => void;
+  organizationId: string;
 };
 
 function RemoveOrganizationMemberAlertDialog({
   member,
   onOpenChange,
+  organizationId,
 }: RemoveOrganizationMemberAlertDialogProps) {
-  const organizationId = useCurrentOrganizationId();
   const removeMemberMutation = useRemoveOrganizationMemberMutation();
 
   const handleRemove = () => {
@@ -59,7 +59,7 @@ function RemoveOrganizationMemberAlertDialog({
         onOpenChange(open);
       }}
     >
-      <AlertDialogContent size="sm">
+      <AlertDialogContent size="sm" className="bg-background">
         <AlertDialogHeader>
           <AlertDialogMedia className="bg-destructive/10 text-destructive">
             <IconUserX className="size-5" />

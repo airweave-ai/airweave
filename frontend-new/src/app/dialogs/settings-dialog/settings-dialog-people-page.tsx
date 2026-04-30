@@ -47,6 +47,7 @@ function SettingsDialogPeoplePage({ onClose }: SettingsDialogPeoplePageProps) {
       canManageMembers={canManageMembers}
       currentUserId={viewer.id}
       members={members}
+      organizationId={currentOrganization.id}
     />
   );
 

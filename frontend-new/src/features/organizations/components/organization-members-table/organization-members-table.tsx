@@ -32,12 +32,14 @@ type OrganizationMembersTableProps = {
   canManageMembers: boolean;
   currentUserId: string;
   members: Array<MemberResponse>;
+  organizationId: string;
 };
 
 function OrganizationMembersTable({
   canManageMembers,
   currentUserId,
   members,
+  organizationId,
 }: OrganizationMembersTableProps) {
   const [memberToRemove, setMemberToRemove] =
     React.useState<MemberResponse | null>(null);
@@ -147,6 +149,7 @@ function OrganizationMembersTable({
 
       <RemoveOrganizationMemberAlertDialog
         member={memberToRemove}
+        organizationId={organizationId}
         onOpenChange={(open) => {
           if (!open) {
             setMemberToRemove(null);
