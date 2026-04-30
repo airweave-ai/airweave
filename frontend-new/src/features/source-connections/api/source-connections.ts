@@ -72,6 +72,20 @@ export function useListSourceConnectionsQueryOptions(
   );
 }
 
+export function ensureListSourceConnections({
+  collectionId,
+  queryClient,
+  organizationId,
+}: {
+  collectionId?: string;
+  queryClient: QueryClient;
+  organizationId: string;
+}) {
+  return queryClient.ensureQueryData(
+    listSourceConnectionsQueryOptions(organizationId, { collectionId }),
+  );
+}
+
 function getSourceConnectionQueryOptions(
   organizationId: string,
   { sourceConnectionId }: SourceConnectionIdParams,

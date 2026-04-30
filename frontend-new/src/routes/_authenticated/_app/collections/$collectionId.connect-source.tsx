@@ -1,6 +1,5 @@
 import * as React from 'react';
 import { Outlet, createFileRoute } from '@tanstack/react-router';
-import { AirweaveLoader } from '@/shared/components/airweave-loader';
 import { FlowDialog, FlowDialogContent } from '@/shared/components/flow-dialog';
 
 export const Route = createFileRoute(
@@ -25,11 +24,7 @@ function RouteComponent() {
   return (
     <FlowDialog open onOpenChange={(nextOpen) => !nextOpen && handleClose()}>
       <FlowDialogContent>
-        <React.Suspense
-          fallback={<AirweaveLoader className="row-span-2 min-h-0" />}
-        >
-          <Outlet />
-        </React.Suspense>
+        <Outlet />
       </FlowDialogContent>
     </FlowDialog>
   );

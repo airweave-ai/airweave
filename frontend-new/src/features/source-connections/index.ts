@@ -5,6 +5,7 @@ export {
 } from './lib/source-connection-auth-provider-options';
 export { isActiveSyncJobStatus } from './lib/sync-job-status';
 export {
+  ensureListSourceConnections,
   ensureSourceConnection,
   ensureSource,
   listSourceConnectionsQueryOptions,

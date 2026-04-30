@@ -1,5 +1,6 @@
 export {
   createSourceConnectionMutationOptions,
+  ensureListSourceConnections,
   ensureSourceConnection,
   listSourceConnectionsQueryOptions,
   reinitiateSourceConnectionOAuthMutationOptions,
