@@ -37,11 +37,13 @@ class InstantSearchService(InstantSearchServiceProtocol):
         executor: SearchPlanExecutorProtocol,
         collection_repo: CollectionRepositoryProtocol,
         event_bus: EventBus,
+        min_score: float,
     ) -> None:
-        """Initialize with executor, collection repo, and event bus."""
+        """Initialize with executor, collection repo, event bus, and score threshold."""
         self._executor = executor
         self._collection_repo = collection_repo
         self._event_bus = event_bus
+        self._min_score = min_score
 
     async def search(
         self,
@@ -104,6 +106,8 @@ class InstantSearchService(InstantSearchServiceProtocol):
             retrieval_strategy=request.retrieval_strategy,
         )
 
+        requested_limit = plan.limit
+        plan = plan.model_copy(update={"limit": plan.limit + plan.offset, "offset": 0})
         results = await self._executor.execute(
             plan=plan,
             user_filter=request.filter or [],
@@ -112,6 +116,12 @@ class InstantSearchService(InstantSearchServiceProtocol):
             ctx=ctx,
             collection_readable_id=readable_id,
             user_principal=user_principal_override,
+        )
+        filtered_results = [
+            result for result in results.results if result.relevance_score >= self._min_score
+        ]
+        results = SearchResults(
+            results=filtered_results[request.offset : request.offset + requested_limit]
         )
 
         duration_ms = int((time.monotonic() - start_time) * 1000)

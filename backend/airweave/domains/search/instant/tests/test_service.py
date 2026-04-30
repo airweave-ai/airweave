@@ -20,10 +20,10 @@ from airweave.domains.search.fakes.executor import FakeSearchPlanExecutor
 from airweave.domains.search.instant.service import InstantSearchService
 from airweave.domains.search.types import SearchResults
 from airweave.domains.search.types.filters import (
+    FilterableField,
     FilterCondition,
     FilterGroup,
     FilterOperator,
-    FilterableField,
 )
 from airweave.models.collection import Collection
 from airweave.schemas.search_v2 import InstantSearchRequest
@@ -84,6 +84,7 @@ def _make_service(
     executor: FakeSearchPlanExecutor | None = None,
     collection_repo: FakeCollectionRepository | None = None,
     event_bus: FakeEventBus | None = None,
+    min_score: float = 0.0,
 ) -> tuple[InstantSearchService, FakeSearchPlanExecutor, FakeCollectionRepository, FakeEventBus]:
     """Build an InstantSearchService with fakes, returning the service and key fakes."""
     executor = executor or FakeSearchPlanExecutor()
@@ -94,6 +95,7 @@ def _make_service(
         executor=executor,
         collection_repo=collection_repo,
         event_bus=event_bus,
+        min_score=min_score,
     )
     return svc, executor, collection_repo, event_bus
 
@@ -126,6 +128,43 @@ class TestInstantSearchService:
         event = bus.assert_published("search.completed")
         assert isinstance(event, SearchCompletedEvent)
         assert event.tier.value == "instant"
+
+    @pytest.mark.asyncio
+    async def test_filters_results_below_min_score(self) -> None:
+        """Results with scores below the configured threshold are removed."""
+        svc, executor, repo, bus = _make_service(min_score=1.2)
+
+        col = _make_collection()
+        repo.seed_readable(DEFAULT_READABLE_ID, col)
+        high_score_result = make_result(entity_id="ent-1", name="Relevant", score=1.7)
+        low_score_result = make_result(entity_id="ent-2", name="Noisy", score=1.1)
+        executor.seed_result(SearchResults(results=[high_score_result, low_score_result]))
+
+        results = await svc.search(AsyncMock(), _make_ctx(), DEFAULT_READABLE_ID, _make_request())
+
+        assert [result.entity_id for result in results.results] == ["ent-1"]
+        event = bus.assert_published("search.completed")
+        assert len(event.results) == 1
+
+    @pytest.mark.asyncio
+    async def test_applies_offset_after_filtering(self) -> None:
+        """Offset is applied after low-scoring results are removed."""
+        svc, executor, repo, bus = _make_service(min_score=1.2)
+
+        col = _make_collection()
+        repo.seed_readable(DEFAULT_READABLE_ID, col)
+        first_result = make_result(entity_id="ent-1", name="First", score=1.7)
+        noisy_result = make_result(entity_id="ent-2", name="Noisy", score=1.1)
+        second_result = make_result(entity_id="ent-3", name="Second", score=1.6)
+        executor.seed_result(SearchResults(results=[first_result, noisy_result, second_result]))
+
+        request = _make_request(limit=1, offset=1)
+        results = await svc.search(AsyncMock(), _make_ctx(), DEFAULT_READABLE_ID, request)
+
+        assert [result.entity_id for result in results.results] == ["ent-3"]
+        _, plan, _, _ = executor._calls[0]
+        assert plan.limit == 2
+        assert plan.offset == 0
 
     @pytest.mark.asyncio
     async def test_executor_error_emits_failed_event(self) -> None:

@@ -30,6 +30,7 @@ class FakeInstantSearchService(InstantSearchServiceProtocol):
         ctx: ApiContext,
         readable_id: str,
         request: InstantSearchRequest,
+        user_principal_override: str | None = None,
     ) -> SearchResults:
-        self._calls.append(("search", readable_id, request))
+        self._calls.append(("search", readable_id, request, user_principal_override))
         return self._result

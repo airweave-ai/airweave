@@ -202,6 +202,9 @@ class Settings(BaseSettings):
     # in-code default in domains/search/config.py.
     LLM_FALLBACK_CHAIN: Optional[str] = None
 
+    # Instant search result filtering.
+    INSTANT_SEARCH_MIN_SCORE: float = 1.2
+
     # Docling OCR fallback service (None = disabled)
     DOCLING_BASE_URL: Optional[str] = None
 
@@ -282,6 +285,14 @@ class Settings(BaseSettings):
         v = float(v)
         if v <= 0:
             raise ValueError("HEALTH_CHECK_TIMEOUT must be positive")
+        return v
+
+    @field_validator("INSTANT_SEARCH_MIN_SCORE", mode="before")
+    def validate_instant_search_min_score(cls, v: float) -> float:
+        """Validate that the instant search minimum score is non-negative."""
+        v = float(v)
+        if v < 0:
+            raise ValueError("INSTANT_SEARCH_MIN_SCORE must be non-negative")
         return v
 
     @field_validator("AZURE_KEYVAULT_NAME", mode="before")

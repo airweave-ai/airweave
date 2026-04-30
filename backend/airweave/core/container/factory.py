@@ -1335,7 +1335,10 @@ def _create_search_services(
 
     # 6. Per-tier services
     instant_search = InstantSearchService(
-        executor=executor, collection_repo=collection_repo, event_bus=event_bus
+        executor=executor,
+        collection_repo=collection_repo,
+        event_bus=event_bus,
+        min_score=settings.INSTANT_SEARCH_MIN_SCORE,
     )
     classic_search = ClassicSearchService(
         llm=llm,

@@ -38,6 +38,23 @@ def _build_settings(monkeypatch, overrides: dict[str, str]):
 _UNSET = object()
 
 
+# ── INSTANT_SEARCH_MIN_SCORE ────────────────────────────────────────
+
+
+class TestValidateInstantSearchMinScore:
+    def test_defaults_to_sane_threshold(self, monkeypatch):
+        s = _build_settings(monkeypatch, {})
+        assert s.INSTANT_SEARCH_MIN_SCORE == 1.2
+
+    def test_rejects_negative(self, monkeypatch):
+        with pytest.raises(ValidationError, match="INSTANT_SEARCH_MIN_SCORE"):
+            _build_settings(monkeypatch, {"INSTANT_SEARCH_MIN_SCORE": "-0.1"})
+
+    def test_accepts_zero_to_disable_filtering(self, monkeypatch):
+        s = _build_settings(monkeypatch, {"INSTANT_SEARCH_MIN_SCORE": "0"})
+        assert s.INSTANT_SEARCH_MIN_SCORE == 0.0
+
+
 # ── SVIX_JWT_SECRET ─────────────────────────────────────────────────
 
 
