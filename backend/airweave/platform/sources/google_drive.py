@@ -89,6 +89,7 @@ class GoogleDriveSource(BaseSource):
         """Create a new Google Drive source instance."""
         instance = cls(auth=auth, logger=logger, http_client=http_client)
         instance.include_patterns = config.include_patterns if config else []
+        instance.drive_id = config.drive_id if config else None
         instance.batch_size = 30
         instance.batch_generation = True
         instance.max_queue_size = 200
@@ -1033,6 +1034,15 @@ class GoogleDriveSource(BaseSource):
             drive_breadcrumbs = self._drive_breadcrumbs
             drive_ids = [drive["id"] for drive in drive_objs]
 
+            # Scope to a specific shared drive when drive_id is configured
+            _config_drive_id: Optional[str] = getattr(self, "drive_id", None)
+            if _config_drive_id:
+                drive_ids = [did for did in drive_ids if did == _config_drive_id]
+                self.logger.info(
+                    f"Scoping sync to shared drive {_config_drive_id} "
+                    f"({len(drive_ids)} match(es) found)"
+                )
+
             # INCREMENTAL MODE: Use Changes API exclusively
             if start_page_token:
                 self.logger.info(
@@ -1070,19 +1080,20 @@ class GoogleDriveSource(BaseSource):
                             )
                             continue
 
-                    try:
-                        async for mydrive_file_entity in self._generate_file_entities(
-                            corpora="user",
-                            include_all_drives=False,
-                            context="MY DRIVE",
-                            parent_breadcrumb=self._my_drive_breadcrumb,
-                            files=files,
-                        ):
-                            yield mydrive_file_entity
-                    except SourceAuthError:
-                        raise
-                    except Exception as e:
-                        self.logger.warning(f"Error processing My Drive files: {str(e)}")
+                    if not _config_drive_id:
+                        try:
+                            async for mydrive_file_entity in self._generate_file_entities(
+                                corpora="user",
+                                include_all_drives=False,
+                                context="MY DRIVE",
+                                parent_breadcrumb=self._my_drive_breadcrumb,
+                                files=files,
+                            ):
+                                yield mydrive_file_entity
+                        except SourceAuthError:
+                            raise
+                        except Exception as e:
+                            self.logger.warning(f"Error processing My Drive files: {str(e)}")
 
                 # INCLUDE MODE: Resolve patterns and traverse only matched subtrees
                 # Shared drives first
@@ -1216,9 +1227,9 @@ class GoogleDriveSource(BaseSource):
                     except Exception as e:
                         self.logger.warning(f"Include mode error for drive {drive_id}: {str(e)}")
 
-                # My Drive include patterns
+                # My Drive include patterns (skipped when scoped to a specific shared drive)
                 try:
-                    for p in patterns:
+                    for p in ([] if _config_drive_id else patterns):
                         roots, fname_glob = await self._resolve_pattern_to_roots(
                             corpora="user",
                             include_all_drives=False,
@@ -1284,7 +1295,7 @@ class GoogleDriveSource(BaseSource):
                     filename_only_patterns = [p for p in patterns if "/" not in p]
                     import fnmatch as _fn
 
-                    for pat in filename_only_patterns:
+                    for pat in ([] if _config_drive_id else filename_only_patterns):
                         if getattr(self, "batch_generation", False):
 
                             async def _worker_match_user(
