@@ -71,7 +71,7 @@ class TestValidateLocalReachability:
         entry = _make_entry(LocalDenseEmbedder)
         _validate_local_reachability(entry)
 
-        client.get.assert_called_once_with("http://localhost:9878/health")
+        client.get.assert_called_once_with("http://localhost:9878/.well-known/ready")
 
     @patch("airweave.domains.embedders.config.settings")
     @patch("airweave.domains.embedders.config.httpx")

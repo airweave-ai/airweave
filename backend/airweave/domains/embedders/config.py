@@ -158,7 +158,7 @@ def _validate_local_reachability(dense_spec: DenseEmbedderEntry) -> None:
         return
 
     inference_url = settings.TEXT2VEC_INFERENCE_URL
-    health_url = f"{inference_url}/health"
+    health_url = f"{inference_url}/.well-known/ready"
 
     try:
         with httpx.Client(timeout=httpx.Timeout(5.0)) as client:
