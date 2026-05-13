@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from airweave import schemas
 from airweave.api.context import ApiContext
 from airweave.core.context import BaseContext
-from airweave.core.shared_models import SyncStatus
+from airweave.core.shared_models import SyncPauseReason, SyncStatus
 from airweave.db.unit_of_work import UnitOfWork
 from airweave.domains.sources.types import SourceRegistryEntry
 from airweave.domains.sync_pipeline.config import SyncConfig
@@ -68,6 +68,15 @@ class SyncRepositoryProtocol(Protocol):
         """Update an existing sync."""
         ...
 
+    async def get_paused_by_reason(
+        self,
+        db: AsyncSession,
+        organization_id: UUID,
+        pause_reason: str,
+    ) -> List[Sync]:
+        """Get all paused syncs for an org with a specific pause_reason."""
+        ...
+
 
 class SyncCursorRepositoryProtocol(Protocol):
     """Data access for sync cursor records."""
@@ -89,6 +98,7 @@ class SyncStateMachineProtocol(Protocol):
         ctx: BaseContext,
         *,
         reason: str = "",
+        pause_reason: SyncPauseReason | None = None,
     ) -> SyncTransitionResult:
         """Execute a validated, idempotent sync status transition.
 
@@ -136,6 +146,7 @@ class SyncServiceProtocol(Protocol):
         ctx: BaseContext,
         *,
         reason: str = "",
+        pause_reason: SyncPauseReason | None = None,
     ) -> SyncTransitionResult:
         """Pause a sync."""
         ...
@@ -148,6 +159,15 @@ class SyncServiceProtocol(Protocol):
         reason: str = "",
     ) -> SyncTransitionResult:
         """Resume a paused sync."""
+        ...
+
+    async def list_paused_by_reason(
+        self,
+        organization_id: UUID,
+        pause_reason: SyncPauseReason,
+        ctx: BaseContext,
+    ) -> List[schemas.Sync]:
+        """List paused syncs for an org filtered by pause_reason."""
         ...
 
     async def delete(

@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from airweave.adapters.event_bus.fake import FakeEventBus
 from airweave.adapters.payment.fake import FakePaymentGateway, _obj
 from airweave.domains.billing.fakes.operations import FakeBillingOperations
 from airweave.domains.billing.fakes.repository import (
@@ -188,7 +189,8 @@ class TestForwardOverlapDetection:
         pr.seed(old_period)
 
         ops = BillingOperations(
-            billing_repo=br, period_repo=pr, usage_repo=usage_repo, payment_gateway=gw
+            billing_repo=br, period_repo=pr, usage_repo=usage_repo, payment_gateway=gw,
+            event_bus=FakeEventBus(),
         )
 
         await ops.create_billing_period(
@@ -226,7 +228,8 @@ class TestForwardOverlapDetection:
         pr.seed(future_period)
 
         ops = BillingOperations(
-            billing_repo=br, period_repo=pr, usage_repo=usage_repo, payment_gateway=gw
+            billing_repo=br, period_repo=pr, usage_repo=usage_repo, payment_gateway=gw,
+            event_bus=FakeEventBus(),
         )
 
         await ops.create_billing_period(
@@ -271,7 +274,8 @@ class TestForwardOverlapDetection:
         pr.seed(later)
 
         ops = BillingOperations(
-            billing_repo=br, period_repo=pr, usage_repo=usage_repo, payment_gateway=gw
+            billing_repo=br, period_repo=pr, usage_repo=usage_repo, payment_gateway=gw,
+            event_bus=FakeEventBus(),
         )
 
         await ops.create_billing_period(
@@ -309,7 +313,8 @@ class TestForwardOverlapDetection:
         pr.seed(old_completed)
 
         ops = BillingOperations(
-            billing_repo=br, period_repo=pr, usage_repo=usage_repo, payment_gateway=gw
+            billing_repo=br, period_repo=pr, usage_repo=usage_repo, payment_gateway=gw,
+            event_bus=FakeEventBus(),
         )
 
         await ops.create_billing_period(
@@ -355,7 +360,8 @@ class TestUoWAtomicity:
         now = datetime.now(timezone.utc)
 
         ops = BillingOperations(
-            billing_repo=br, period_repo=pr, usage_repo=usage_repo, payment_gateway=gw
+            billing_repo=br, period_repo=pr, usage_repo=usage_repo, payment_gateway=gw,
+            event_bus=FakeEventBus(),
         )
 
         result = await ops.create_billing_period(
@@ -387,7 +393,8 @@ class TestUoWAtomicity:
         now = datetime.now(timezone.utc)
 
         ops = BillingOperations(
-            billing_repo=br, period_repo=pr, usage_repo=usage_repo, payment_gateway=gw
+            billing_repo=br, period_repo=pr, usage_repo=usage_repo, payment_gateway=gw,
+            event_bus=FakeEventBus(),
         )
 
         with pytest.raises(RuntimeError, match="usage insert failed"):
@@ -431,7 +438,8 @@ class TestUoWAtomicity:
         pr.seed(later)
 
         ops = BillingOperations(
-            billing_repo=br, period_repo=pr, usage_repo=usage_repo, payment_gateway=gw
+            billing_repo=br, period_repo=pr, usage_repo=usage_repo, payment_gateway=gw,
+            event_bus=FakeEventBus(),
         )
 
         result = await ops.create_billing_period(

@@ -685,6 +685,14 @@ class SourceConnection(BaseModel):
         description="ID of the associated sync (internal use)",
         json_schema_extra={"example": "660e8400-e29b-41d4-a716-446655440001"},
     )
+    sync_status: Optional[str] = Field(
+        None,
+        description="Status of the associated sync (active, paused, inactive, error)",
+    )
+    sync_pause_reason: Optional[str] = Field(
+        None,
+        description="Why the sync is paused (usage_exhausted, payment_required, credential_error, manual)",
+    )
 
     # Entity information
     entities: Optional[EntitySummary] = Field(

@@ -63,6 +63,13 @@ class TestSchedulePauseUnpause:
             return None
         return detail.get("schedule", {}).get("state", {}).get("paused", False)
 
+    async def _get_schedule_pause_note(self, schedule_id: str) -> Optional[str]:
+        """Return the pause note from a Temporal schedule, or None if not found."""
+        detail = await self._get_schedule_detail(schedule_id)
+        if detail is None:
+            return None
+        return detail.get("schedule", {}).get("state", {}).get("notes", "")
+
     async def _get_paused_states(self, sync_id: str) -> Dict[str, Optional[bool]]:
         """Return {prefix: paused_bool} for all schedule prefixes."""
         states = {}
@@ -180,6 +187,13 @@ class TestSchedulePauseUnpause:
         # Verify schedule is now paused
         assert await self._is_schedule_paused(primary_schedule) is True, (
             "Schedule should be paused after credential error"
+        )
+
+        # Verify the pause note contains the credential error reason
+        note = await self._get_schedule_pause_note(primary_schedule)
+        assert note is not None
+        assert "credential_error" in note.lower(), (
+            f"Pause note should contain credential_error reason, got: {note}"
         )
 
         # Cleanup

@@ -12,6 +12,7 @@ import { apiClient } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { SourceConnectionSettings } from './SourceConnectionSettings';
 import { EntityStateList } from './EntityStateList';
+import { BillingPauseCard } from './BillingPauseCard';
 import { SyncErrorCard } from './SyncErrorCard';
 import { CredentialErrorView } from './CredentialErrorView';
 import { SourceAuthenticationView } from '@/components/shared/SourceAuthenticationView';
@@ -569,6 +570,13 @@ const SourceConnectionStateView: React.FC<Props> = ({
     if (currentSyncJob?.status === 'cancelled') return { text: 'Cancelled', color: 'bg-gray-500', icon: null };
     if (isRunning) return { text: 'Syncing', color: 'bg-blue-500 animate-pulse', icon: 'loader' };
     if (isPending) return { text: 'Pending', color: 'bg-yellow-500 animate-pulse', icon: 'loader' };
+    if (sourceConnection?.sync_status === 'paused') {
+      const reason = sourceConnection?.sync_pause_reason;
+      if (reason === 'usage_exhausted') return { text: 'Paused — Usage Limit', color: 'bg-amber-500', icon: null };
+      if (reason === 'payment_required') return { text: 'Paused — Payment Required', color: 'bg-amber-500', icon: null };
+      if (reason === 'credential_error') return { text: 'Paused — Auth Error', color: 'bg-amber-500', icon: null };
+      return { text: 'Paused', color: 'bg-amber-500', icon: null };
+    }
     return { text: 'Ready', color: 'bg-gray-400', icon: null };
   };
 
@@ -867,6 +875,12 @@ const SourceConnectionStateView: React.FC<Props> = ({
               error={sourceConnection?.sync?.last_job?.error || currentSyncJob?.error || "The last sync failed. Check the logs for more details."}
               isDark={isDark}
             />
+          )}
+
+          {/* Show billing pause card for usage/payment issues */}
+          {!isFederatedSource && sourceConnection?.sync_pause_reason &&
+           (sourceConnection.sync_pause_reason === 'usage_exhausted' || sourceConnection.sync_pause_reason === 'payment_required') && (
+            <BillingPauseCard pauseReason={sourceConnection.sync_pause_reason} />
           )}
 
           {/* Federated Search Info Card - Only show for federated sources */}

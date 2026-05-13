@@ -26,6 +26,7 @@ class SyncBase(BaseModel):
     sync_metadata: Optional[dict] = None
     sync_config: Optional[SyncConfig] = None
     status: Optional[SyncStatus] = SyncStatus.ACTIVE
+    pause_reason: Optional[str] = None
 
     @field_validator("cron_schedule")
     def validate_cron_schedule(cls, v: str) -> str:
@@ -151,6 +152,7 @@ class SyncWithoutConnections(BaseModel):
     cron_schedule: Optional[str] = None
     next_scheduled_run: Optional[datetime] = None
     status: SyncStatus
+    pause_reason: Optional[str] = None
     sync_metadata: Optional[dict] = None
     sync_config: Optional[SyncConfig] = None
     temporal_schedule_id: Optional[str] = None

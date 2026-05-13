@@ -1,6 +1,6 @@
 """Fake sync repository for testing."""
 
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -67,6 +67,22 @@ class FakeSyncRepository:
         model = self._models.get(sync_id)
         if model is not None:
             model.status = target
+
+    async def get_paused_by_reason(
+        self,
+        db: AsyncSession,
+        organization_id: UUID,
+        pause_reason: str,
+    ) -> List[Sync]:
+        """Return models matching pause_reason filter."""
+        self._calls.append(("get_paused_by_reason", db, organization_id, pause_reason))
+        return [
+            m
+            for m in self._models.values()
+            if m.organization_id == organization_id
+            and getattr(m, "status", None) == SyncStatus.PAUSED
+            and getattr(m, "pause_reason", None) == pause_reason
+        ]
 
     async def create(
         self,

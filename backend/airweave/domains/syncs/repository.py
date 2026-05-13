@@ -1,9 +1,9 @@
 """Sync repository wrapping crud.sync."""
 
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import crud, schemas
@@ -45,6 +45,22 @@ class SyncRepository(SyncRepositoryProtocol):
         )
         if cursor.rowcount == 0:  # type: ignore[attr-defined]
             raise OptimisticLockError(sync_id, expected)
+
+    async def get_paused_by_reason(
+        self,
+        db: AsyncSession,
+        organization_id: UUID,
+        pause_reason: str,
+    ) -> List[Sync]:
+        """Get all paused syncs for an org with a specific pause_reason."""
+        result = await db.execute(
+            select(Sync).where(
+                Sync.organization_id == organization_id,
+                Sync.status == SyncStatus.PAUSED,
+                Sync.pause_reason == pause_reason,
+            )
+        )
+        return list(result.scalars().all())
 
     async def create(
         self,
