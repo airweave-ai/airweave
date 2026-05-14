@@ -164,3 +164,202 @@ We welcome contributions! See our [Contributing Guide](CONTRIBUTING.md).
   <a href="https://github.com/airweave-ai/airweave/issues">Issues</a> ·
   <a href="https://x.com/airweave_ai">Twitter</a>
 </p>
+
+## ❓ FAQ
+
+### General
+
+**Q: What is Airweave?**
+
+A: Airweave is an **open-source context retrieval layer for AI agents and RAG systems**. It connects to your apps, tools, and databases, continuously syncs their data, and exposes it through a unified, LLM-friendly search interface. AI agents query Airweave to retrieve relevant, grounded, up-to-date context from multiple sources in a single request.
+
+**Q: How is Airweave different from traditional RAG systems?**
+
+A: Traditional RAG requires you to build ingestion pipelines for each data source. Airweave provides:
+- **50+ pre-built integrations** — Connect apps instantly (GitHub, Notion, Gmail, Slack, etc.)
+- **Unified retrieval layer** — One API to search across all connected sources
+- **Continuous syncing** — Data stays fresh automatically
+- **Agent-ready SDKs** — Python + TypeScript SDKs designed for AI agents
+- **MCP support** — Native Model Context Protocol integration
+
+Think of Airweave as shared retrieval infrastructure — you build it once, and all your agents use it.
+
+**Q: Where does Airweave fit in my architecture?**
+
+A: Airweave sits between your data sources and AI systems:
+1. **Connect** your apps, databases, and documents (50+ integrations)
+2. **Airweave** syncs, indexes, and exposes your data through unified retrieval
+3. **Agents query** Airweave via SDKs, REST API, MCP, or native framework integrations
+4. **Agents retrieve** relevant, grounded context on demand
+
+### Getting Started
+
+**Q: How do I get started?**
+
+A: Two options:
+
+**Cloud-hosted (fastest)**:
+- Visit [app.airweave.ai](https://app.airweave.ai)
+- Sign up and connect your first integration
+- Start querying immediately
+
+**Self-hosted**:
+```bash
+git clone https://github.com/airweave-ai/airweave.git
+cd airweave
+./start.sh
+```
+→ http://localhost:8080
+
+Requires Docker and docker-compose.
+
+**Q: What are the differences between Cloud and Self-Hosted?**
+
+A:
+- **Cloud**: Managed service, no infrastructure, instant setup
+- **Self-Hosted**: Full control over data, on-premise deployment, suitable for privacy-sensitive scenarios
+
+### Integrations
+
+**Q: What integrations does Airweave support?**
+
+A: Airweave supports **50+ integrations** including:
+- **Productivity**: Notion, Confluence, Slack, Asana, Trello, Jira
+- **Storage**: Google Drive, Dropbox, Box, OneDrive, SharePoint
+- **Communication**: Gmail, Intercom, Zoom, Microsoft Teams
+- **Development**: GitHub, GitLab, Bitbucket, Linear
+- **CRM**: HubSpot, Salesforce, Attio, Apollo.io
+- **Finance**: Stripe
+- **Documents**: Google Docs, PowerPoint, Coda, Slab, Slite
+- **Support**: Zendesk, Freshdesk, ServiceNow
+- **Calendar**: Google Calendar, cal.com
+- **Other**: Airtable, ClickUp, FireFlies (meeting transcription)
+
+See [Connectors Overview](https://docs.airweave.ai/connectors/overview) for full list.
+
+**Q: How do I add a new integration?**
+
+A:
+1. Go to Airweave dashboard (Cloud or Self-hosted)
+2. Navigate to "Connections" or "Sources"
+3. Select the integration type
+4. Authenticate with OAuth or API key
+5. Configure sync settings
+6. Start syncing
+
+Airweave handles authentication, ingestion, indexing, and ongoing synchronization.
+
+### SDKs & CLI
+
+**Q: What SDKs are available?**
+
+A:
+- **Python SDK**: `pip install airweave-sdk`
+  ```python
+  from airweave import AirweaveSDK
+  client = AirweaveSDK(api_key="YOUR_API_KEY")
+  results = client.collections.search.instant(
+      readable_id="my-collection",
+      query="Find recent failed payments"
+  )
+  ```
+
+- **TypeScript SDK**: `npm install @airweave/sdk`
+
+See [SDK Documentation](https://docs.airweave.ai) for details.
+
+**Q: Does Airweave have a CLI?**
+
+A: Yes! Install via `pip install airweave-cli`:
+```bash
+airweave auth login
+airweave search "quarterly revenue figures" --collection finance-data
+```
+
+CLI outputs rich interactive results in terminal and clean JSON when piped — works for both developers and AI agents.
+
+**Q: Does Airweave support MCP?**
+
+A: Yes, Airweave provides native MCP (Model Context Protocol) integration. Agents can query Airweave through MCP for standardized retrieval.
+
+### Technical Details
+
+**Q: What is Airweave's tech stack?**
+
+A:
+- **Frontend**: React/TypeScript with ShadCN UI
+- **Backend**: FastAPI (Python)
+- **Metadata DB**: PostgreSQL
+- **Vector Search**: Vespa (high-performance vector engine)
+- **Orchestration**: Temporal (workflow management)
+- **Pub/Sub**: Redis
+- **Deployment**: Docker Compose (dev), Kubernetes (prod)
+
+**Q: How does Airweave handle syncing?**
+
+A: Airweave uses Temporal for orchestration:
+- **Scheduled syncs**: Periodic full syncs or incremental updates
+- **Event-driven syncs**: Real-time updates when data changes
+- **Retry handling**: Automatic retries for failed sync operations
+- **Monitoring**: Track sync status via dashboard or API
+
+**Q: How does retrieval work?**
+
+A: Airweave combines:
+- **Vector search**: Semantic similarity via Vespa
+- **Metadata filtering**: Filter by source, date, type
+- **Unified ranking**: Aggregate results from multiple sources
+- **Grounded context**: Return source attribution for verification
+
+### Performance & Scale
+
+**Q: How many sources can I connect?**
+
+A: There's no hard limit. Airweave handles multiple sources through unified retrieval — query across 50+ connected sources in one request.
+
+**Q: How does Airweave handle large datasets?**
+
+A:
+- Vespa provides scalable vector search for millions of documents
+- Temporal manages distributed sync operations
+- PostgreSQL handles metadata efficiently
+- Redis pub/sub enables real-time updates
+
+### Troubleshooting
+
+**Q: Sync failed for an integration. What should I do?**
+
+A:
+1. Check authentication status (OAuth token may have expired)
+2. Verify API key is valid
+3. Review sync logs in dashboard
+4. Check rate limits for the external API
+5. Restart sync manually or wait for next scheduled sync
+
+Airweave provides automatic retries for transient failures.
+
+**Q: Search results not relevant?**
+
+A:
+1. Ensure sources are fully synced
+2. Try more specific queries
+3. Use metadata filtering to narrow results
+4. Check that documents are properly indexed
+5. Verify collection configuration
+
+**Q: Docker start.sh failed?**
+
+A:
+1. Ensure Docker is installed and running: `docker --version && docker info`
+2. Check that ports (8080, 8001, 5432, 6333, 6379, 7233, 8081, 8088) are not in use
+3. Review logs: `docker logs airweave-backend` or `docker logs airweave-frontend`
+4. Try restart: `./start.sh --restart`
+5. Clean up and restart: `./start.sh --destroy` then `./start.sh`
+
+### Help & Resources
+
+- **Documentation**: [docs.airweave.ai](https://docs.airweave.ai)
+- **Example Notebooks**: [github.com/airweave-ai/airweave/tree/main/examples](https://github.com/airweave-ai/airweave/tree/main/examples)
+- **Discord**: [discord.gg/gDuebsWGkn](https://discord.gg/gDuebsWGkn)
+- **GitHub Issues**: [github.com/airweave-ai/airweave/issues](https://github.com/airweave-ai/airweave/issues)
+- **Twitter**: [@airweave_ai](https://x.com/airweave_ai)
