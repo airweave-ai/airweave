@@ -7,7 +7,12 @@ from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-from airweave.domains.search.types import FilterGroup, RetrievalStrategy, SearchResult
+from airweave.domains.search.types import (
+    FilterGroup,
+    PartialFailure,
+    RetrievalStrategy,
+    SearchResult,
+)
 
 
 class SearchTier(str, Enum):
@@ -285,4 +290,11 @@ class SearchV2Response(BaseModel):
 
     results: list[SearchResult] = Field(
         default_factory=list, description="Search results ordered by relevance."
+    )
+    partial_failures: list[PartialFailure] = Field(
+        default_factory=list,
+        description=(
+            "Sources that failed during this search but were skipped so other "
+            "sources could still return results. Empty when the full search succeeded."
+        ),
     )

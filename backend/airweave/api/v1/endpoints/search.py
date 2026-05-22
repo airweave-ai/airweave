@@ -79,7 +79,7 @@ async def instant_search(
     )
 
     results = await service.search(db, ctx, readable_id, request)
-    return SearchV2Response(results=results.results)
+    return SearchV2Response(results=results.results, partial_failures=results.partial_failures)
 
 
 @router.post(
@@ -139,7 +139,7 @@ async def classic_search(
     )
 
     results = await service.search(db, ctx, readable_id, request)
-    return SearchV2Response(results=results.results)
+    return SearchV2Response(results=results.results, partial_failures=results.partial_failures)
 
 
 @router.post(
@@ -179,7 +179,7 @@ async def agentic_search(
     # Service emits SearchCompletedEvent internally
     results = await service.search(db, ctx, readable_id, request)
     truncated = results.results[: request.limit] if request.limit else results.results
-    return SearchV2Response(results=truncated)
+    return SearchV2Response(results=truncated, partial_failures=results.partial_failures)
 
 
 # ── Streaming agentic search ──────────────────────────────────────────
@@ -407,7 +407,7 @@ async def admin_instant_search_as_user(
     results = await service.search(
         db, ctx, readable_id, request, user_principal_override=user_principal
     )
-    return SearchV2Response(results=results.results)
+    return SearchV2Response(results=results.results, partial_failures=results.partial_failures)
 
 
 @admin_router.post(
@@ -438,7 +438,7 @@ async def admin_classic_search_as_user(
     results = await service.search(
         db, ctx, readable_id, request, user_principal_override=user_principal
     )
-    return SearchV2Response(results=results.results)
+    return SearchV2Response(results=results.results, partial_failures=results.partial_failures)
 
 
 @admin_router.post(
@@ -470,4 +470,4 @@ async def admin_agentic_search_as_user(
         db, ctx, readable_id, request, user_principal_override=user_principal
     )
     truncated = results.results[: request.limit] if request.limit else results.results
-    return SearchV2Response(results=truncated)
+    return SearchV2Response(results=truncated, partial_failures=results.partial_failures)

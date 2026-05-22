@@ -822,9 +822,10 @@ class TestExecutorFederated:
         assert results.results[0].airweave_system_metadata.source_name == "slack"
 
     @pytest.mark.asyncio
-    async def test_federated_auth_failure_raises_error(self):
-        """If federated source fails to instantiate, FederatedSearchError is raised."""
-        from airweave.domains.search.exceptions import FederatedSearchError
+    async def test_federated_auth_failure_becomes_partial_failure(self):
+        """If a federated source fails to instantiate, search degrades to a partial failure
+        instead of returning a 500 — vector results still come through."""
+        from airweave.domains.search.types import PartialFailureReason
 
         vector_db = FakeVectorDB()
         vector_db.seed_results(SearchResults(results=[_make_search_result()]))
@@ -846,18 +847,24 @@ class TestExecutorFederated:
             source_lifecycle=source_lifecycle,
         )
 
-        with pytest.raises(FederatedSearchError) as exc_info:
-            await executor.execute(
-                plan=_make_plan(),
-                user_filter=[],
-                collection_id="col-1",
-                db=AsyncMock(),
-                ctx=_make_ctx(),
-                collection_readable_id="my-collection",
-            )
+        results = await executor.execute(
+            plan=_make_plan(),
+            user_filter=[],
+            collection_id="col-1",
+            db=AsyncMock(),
+            ctx=_make_ctx(),
+            collection_readable_id="my-collection",
+        )
 
-        assert len(exc_info.value.source_errors) == 1
-        assert exc_info.value.source_errors[0][0] == "slack"
+        assert len(results.results) == 1
+        assert len(results.partial_failures) == 1
+        failure = results.partial_failures[0]
+        assert failure.source_short_name == "slack"
+        # FakeSourceLifecycleService raises a non-auth error, so reason is ERROR
+        assert failure.reason in (
+            PartialFailureReason.ERROR,
+            PartialFailureReason.AUTH_INVALIDATED,
+        )
 
 
 class TestExecutorPagination:
@@ -991,9 +998,10 @@ class TestExecutorErrorPaths:
             )
 
     @pytest.mark.asyncio
-    async def test_federated_source_instantiation_failure_raises(self):
-        """Federated source that can't be instantiated → FederatedSearchError."""
-        from airweave.domains.search.exceptions import FederatedSearchError
+    async def test_federated_source_instantiation_failure_partial_failure(self):
+        """A federated source that fails to instantiate is recorded as a partial
+        failure; vector results still return."""
+        from airweave.domains.search.types import PartialFailureReason
 
         vector_db = FakeVectorDB()
         vector_db.seed_results(SearchResults(results=[_make_search_result()]))
@@ -1015,29 +1023,36 @@ class TestExecutorErrorPaths:
             source_lifecycle=source_lifecycle,
         )
 
-        with pytest.raises(FederatedSearchError) as exc_info:
-            await executor.execute(
-                plan=_make_plan(),
-                user_filter=[],
-                collection_id="col-1",
-                db=AsyncMock(),
-                ctx=_make_ctx(),
-                collection_readable_id="my-collection",
-            )
+        results = await executor.execute(
+            plan=_make_plan(),
+            user_filter=[],
+            collection_id="col-1",
+            db=AsyncMock(),
+            ctx=_make_ctx(),
+            collection_readable_id="my-collection",
+        )
 
-        assert len(exc_info.value.source_errors) == 1
-        assert exc_info.value.source_errors[0][0] == "slack"
+        assert len(results.results) == 1
+        assert len(results.partial_failures) == 1
+        failure = results.partial_failures[0]
+        assert failure.source_short_name == "slack"
+        assert failure.reason in (
+            PartialFailureReason.ERROR,
+            PartialFailureReason.AUTH_INVALIDATED,
+        )
 
     @pytest.mark.asyncio
-    async def test_federated_source_search_failure_raises(self):
-        """Federated source that errors during search() → FederatedSearchError."""
-        from airweave.domains.search.exceptions import FederatedSearchError
+    async def test_federated_source_search_auth_failure_partial_failure(self):
+        """A federated source that fails with an auth error during search() is
+        recorded as an AUTH_INVALIDATED partial failure; search degrades, doesn't raise."""
+        from airweave.domains.search.types import PartialFailureReason
 
         class _FailingFederatedSource:
             short_name = "slack"
+            _source_connection_id = None
 
             async def search(self, query: str, limit: int) -> list:
-                raise RuntimeError("search endpoint unavailable")
+                raise RuntimeError("invalid_auth")
 
         vector_db = FakeVectorDB()
         vector_db.seed_results(SearchResults(results=[]))
@@ -1059,17 +1074,20 @@ class TestExecutorErrorPaths:
             source_lifecycle=source_lifecycle,
         )
 
-        with pytest.raises(FederatedSearchError) as exc_info:
-            await executor.execute(
-                plan=_make_plan(),
-                user_filter=[],
-                collection_id="col-1",
-                db=AsyncMock(),
-                ctx=_make_ctx(),
-                collection_readable_id="my-collection",
-            )
+        results = await executor.execute(
+            plan=_make_plan(),
+            user_filter=[],
+            collection_id="col-1",
+            db=AsyncMock(),
+            ctx=_make_ctx(),
+            collection_readable_id="my-collection",
+        )
 
-        assert len(exc_info.value.source_errors) >= 1
+        assert len(results.partial_failures) >= 1
+        failure = results.partial_failures[0]
+        assert failure.source_short_name == "slack"
+        assert failure.reason == PartialFailureReason.AUTH_INVALIDATED
+        assert "invalid_auth" in (failure.message or "")
 
 
 # ═══════════════════════════════════════════════════════════════════════

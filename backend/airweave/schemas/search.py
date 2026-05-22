@@ -256,6 +256,15 @@ class SearchResponse(BaseModel):
             "Only included when generate_answer is true in the request."
         ),
     )
+    partial_failures: list[dict] = Field(
+        default_factory=list,
+        description=(
+            "Sources that failed during this search but were skipped so other "
+            "sources could still return results. Each entry includes "
+            "source_short_name, source_connection_id, reason, and message. "
+            "Empty when the full search succeeded."
+        ),
+    )
 
     model_config = {
         "json_schema_extra": {

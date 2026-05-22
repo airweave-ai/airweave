@@ -122,6 +122,7 @@ class InstantSearchService(InstantSearchServiceProtocol):
                 tier=SearchTier.INSTANT,
                 plan=ctx.billing_plan,
                 results=[r.model_dump(mode="json") for r in results.results],
+                partial_failures=[pf.model_dump(mode="json") for pf in results.partial_failures],
                 duration_ms=duration_ms,
             )
         )

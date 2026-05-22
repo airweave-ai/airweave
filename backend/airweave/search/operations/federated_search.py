@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 from pydantic import BaseModel, Field
 
 from airweave.api.context import ApiContext
+from airweave.domains.search.types import PartialFailure, PartialFailureReason
 from airweave.platform.sources._base import BaseSource
 from airweave.search.context import SearchContext
 from airweave.search.providers._base import BaseProvider
@@ -183,10 +184,27 @@ class FederatedSearch(SearchOperation):
             except Exception as e:
                 error_str = str(e)
                 source_conn_id = getattr(source, "_source_connection_id", None)
+                source_short_name = getattr(source, "short_name", None) or source_name.lower()
+                is_auth = self._is_auth_error(error_str)
 
                 # Track auth failures for post-search DB update
-                if self._is_auth_error(error_str) and source_conn_id:
-                    state.failed_federated_auth.append(source_conn_id)
+                if is_auth and source_conn_id:
+                    state.failed_federated_auth.append(str(source_conn_id))
+
+                # Record a structured partial failure so the response can surface
+                # the skip to the client instead of returning a 500.
+                state.partial_failures.append(
+                    PartialFailure(
+                        source_connection_id=(str(source_conn_id) if source_conn_id else None),
+                        source_short_name=source_short_name,
+                        reason=(
+                            PartialFailureReason.AUTH_INVALIDATED
+                            if is_auth
+                            else PartialFailureReason.ERROR
+                        ),
+                        message=error_str,
+                    )
+                )
 
                 ctx.logger.warning(f"[FederatedSearch] {source_name} failed: {error_str}")
                 await context.emitter.emit(

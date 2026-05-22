@@ -172,7 +172,10 @@ class ClassicSearchService(ClassicSearchServiceProtocol):
                 documents=documents,
                 top_n=request.limit,
             )
-            results = SearchResults(results=[results.results[r.index] for r in reranked])
+            results = SearchResults(
+                results=[results.results[r.index] for r in reranked],
+                partial_failures=results.partial_failures,
+            )
 
         # 7. Emit event + return
         duration_ms = int((time.monotonic() - start_time) * 1000)
@@ -183,6 +186,7 @@ class ClassicSearchService(ClassicSearchServiceProtocol):
                 tier=SearchTier.CLASSIC,
                 plan=ctx.billing_plan,
                 results=[r.model_dump(mode="json") for r in results.results],
+                partial_failures=[pf.model_dump(mode="json") for pf in results.partial_failures],
                 duration_ms=duration_ms,
                 collection_id=UUID(str(collection.id)),
             )

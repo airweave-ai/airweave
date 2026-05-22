@@ -173,6 +173,11 @@ class SourceLifecycleService(SourceLifecycleServiceProtocol):
             config=config,
         )
 
+        # Attach source connection id so downstream code (federated search,
+        # partial-failure reporting) can identify the connection from the
+        # instance without re-plumbing it through every call site.
+        source._source_connection_id = source_connection_data.source_connection_id
+
         # 7. Validate credentials early so failures surface as NEEDS_REAUTH.
         #    Only catch auth-related exceptions — transient errors (server 5xx,
         #    rate limits, network timeouts) must propagate so they don't

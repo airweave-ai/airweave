@@ -8,6 +8,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from airweave.domains.search.types import PartialFailure
+
 
 class SearchState(BaseModel):
     """Typed state passed between search operations.
@@ -89,6 +91,13 @@ class SearchState(BaseModel):
     )
     failed_federated_auth: List[str] = Field(
         default_factory=list, description="Source connection IDs that failed federated auth"
+    )
+    partial_failures: List[PartialFailure] = Field(
+        default_factory=list,
+        description=(
+            "Per-source failures that were tolerated during search (skipped sources "
+            "rather than failing the whole request). Surfaced on the response."
+        ),
     )
 
     model_config = ConfigDict(arbitrary_types_allowed=True)

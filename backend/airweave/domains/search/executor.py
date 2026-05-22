@@ -19,10 +19,11 @@ from airweave.domains.access_control.protocols import AccessBrokerProtocol
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.search.adapters.vector_db.protocol import VectorDBProtocol
 from airweave.domains.search.builders.search_plan import SearchPlanBuilder
-from airweave.domains.search.exceptions import FederatedSearchError
 from airweave.domains.search.protocols import SearchPlanExecutorProtocol
 from airweave.domains.search.types import (
     FilterGroup,
+    PartialFailure,
+    PartialFailureReason,
     QueryEmbeddings,
     RetrievalStrategy,
     SearchPlan,
@@ -98,8 +99,12 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
         # 1. Merge plan filters with user filters
         complete_plan = SearchPlanBuilder.build(plan, user_filter)
 
-        # 2. Discover federated sources for this collection
-        federated_sources = await self._discover_federated_sources(db, ctx, collection_readable_id)
+        # 2. Discover federated sources for this collection. Discovery failures
+        #    (e.g., a Slack connection whose credentials no longer validate)
+        #    are captured rather than raised — search continues without them.
+        federated_sources, discovery_failures = await self._discover_federated_sources(
+            db, ctx, collection_readable_id
+        )
 
         # 3. Adjust limit/offset for RRF pagination (if federated sources exist)
         original_limit = complete_plan.limit
@@ -131,11 +136,15 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
             )
 
         vector_results = await vector_task
-        fed_results = await fed_task if fed_task else []
+        if fed_task:
+            fed_results, search_failures = await fed_task
+        else:
+            fed_results, search_failures = [], []
+        partial_failures = discovery_failures + search_failures
 
         # 5. If no federated sources, vector DB already has correct limit/offset
         if not federated_sources:
-            return SearchResults(results=vector_results)
+            return SearchResults(results=vector_results, partial_failures=partial_failures)
 
         # 6. We over-fetched from vector DB (limit=offset+limit, offset=0) for RRF.
         #    Filter federated results in-memory and merge, or slice vector-only.
@@ -147,11 +156,15 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
 
         if fed_filtered:
             merged = self._merge_with_rrf(vector_results, fed_filtered)
-            return SearchResults(results=merged[original_offset : original_offset + original_limit])
+            return SearchResults(
+                results=merged[original_offset : original_offset + original_limit],
+                partial_failures=partial_failures,
+            )
 
         # All federated results filtered out — slice vector results to original window
         return SearchResults(
-            results=vector_results[original_offset : original_offset + original_limit]
+            results=vector_results[original_offset : original_offset + original_limit],
+            partial_failures=partial_failures,
         )
 
     async def _execute_vector_search(
@@ -261,11 +274,13 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
         db: AsyncSession,
         ctx: ApiContext,
         collection_readable_id: str,
-    ) -> list[BaseSource]:
+    ) -> tuple[list[BaseSource], list[PartialFailure]]:
         """Discover and instantiate federated sources for a collection.
 
         Queries source connections, checks the registry for federated_search flag,
-        and instantiates via SourceLifecycleService.
+        and instantiates via SourceLifecycleService. Per-source instantiation
+        failures (e.g., invalid credentials caught by validate()) are captured as
+        PartialFailure entries instead of aborting the whole search.
         """
         source_connections = await self._sc_repo.get_by_collection_ids(
             db,
@@ -274,9 +289,10 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
         )
 
         if not source_connections:
-            return []
+            return [], []
 
         federated_sources: list[BaseSource] = []
+        partial_failures: list[PartialFailure] = []
         for sc in source_connections:
             entry = self._source_registry.get(sc.short_name)
             if not entry.federated_search:
@@ -290,9 +306,25 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
                 )
                 federated_sources.append(source_instance)
             except Exception as e:
-                raise FederatedSearchError([(sc.short_name, e)]) from e
+                error_str = str(e)
+                ctx.logger.warning(
+                    f"[FederatedSearch] Failed to instantiate {sc.short_name} "
+                    f"(connection {sc.id}), skipping: {error_str}"
+                )
+                partial_failures.append(
+                    PartialFailure(
+                        source_connection_id=str(sc.id),
+                        source_short_name=str(sc.short_name),
+                        reason=(
+                            PartialFailureReason.AUTH_INVALIDATED
+                            if _is_auth_error(error_str)
+                            else PartialFailureReason.ERROR
+                        ),
+                        message=error_str,
+                    )
+                )
 
-        return federated_sources
+        return federated_sources, partial_failures
 
     # ------------------------------------------------------------------
     # Federated search execution
@@ -304,37 +336,51 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
         query: str,
         limit: int,
         ctx: ApiContext,
-    ) -> list[SearchResult]:
+    ) -> tuple[list[SearchResult], list[PartialFailure]]:
         """Search all federated sources concurrently and return deduplicated results.
 
-        Raises FederatedSearchError if any source fails.
+        Per-source failures are captured as PartialFailure entries instead of
+        raising — so one broken connection (e.g., Slack with an expired token)
+        no longer fails the entire search request.
         """
         results_lists = await asyncio.gather(
             *[self._search_single_source(source, query, limit, ctx) for source in sources],
             return_exceptions=True,
         )
 
-        # Check for failures — fail if any source errored
-        source_errors: list[tuple[str, BaseException]] = []
-        for idx, result_or_exc in enumerate(results_lists):
-            if isinstance(result_or_exc, BaseException):
-                source_name = sources[idx].__class__.__name__
-                source_errors.append((source_name, result_or_exc))
-
-        if source_errors:
-            raise FederatedSearchError(source_errors)
-
-        # All succeeded — deduplicate and return
+        partial_failures: list[PartialFailure] = []
         seen_ids: set[str] = set()
         all_results: list[SearchResult] = []
 
-        for result_list in results_lists:
-            for result in result_list:  # type: ignore[union-attr]
+        for idx, result_or_exc in enumerate(results_lists):
+            source = sources[idx]
+            source_name = source.__class__.__name__
+
+            if isinstance(result_or_exc, BaseException):
+                error_str = str(result_or_exc)
+                ctx.logger.warning(f"[FederatedSearch] {source_name} failed, skipping: {error_str}")
+                source_conn_id = getattr(source, "_source_connection_id", None)
+                short_name = getattr(source, "short_name", None) or source_name.lower()
+                partial_failures.append(
+                    PartialFailure(
+                        source_connection_id=(str(source_conn_id) if source_conn_id else None),
+                        source_short_name=short_name,
+                        reason=(
+                            PartialFailureReason.AUTH_INVALIDATED
+                            if _is_auth_error(error_str)
+                            else PartialFailureReason.ERROR
+                        ),
+                        message=error_str,
+                    )
+                )
+                continue
+
+            for result in result_or_exc:
                 if result.entity_id not in seen_ids:
                     seen_ids.add(result.entity_id)
                     all_results.append(result)
 
-        return all_results
+        return all_results, partial_failures
 
     _FEDERATED_MAX_RETRIES = 2
     _FEDERATED_INITIAL_DELAY = 1.0
@@ -506,6 +552,35 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
             result_map[eid].model_copy(update={"relevance_score": scores[eid]})
             for eid in sorted_ids
         ]
+
+
+# ── Auth-error classifier ────────────────────────────────────────────
+
+# Substrings that indicate a credential/auth failure across federated source APIs.
+# Kept in sync with airweave.search.operations.federated_search._is_auth_error.
+_AUTH_ERROR_INDICATORS = (
+    "token_expired",
+    "token_revoked",
+    "invalid_token",
+    "not_authed",
+    "invalid_auth",
+    "account_inactive",
+    "missing_scope",
+    "unauthorized",
+    "401",
+    "403",
+    "authentication",
+    "access_denied",
+    "invalid_credentials",
+    "expired",
+    "revoked",
+)
+
+
+def _is_auth_error(error_str: str) -> bool:
+    """Return True if the error message looks like an auth/credential failure."""
+    lowered = error_str.lower()
+    return any(indicator in lowered for indicator in _AUTH_ERROR_INDICATORS)
 
 
 # ── In-memory filter helpers (module-level for testability) ──────────

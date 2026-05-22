@@ -24,6 +24,8 @@ from airweave.domains.search.types.plan import (
 )
 from airweave.domains.search.types.results import (
     CompiledQuery,
+    PartialFailure,
+    PartialFailureReason,
     SearchAccessControl,
     SearchBreadcrumb,
     SearchResult,
@@ -38,6 +40,8 @@ __all__ = [
     "SearchAccessControl",
     "SearchResult",
     "SearchResults",
+    "PartialFailure",
+    "PartialFailureReason",
     "CompiledQuery",
     # filters
     "FilterableField",

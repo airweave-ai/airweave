@@ -94,8 +94,13 @@ class SearchOrchestrator:
         # Emit done event
         await emitter.emit("done", {"request_id": context.request_id})
 
-        # Build response and convert state to dict for analytics
-        response = SearchResponse(results=state.results, completion=state.completion)
+        # Build response and convert state to dict for analytics. partial_failures
+        # are serialized to dicts so legacy SearchResponse stays plain-JSON.
+        response = SearchResponse(
+            results=state.results,
+            completion=state.completion,
+            partial_failures=[pf.model_dump(mode="json") for pf in state.partial_failures],
+        )
         state_dict = state.model_dump()
         return response, state_dict
 

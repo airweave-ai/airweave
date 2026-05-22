@@ -259,6 +259,13 @@ class SearchCompletedEvent(DomainEvent):
 
     # User-facing
     results: list[dict[str, Any]] = Field(default_factory=list)  # serialized SearchResults
+    partial_failures: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "Sources that failed during this search but were skipped so other sources "
+            "could still return results. Each item is a serialized PartialFailure."
+        ),
+    )
     duration_ms: int
 
     # Diagnostics (agentic only, None for instant/classic)

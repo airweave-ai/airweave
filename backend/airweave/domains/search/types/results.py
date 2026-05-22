@@ -1,15 +1,49 @@
 """Result types for the search module.
 
-SearchResult, SearchResults, CompiledQuery.
+SearchResult, SearchResults, CompiledQuery, PartialFailure.
 """
 
 from __future__ import annotations
 
 import json
 from datetime import datetime
+from enum import Enum
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field, PrivateAttr
+
+
+class PartialFailureReason(str, Enum):
+    """Why a single source was excluded from search results."""
+
+    AUTH_INVALIDATED = "auth_invalidated"
+    RATE_LIMITED = "rate_limited"
+    UNAVAILABLE = "unavailable"
+    ERROR = "error"
+
+
+class PartialFailure(BaseModel):
+    """A source that failed during search but did not cause the whole search to fail.
+
+    Surfaced on the response so clients can show degraded results and prompt
+    the user to re-authenticate or retry the affected source.
+    """
+
+    source_connection_id: Optional[str] = Field(
+        default=None,
+        description="ID of the source connection that failed, when known.",
+    )
+    source_short_name: str = Field(
+        ...,
+        description="Short name of the source (e.g., 'slack').",
+    )
+    reason: PartialFailureReason = Field(
+        ..., description="Machine-readable reason for the failure."
+    )
+    message: Optional[str] = Field(
+        default=None,
+        description="Human-readable failure detail, safe to surface to end users.",
+    )
 
 
 class SearchBreadcrumb(BaseModel):
@@ -237,6 +271,13 @@ class SearchResults(BaseModel):
     results: list[SearchResult] = Field(
         default_factory=list,
         description="Search results ordered by relevance (highest first).",
+    )
+    partial_failures: list[PartialFailure] = Field(
+        default_factory=list,
+        description=(
+            "Sources that failed during this search but were skipped so other "
+            "sources could still return results. Empty when the full search succeeded."
+        ),
     )
 
     def __len__(self) -> int:
