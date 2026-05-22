@@ -27,6 +27,7 @@ from airweave.core.events.sync import QueryProcessedEvent
 from airweave.core.protocols import EventBus, PubSub
 from airweave.db.session import AsyncSessionLocal
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
+from airweave.domains.source_connections.auth_invalidation import AuthInvalidationNotifier
 from airweave.domains.usage.protocols import UsageLimitCheckerProtocol
 from airweave.domains.usage.types import ActionType
 from airweave.schemas.errors import (
@@ -200,6 +201,7 @@ async def search(
     pubsub: PubSub = Inject(PubSub),
     dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
     sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
+    auth_invalidation_notifier: AuthInvalidationNotifier = Inject(AuthInvalidationNotifier),
 ) -> Union[SearchResponse, LegacySearchResponse]:
     """Search your collection with AI-powered semantic search."""
     await usage_checker.is_allowed(db, ctx.organization.id, ActionType.QUERIES)
@@ -242,6 +244,7 @@ async def search(
         dense_embedder=dense_embedder,
         sparse_embedder=sparse_embedder,
         destination_override="vespa",
+        auth_invalidation_notifier=auth_invalidation_notifier,
     )
 
     ctx.logger.info(f"Search completed for collection '{readable_id}'")
@@ -267,6 +270,7 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
     pubsub: PubSub = Inject(PubSub),
     dense_embedder: DenseEmbedderProtocol = Inject(DenseEmbedderProtocol),
     sparse_embedder: SparseEmbedderProtocol = Inject(SparseEmbedderProtocol),
+    auth_invalidation_notifier: AuthInvalidationNotifier = Inject(AuthInvalidationNotifier),
 ) -> StreamingResponse:
     """Server-Sent Events (SSE) streaming endpoint for advanced search.
 
@@ -313,6 +317,7 @@ async def stream_search_collection_advanced(  # noqa: C901 - streaming orchestra
                     dense_embedder=dense_embedder,
                     sparse_embedder=sparse_embedder,
                     destination_override="vespa",
+                    auth_invalidation_notifier=auth_invalidation_notifier,
                 )
         except ValueError as e:
             await _publish_stream_error(message=str(e), transient=False)

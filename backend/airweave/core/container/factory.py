@@ -113,6 +113,7 @@ from airweave.domains.search.classic.service import ClassicSearchService
 from airweave.domains.search.config import SearchConfig
 from airweave.domains.search.executor import SearchPlanExecutor
 from airweave.domains.search.instant.service import InstantSearchService
+from airweave.domains.source_connections.auth_invalidation import AuthInvalidationNotifier
 from airweave.domains.source_connections.create import SourceConnectionCreationService
 from airweave.domains.source_connections.delete import SourceConnectionDeletionService
 from airweave.domains.source_connections.repository import SourceConnectionRepository
@@ -467,6 +468,16 @@ def create_container(settings: Settings) -> Container:
     )
 
     # -----------------------------------------------------------------
+    # Auth invalidation notifier (used by federated search to surface
+    # runtime credential failures as AUTH_INVALIDATED webhooks).
+    # -----------------------------------------------------------------
+    auth_invalidation_notifier = AuthInvalidationNotifier(
+        sc_repo=source_deps["sc_repo"],
+        event_bus=event_bus,
+        redis=redis_client.client,
+    )
+
+    # -----------------------------------------------------------------
     # Search domain services (LLM, tokenizer, reranker, metadata builder, per-tier)
     # -----------------------------------------------------------------
     search_deps = _create_search_services(
@@ -481,6 +492,7 @@ def create_container(settings: Settings) -> Container:
         event_bus=event_bus,
         source_lifecycle=source_deps["source_lifecycle_service"],
         access_broker=access_broker,
+        auth_invalidation_notifier=auth_invalidation_notifier,
     )
 
     # -----------------------------------------------------------------
@@ -585,6 +597,7 @@ def create_container(settings: Settings) -> Container:
         oauth2_service=source_deps["oauth2_service"],
         redirect_session_repo=source_deps["redirect_session_repo"],
         source_connection_service=source_connection_service,
+        auth_invalidation_notifier=auth_invalidation_notifier,
         connect_service=connect_service,
         oauth_flow_service=oauth_flow_svc,
         oauth_callback_service=oauth_callback_svc,
@@ -1268,6 +1281,7 @@ def _create_search_services(
     event_bus: "EventBus",
     source_lifecycle: "SourceLifecycleService",
     access_broker: "AccessBroker",
+    auth_invalidation_notifier: AuthInvalidationNotifier,
 ) -> dict:
     """Create search domain services (LLM, tokenizer, reranker, metadata builder, per-tier).
 
@@ -1333,6 +1347,7 @@ def _create_search_services(
         source_registry=source_registry,
         source_lifecycle=source_lifecycle,
         access_broker=access_broker,
+        auth_invalidation_notifier=auth_invalidation_notifier,
     )
 
     # 6. Per-tier services

@@ -247,6 +247,7 @@ def _build_executor(
     sc_repo: FakeSourceConnectionRepository | None = None,
     source_registry: FakeSourceRegistry | None = None,
     source_lifecycle: FakeSourceLifecycleService | None = None,
+    auth_invalidation_notifier=None,
 ) -> SearchPlanExecutor:
     """Build a SearchPlanExecutor with fakes for all dependencies."""
     return SearchPlanExecutor(
@@ -257,6 +258,7 @@ def _build_executor(
         source_registry=source_registry or FakeSourceRegistry(),
         source_lifecycle=source_lifecycle or FakeSourceLifecycleService(),
         access_broker=FakeAccessBroker(),
+        auth_invalidation_notifier=auth_invalidation_notifier,
     )
 
 
@@ -483,9 +485,7 @@ class TestApplyFiltersInMemory:
     def test_entity_type_filter(self):
         slack = _make_federated_result(entity_id="f1", entity_type="SlackMessageEntity")
         github = _make_search_result(entity_id="g1", entity_type="GitHubPREntity")
-        filters = [
-            _make_filter("airweave_system_metadata.entity_type", "equals", "GitHubPREntity")
-        ]
+        filters = [_make_filter("airweave_system_metadata.entity_type", "equals", "GitHubPREntity")]
         filtered = SearchPlanExecutor._apply_filters_in_memory([slack, github], filters)
         assert len(filtered) == 1
         assert filtered[0].entity_id == "g1"
@@ -494,9 +494,7 @@ class TestApplyFiltersInMemory:
         """Federated results have sync_id=None, so filtering on sync_id excludes them."""
         fed = _make_federated_result(entity_id="f1")
         synced = _make_search_result(entity_id="s1", sync_id="some-sync-id")
-        filters = [
-            _make_filter("airweave_system_metadata.sync_id", "equals", "some-sync-id")
-        ]
+        filters = [_make_filter("airweave_system_metadata.sync_id", "equals", "some-sync-id")]
         filtered = SearchPlanExecutor._apply_filters_in_memory([fed, synced], filters)
         assert len(filtered) == 1
         assert filtered[0].entity_id == "s1"
@@ -533,19 +531,13 @@ class TestApplyFiltersInMemory:
             _make_filter("airweave_system_metadata.source_name", "equals", "slack"),
             _make_filter("airweave_system_metadata.source_name", "equals", "github"),
         ]
-        filtered = SearchPlanExecutor._apply_filters_in_memory(
-            [slack, github, notion], filters
-        )
+        filtered = SearchPlanExecutor._apply_filters_in_memory([slack, github, notion], filters)
         assert len(filtered) == 2
         assert {r.entity_id for r in filtered} == {"f1", "g1"}
 
     def test_date_filter(self):
-        old = _make_federated_result(
-            entity_id="f1", created_at=datetime(2025, 1, 1)
-        )
-        new = _make_federated_result(
-            entity_id="f2", created_at=datetime(2026, 3, 1)
-        )
+        old = _make_federated_result(entity_id="f1", created_at=datetime(2025, 1, 1))
+        new = _make_federated_result(entity_id="f2", created_at=datetime(2026, 3, 1))
         filters = [_make_filter("created_at", "greater_than", "2026-01-01T00:00:00")]
         filtered = SearchPlanExecutor._apply_filters_in_memory([old, new], filters)
         assert len(filtered) == 1
@@ -760,9 +752,7 @@ class TestExecutorFederated:
             source_lifecycle=source_lifecycle,
         )
 
-        user_filter = [
-            _make_filter("airweave_system_metadata.source_name", "equals", "github")
-        ]
+        user_filter = [_make_filter("airweave_system_metadata.source_name", "equals", "github")]
 
         results = await executor.execute(
             plan=_make_plan(),
@@ -774,9 +764,7 @@ class TestExecutorFederated:
         )
 
         # Only GitHub results should remain — Slack filtered out in-memory
-        assert all(
-            r.airweave_system_metadata.source_name == "github" for r in results.results
-        )
+        assert all(r.airweave_system_metadata.source_name == "github" for r in results.results)
 
     @pytest.mark.asyncio
     async def test_filter_source_name_slack_returns_federated_only(self):
@@ -805,9 +793,7 @@ class TestExecutorFederated:
             source_lifecycle=source_lifecycle,
         )
 
-        user_filter = [
-            _make_filter("airweave_system_metadata.source_name", "equals", "slack")
-        ]
+        user_filter = [_make_filter("airweave_system_metadata.source_name", "equals", "slack")]
 
         results = await executor.execute(
             plan=_make_plan(),
@@ -823,8 +809,11 @@ class TestExecutorFederated:
 
     @pytest.mark.asyncio
     async def test_federated_auth_failure_becomes_partial_failure(self):
-        """If a federated source fails to instantiate, search degrades to a partial failure
-        instead of returning a 500 — vector results still come through."""
+        """Degrade to a partial failure when a federated source fails to instantiate.
+
+        Search returns 200 with vector results; the failure is surfaced on the
+        response.
+        """
         from airweave.domains.search.types import PartialFailureReason
 
         vector_db = FakeVectorDB()
@@ -999,8 +988,10 @@ class TestExecutorErrorPaths:
 
     @pytest.mark.asyncio
     async def test_federated_source_instantiation_failure_partial_failure(self):
-        """A federated source that fails to instantiate is recorded as a partial
-        failure; vector results still return."""
+        """Record a partial failure when a federated source fails to instantiate.
+
+        Vector results still return; the failure is surfaced on the response.
+        """
         from airweave.domains.search.types import PartialFailureReason
 
         vector_db = FakeVectorDB()
@@ -1042,9 +1033,124 @@ class TestExecutorErrorPaths:
         )
 
     @pytest.mark.asyncio
+    async def test_auth_failure_calls_invalidation_notifier(self):
+        """Call AuthInvalidationNotifier.notify when a federated auth error fires.
+
+        Confirms the executor passes the failing connection id (and reason).
+        """
+        from airweave.domains.search.types import PartialFailureReason
+
+        sc = _make_source_connection("slack", federated=True)
+        sc_id_str = str(sc.id)
+
+        class _FailingFederatedSource:
+            short_name = "slack"
+            _source_connection_id = sc.id
+
+            async def search(self, query: str, limit: int) -> list:
+                raise RuntimeError("invalid_auth")
+
+        vector_db = FakeVectorDB()
+        vector_db.seed_results(SearchResults(results=[]))
+
+        sc_repo = FakeSourceConnectionRepository()
+        sc_repo.seed(sc.id, sc)
+
+        source_registry = FakeSourceRegistry()
+        source_registry.seed(_make_registry_entry("slack", federated=True))
+
+        source_lifecycle = FakeSourceLifecycleService()
+        source_lifecycle.seed_source(sc.id, _FailingFederatedSource())
+
+        notifier = MagicMock()
+        notifier.notify = AsyncMock(return_value=True)
+
+        executor = _build_executor(
+            vector_db=vector_db,
+            sc_repo=sc_repo,
+            source_registry=source_registry,
+            source_lifecycle=source_lifecycle,
+            auth_invalidation_notifier=notifier,
+        )
+
+        results = await executor.execute(
+            plan=_make_plan(),
+            user_filter=[],
+            collection_id="col-1",
+            db=AsyncMock(),
+            ctx=_make_ctx(),
+            collection_readable_id="my-collection",
+        )
+
+        # Partial failure surfaced
+        assert len(results.partial_failures) == 1
+        assert results.partial_failures[0].reason == PartialFailureReason.AUTH_INVALIDATED
+
+        # Notifier called exactly once with the failing connection id
+        notifier.notify.assert_awaited_once()
+        kwargs = notifier.notify.call_args.kwargs
+        assert str(kwargs["source_connection_id"]) == sc_id_str
+        assert "invalid_auth" in (kwargs.get("error_reason") or "")
+
+    @pytest.mark.asyncio
+    async def test_non_auth_failure_does_not_call_invalidation_notifier(self):
+        """Skip the AUTH_INVALIDATED webhook for non-auth errors.
+
+        Transient 500s and other non-credential failures should not trigger
+        the webhook — it would be a misleading signal to customers.
+        """
+
+        class _Non5xx:
+            status_code = 502  # transient, retried then surfaced as ERROR
+
+        class _TransientSource:
+            short_name = "slack"
+            _source_connection_id = uuid4()
+
+            async def search(self, query: str, limit: int) -> list:
+                err = RuntimeError("upstream 502 bad gateway")
+                err.status_code = 502  # type: ignore[attr-defined]
+                raise err
+
+        sc = _make_source_connection("slack", federated=True)
+        sc_repo = FakeSourceConnectionRepository()
+        sc_repo.seed(sc.id, sc)
+
+        source_registry = FakeSourceRegistry()
+        source_registry.seed(_make_registry_entry("slack", federated=True))
+
+        source_lifecycle = FakeSourceLifecycleService()
+        source_lifecycle.seed_source(sc.id, _TransientSource())
+
+        notifier = MagicMock()
+        notifier.notify = AsyncMock()
+
+        executor = _build_executor(
+            vector_db=FakeVectorDB(),
+            sc_repo=sc_repo,
+            source_registry=source_registry,
+            source_lifecycle=source_lifecycle,
+            auth_invalidation_notifier=notifier,
+        )
+
+        await executor.execute(
+            plan=_make_plan(),
+            user_filter=[],
+            collection_id="col-1",
+            db=AsyncMock(),
+            ctx=_make_ctx(),
+            collection_readable_id="my-collection",
+        )
+
+        notifier.notify.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_federated_source_search_auth_failure_partial_failure(self):
-        """A federated source that fails with an auth error during search() is
-        recorded as an AUTH_INVALIDATED partial failure; search degrades, doesn't raise."""
+        """Record AUTH_INVALIDATED partial failure when search() raises auth error.
+
+        Search degrades instead of raising; the failure is surfaced on the
+        response.
+        """
         from airweave.domains.search.types import PartialFailureReason
 
         class _FailingFederatedSource:
@@ -1100,9 +1206,7 @@ class TestExecutorFilterEdgeCases:
 
     def test_empty_filter_groups_passes_all(self):
         """filter_groups=[] → all results pass through unfiltered."""
-        results = [
-            _make_federated_result(entity_id=f"f{i}") for i in range(5)
-        ]
+        results = [_make_federated_result(entity_id=f"f{i}") for i in range(5)]
         filtered = SearchPlanExecutor._apply_filters_in_memory(results, [])
         assert len(filtered) == 5
         assert filtered == results
@@ -1169,9 +1273,7 @@ class TestFederatedRetry:
         source = _TransientSource()
         executor = _build_executor()
 
-        results = await executor._search_single_source(
-            source, "test", 10, _make_ctx()
-        )
+        results = await executor._search_single_source(source, "test", 10, _make_ctx())
         assert results == []
         assert source._attempt == 2
 

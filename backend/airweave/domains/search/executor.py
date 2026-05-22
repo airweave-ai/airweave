@@ -36,6 +36,7 @@ from airweave.domains.search.types.results import (
     SearchResult,
     SearchSystemMetadata,
 )
+from airweave.domains.source_connections.auth_invalidation import AuthInvalidationNotifier
 from airweave.domains.source_connections.protocols import SourceConnectionRepositoryProtocol
 from airweave.domains.sources.protocols import (
     SourceLifecycleServiceProtocol,
@@ -70,8 +71,13 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
         source_registry: SourceRegistryProtocol,
         source_lifecycle: SourceLifecycleServiceProtocol,
         access_broker: AccessBrokerProtocol,
+        auth_invalidation_notifier: Optional[AuthInvalidationNotifier] = None,
     ) -> None:
-        """Initialize with embedders, vector database, and federated source dependencies."""
+        """Initialize with embedders, vector database, and federated source dependencies.
+
+        ``auth_invalidation_notifier`` is optional so the executor stays
+        constructible in test setups that don't need webhook delivery.
+        """
         self._dense_embedder = dense_embedder
         self._sparse_embedder = sparse_embedder
         self._vector_db = vector_db
@@ -79,6 +85,7 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
         self._source_registry = source_registry
         self._source_lifecycle = source_lifecycle
         self._access_broker = access_broker
+        self._auth_invalidation_notifier = auth_invalidation_notifier
 
     async def execute(
         self,
@@ -142,6 +149,11 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
             fed_results, search_failures = [], []
         partial_failures = discovery_failures + search_failures
 
+        # 4b. Fire AUTH_INVALIDATED webhooks for any auth failures detected,
+        #     dedup'd per source_connection_id by the notifier. Best-effort —
+        #     the notifier swallows its own errors so search never fails here.
+        await self._fire_auth_invalidation_webhooks(db, ctx, partial_failures)
+
         # 5. If no federated sources, vector DB already has correct limit/offset
         if not federated_sources:
             return SearchResults(results=vector_results, partial_failures=partial_failures)
@@ -166,6 +178,52 @@ class SearchPlanExecutor(SearchPlanExecutorProtocol):
             results=vector_results[original_offset : original_offset + original_limit],
             partial_failures=partial_failures,
         )
+
+    async def _fire_auth_invalidation_webhooks(
+        self,
+        db: AsyncSession,
+        ctx: ApiContext,
+        partial_failures: list[PartialFailure],
+    ) -> None:
+        """Notify the auth-invalidation pipeline for every auth-related failure.
+
+        Deduplication, DB flip, and event publishing are owned by the notifier;
+        this helper just collects unique (source_connection_id, reason) pairs
+        and dispatches them.
+        """
+        if self._auth_invalidation_notifier is None:
+            return
+
+        # Dedupe within the request — the notifier also dedupes across requests
+        # via Redis, but we don't even need to make the Redis round-trip if the
+        # same connection shows up multiple times in one search.
+        seen: set[str] = set()
+        for failure in partial_failures:
+            if failure.reason != PartialFailureReason.AUTH_INVALIDATED:
+                continue
+            if not failure.source_connection_id:
+                # Failure raised before we could identify the source connection
+                # (e.g. lifecycle.create raised without source_connection_id
+                # being attached). Nothing to notify on.
+                continue
+            if failure.source_connection_id in seen:
+                continue
+            seen.add(failure.source_connection_id)
+
+            try:
+                await self._auth_invalidation_notifier.notify(
+                    db,
+                    ctx,
+                    source_connection_id=UUID(failure.source_connection_id),
+                    error_reason=failure.message,
+                )
+            except Exception as exc:
+                # Notifier already logs internally; this catch is a belt-and-
+                # braces guard so even programmer errors don't propagate.
+                ctx.logger.exception(
+                    f"[SearchPlanExecutor] auth_invalidation_notifier.notify "
+                    f"raised for {failure.source_connection_id}: {exc}"
+                )
 
     async def _execute_vector_search(
         self,

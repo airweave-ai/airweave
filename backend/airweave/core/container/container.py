@@ -80,6 +80,7 @@ from airweave.domains.search.protocols import (
     ClassicSearchServiceProtocol,
     InstantSearchServiceProtocol,
 )
+from airweave.domains.source_connections.auth_invalidation import AuthInvalidationNotifier
 from airweave.domains.source_connections.protocols import (
     ResponseBuilderProtocol,
     SourceConnectionRepositoryProtocol,
@@ -191,6 +192,11 @@ class Container:
 
     # Source connection service — domain service for source connections
     source_connection_service: SourceConnectionServiceProtocol
+
+    # Auth invalidation notifier — single entry-point for reporting runtime
+    # credential failures (federated search, OAuth refresh errors, etc.).
+    # Handles Redis dedupe, DB flip, and AUTH_INVALIDATED event publishing.
+    auth_invalidation_notifier: AuthInvalidationNotifier
 
     # Source lifecycle — creates/validates configured source instances
     source_lifecycle_service: SourceLifecycleServiceProtocol

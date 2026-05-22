@@ -6,7 +6,7 @@ and executed in a flexible pipeline.
 """
 
 import time
-from typing import Any, Dict, List, Literal
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
 from sqlalchemy import select as sa_select
@@ -17,6 +17,7 @@ from airweave.api.context import ApiContext
 from airweave.core.exceptions import NotFoundException
 from airweave.core.protocols.pubsub import PubSub
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
+from airweave.domains.source_connections.auth_invalidation import AuthInvalidationNotifier
 from airweave.models.source_connection import SourceConnection
 from airweave.schemas.search import SearchRequest, SearchResponse
 from airweave.search.factory import factory
@@ -43,6 +44,7 @@ class SearchService:
         dense_embedder: DenseEmbedderProtocol,
         sparse_embedder: SparseEmbedderProtocol,
         destination_override: SearchDestination | None = None,
+        auth_invalidation_notifier: Optional[AuthInvalidationNotifier] = None,
     ) -> SearchResponse:
         """Search a collection.
 
@@ -58,6 +60,10 @@ class SearchService:
             sparse_embedder: Domain sparse embedder for generating BM25 embeddings
             destination_override: If provided, override the default destination
                 ('qdrant' or 'vespa'). If None, uses SyncConfig default.
+            auth_invalidation_notifier: Optional notifier used to publish
+                ``AUTH_INVALIDATED`` webhooks and flip ``is_authenticated=False``
+                when a federated source reports an auth failure during the
+                search. Falls back to a direct DB flip when not provided.
 
         Returns:
             SearchResponse with results
@@ -92,8 +98,9 @@ class SearchService:
         ctx.logger.debug("Executing search")
         response, state = await orchestrator.run(ctx, search_context)
 
-        # Handle any federated source auth failures (mark connections as unauthenticated)
-        await self._handle_failed_federated_auth(db, state, ctx)
+        # Handle any federated source auth failures: flip is_authenticated=False
+        # in the DB and publish AUTH_INVALIDATED webhooks (deduped via Redis).
+        await self._handle_failed_federated_auth(db, state, ctx, auth_invalidation_notifier)
 
         duration_ms = (time.monotonic() - start_time) * 1000
         ctx.logger.debug(f"Search completed in {duration_ms:.2f}ms")
@@ -366,13 +373,36 @@ class SearchService:
         db: AsyncSession,
         state: Dict[str, Any],
         ctx: ApiContext,
+        notifier: Optional[AuthInvalidationNotifier] = None,
     ) -> None:
-        """Mark source connections as unauthenticated on federated auth errors."""
+        """Handle federated source auth failures.
+
+        When a notifier is wired in, delegates DB flip + webhook dispatch to
+        ``AuthInvalidationNotifier`` (deduped per source_connection_id via
+        Redis). Falls back to a direct ``is_authenticated=False`` flip when
+        no notifier is available (legacy code paths and tests).
+        """
         failed_conn_ids: List[str] = state.get("failed_federated_auth", [])
         if not failed_conn_ids:
             return
 
-        for conn_id in failed_conn_ids:
+        # Dedupe IDs within the request — same connection can fail across
+        # multiple keywords / sources during one search.
+        unique_ids = list(dict.fromkeys(failed_conn_ids))
+
+        if notifier is not None:
+            for conn_id in unique_ids:
+                try:
+                    await notifier.notify(db, ctx, source_connection_id=UUID(conn_id))
+                except Exception as exc:
+                    ctx.logger.exception(
+                        f"AuthInvalidationNotifier.notify failed for {conn_id}: {exc}"
+                    )
+            return
+
+        # Notifier not wired — fall back to legacy direct DB flip so the UI's
+        # NEEDS_REAUTH status still kicks in for older call sites.
+        for conn_id in unique_ids:
             source_conn = await crud.source_connection.get(db, id=UUID(conn_id), ctx=ctx)
             if source_conn:
                 await crud.source_connection.update(

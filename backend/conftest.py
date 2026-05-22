@@ -632,6 +632,36 @@ def fake_selection_repo():
 
 
 @pytest.fixture
+def fake_auth_invalidation_notifier():
+    """Real AuthInvalidationNotifier wired against fake Redis/sc_repo/event_bus.
+
+    Using the real notifier (not a mock) so tests exercise the actual dedupe +
+    DB-flip + publish logic. The fake Redis always 'acquires' the lock by
+    returning truthy from set() so notify() always proceeds.
+    """
+    from airweave.domains.source_connections.auth_invalidation import (
+        AuthInvalidationNotifier,
+    )
+
+    fake_redis = MagicMock()
+    fake_redis.set = AsyncMock(return_value=True)
+    fake_redis.delete = AsyncMock(return_value=1)
+
+    fake_sc_repo = MagicMock()
+    fake_sc_repo.get = AsyncMock(return_value=None)
+    fake_sc_repo.update = AsyncMock()
+
+    fake_bus = MagicMock()
+    fake_bus.publish = AsyncMock()
+
+    return AuthInvalidationNotifier(
+        sc_repo=fake_sc_repo,
+        event_bus=fake_bus,
+        redis=fake_redis,
+    )
+
+
+@pytest.fixture
 def fake_instant_search():
     """Fake InstantSearchService."""
     from airweave.domains.search.fakes.instant import FakeInstantSearchService
@@ -742,6 +772,7 @@ def test_container(
     fake_connect_service,
     fake_browse_tree_service,
     fake_selection_repo,
+    fake_auth_invalidation_notifier,
     fake_instant_search,
     fake_classic_search,
     fake_agentic_search_v2,
@@ -802,6 +833,7 @@ def test_container(
         oauth_callback_service=fake_oauth_callback_service,
         init_session_repo=fake_init_session_repo,
         source_connection_service=fake_source_connection_service,
+        auth_invalidation_notifier=fake_auth_invalidation_notifier,
         connect_service=fake_connect_service,
         source_lifecycle_service=fake_source_lifecycle_service,
         response_builder=fake_response_builder,

@@ -54,6 +54,7 @@ class SourceConnectionEventType(str, Enum):
 
     CREATED = "source_connection.created"
     AUTH_COMPLETED = "source_connection.auth_completed"
+    AUTH_INVALIDATED = "source_connection.auth_invalidated"
     DELETED = "source_connection.deleted"
 
 
