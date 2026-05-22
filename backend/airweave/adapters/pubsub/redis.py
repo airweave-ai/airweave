@@ -11,18 +11,19 @@ Usage patterns:
 Notes:
 - Publishes accept either strings (already JSON) or dicts which will be JSON-encoded
 - Subscriptions create a dedicated Redis connection suited for long-lived SSE streams
+- Both single-host and Sentinel topologies are supported transparently via
+  ``airweave.core.redis_factory.make_redis_client``.
 """
 
 from __future__ import annotations
 
 import json
-import platform
 from typing import Any
 
 import redis.asyncio as redis
 
-from airweave.core.config import settings
 from airweave.core.redis_client import redis_client
+from airweave.core.redis_factory import get_socket_keepalive_options, make_redis_client
 
 
 class RedisPubSub:
@@ -56,7 +57,8 @@ class RedisPubSub:
         """Create a dedicated pubsub connection and subscribe to a channel.
 
         A separate client is created for pubsub to avoid connection pool
-        interference with regular Redis usage.
+        interference with regular Redis usage. In Sentinel mode the connection
+        is bound to the current master and transparently reconnects on failover.
 
         Args:
             namespace: The channel namespace
@@ -67,37 +69,11 @@ class RedisPubSub:
         """
         channel = self.make_channel(namespace, str(id_value))
 
-        if settings.REDIS_PASSWORD:
-            from urllib.parse import quote
-
-            encoded_pwd = quote(settings.REDIS_PASSWORD, safe="")
-            redis_url = (
-                f"redis://:{encoded_pwd}@{settings.REDIS_HOST}:"
-                f"{settings.REDIS_PORT}/{settings.REDIS_DB}"
-            )
-        else:
-            redis_url = f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}/{settings.REDIS_DB}"
-
-        if platform.system() == "Darwin":
-            socket_keepalive_options = {}
-        else:
-            import socket
-
-            if hasattr(socket, "TCP_KEEPIDLE"):
-                socket_keepalive_options = {
-                    socket.TCP_KEEPIDLE: 60,
-                    socket.TCP_KEEPINTVL: 10,
-                    socket.TCP_KEEPCNT: 6,
-                }
-            else:
-                socket_keepalive_options = {}
-
-        pubsub_redis = await redis.from_url(
-            redis_url,
-            decode_responses=True,
+        pubsub_redis = make_redis_client(
+            max_connections=1,
             socket_keepalive=True,
+            socket_keepalive_options=get_socket_keepalive_options(),
             socket_connect_timeout=5,
-            socket_keepalive_options=socket_keepalive_options,
         )
 
         pubsub = pubsub_redis.pubsub()

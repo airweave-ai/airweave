@@ -63,10 +63,14 @@ class Settings(BaseSettings):
         RUN_ALEMBIC_MIGRATIONS (bool): Whether to run the alembic migrations.
         RUN_DB_SYNC (bool): Whether to run the system sync to process sources,
             destinations, and entity types.
-        REDIS_HOST (str): The Redis server hostname.
-        REDIS_PORT (int): The Redis server port.
+        REDIS_HOST (str): The Redis server hostname (single-host mode).
+        REDIS_PORT (int): The Redis server port (single-host mode).
         REDIS_PASSWORD (Optional[str]): The Redis password (if authentication is enabled).
         REDIS_DB (int): The Redis database number.
+        REDIS_NODES (Optional[str]): JSON list of Sentinel nodes ``[[host, port], ...]``.
+            When set together with ``REDIS_SERVICE_NAME``, enables Sentinel mode and
+            ``REDIS_HOST``/``REDIS_PORT`` are ignored.
+        REDIS_SERVICE_NAME (Optional[str]): The Sentinel master name to discover.
         TEXT2VEC_INFERENCE_URL (str): The URL for text2vec-transformers inference service.
         OPENAI_API_KEY (Optional[str]): The OpenAI API key.
         MISTRAL_API_KEY (Optional[str]): The Mistral AI API key.
@@ -139,11 +143,19 @@ class Settings(BaseSettings):
     RUN_DB_SYNC: bool = True
     ENABLE_INTERNAL_SOURCES: bool = False  # Enable internal/testing sources (stub, snapshot)
 
-    # Redis configuration
+    # Redis configuration.
+    # Two modes are supported:
+    # 1. Single-host (default): set REDIS_HOST + REDIS_PORT.
+    # 2. Sentinel: set REDIS_NODES (JSON list of [host, port] sentinel nodes) and
+    #    REDIS_SERVICE_NAME (the master name registered with Sentinel, e.g. "mymaster").
+    #    When both are set, REDIS_HOST and REDIS_PORT are ignored and the client
+    #    discovers the current master via Sentinel.
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     REDIS_PASSWORD: Optional[str] = None
     REDIS_DB: int = 0
+    REDIS_NODES: Optional[str] = None  # e.g. '[["host-0", 26379], ["host-1", 26379]]'
+    REDIS_SERVICE_NAME: Optional[str] = None  # e.g. "mymaster"
 
     TEXT2VEC_INFERENCE_URL: str = "http://localhost:9878"
 
