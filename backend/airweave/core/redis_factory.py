@@ -20,8 +20,8 @@ import platform
 import socket
 from typing import Any
 
-import redis.asyncio as redis
-from redis.asyncio.sentinel import Sentinel
+import redis.asyncio as redis  # type: ignore[import-untyped]
+from redis.asyncio.sentinel import Sentinel  # type: ignore[import-untyped]
 
 from airweave.core.config import settings
 
@@ -53,9 +53,7 @@ def _parse_sentinel_nodes(raw: str) -> list[tuple[str, int]]:
             or not isinstance(entry[0], str)
             or not isinstance(entry[1], (int, str))
         ):
-            raise ValueError(
-                f"REDIS_NODES entries must be [host, port], got: {entry!r}"
-            )
+            raise ValueError(f"REDIS_NODES entries must be [host, port], got: {entry!r}")
         host, port = entry
         nodes.append((host, int(port)))
     return nodes
@@ -106,6 +104,8 @@ def make_redis_client(
     password = settings.REDIS_PASSWORD or None
 
     if is_sentinel_mode():
+        assert settings.REDIS_NODES is not None
+        assert settings.REDIS_SERVICE_NAME is not None
         nodes = _parse_sentinel_nodes(settings.REDIS_NODES)
         # Pull connection-tuning kwargs out of ``extra`` so we can forward them
         # to both the Sentinel itself (for sentinel-discovery RPCs) and to the
