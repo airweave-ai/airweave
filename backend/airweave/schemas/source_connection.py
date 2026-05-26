@@ -6,12 +6,19 @@ This module provides a clean schema hierarchy for source connections:
 - Builder classes with type-safe construction and validation
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, Optional, Union
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
 from airweave.core.shared_models import (
     SourceConnectionErrorCategory,
@@ -89,13 +96,6 @@ class OAuthTokenAuthentication(BaseModel):
             raise ValueError("access_token cannot be empty or whitespace only")
         return v
 
-    @model_validator(mode="after")
-    def validate_token(self):
-        """Validate token is not expired."""
-        if self.expires_at and self.expires_at < datetime.now(timezone.utc):
-            raise ValueError("Token has already expired")
-        return self
-
 
 class OAuthBrowserAuthentication(BaseModel):
     """OAuth authentication via browser flow.
@@ -110,11 +110,17 @@ class OAuthBrowserAuthentication(BaseModel):
     redirect_uri: Optional[str] = Field(None, description="OAuth redirect URI")
 
     # OAuth2 BYOC fields
-    client_id: Optional[str] = Field(None, description="OAuth2 client ID (for custom apps)")
-    client_secret: Optional[str] = Field(None, description="OAuth2 client secret (for custom apps)")
+    client_id: Optional[str] = Field(
+        None, description="OAuth2 client ID (for custom apps)"
+    )
+    client_secret: Optional[str] = Field(
+        None, description="OAuth2 client secret (for custom apps)"
+    )
 
     # OAuth1 BYOC fields
-    consumer_key: Optional[str] = Field(None, description="OAuth1 consumer key (for custom apps)")
+    consumer_key: Optional[str] = Field(
+        None, description="OAuth1 consumer key (for custom apps)"
+    )
     consumer_secret: Optional[str] = Field(
         None, description="OAuth1 consumer secret (for custom apps)"
     )
@@ -132,7 +138,9 @@ class OAuthBrowserAuthentication(BaseModel):
 
         # Validate OAuth2 BYOC
         if bool(self.client_id) != bool(self.client_secret):
-            raise ValueError("OAuth2 BYOC requires both client_id and client_secret or neither")
+            raise ValueError(
+                "OAuth2 BYOC requires both client_id and client_secret or neither"
+            )
 
         # Validate OAuth1 BYOC
         if bool(self.consumer_key) != bool(self.consumer_secret):
@@ -211,7 +219,9 @@ class SourceConnectionCreate(BaseModel):
     config: Optional[Dict[str, Any]] = Field(
         None,
         description="Source-specific configuration (e.g., repository name, filters)",
-        json_schema_extra={"example": {"repo_name": "airweave-ai/airweave", "branch": "main"}},
+        json_schema_extra={
+            "example": {"repo_name": "airweave-ai/airweave", "branch": "main"}
+        },
     )
     schedule: Optional[ScheduleConfig] = Field(
         None,
@@ -310,7 +320,9 @@ class SourceConnectionUpdate(BaseModel):
     config: Optional[Dict[str, Any]] = Field(
         None,
         description="Updated source-specific configuration",
-        json_schema_extra={"example": {"repo_name": "company/new-repo", "branch": "develop"}},
+        json_schema_extra={
+            "example": {"repo_name": "company/new-repo", "branch": "develop"}
+        },
     )
     schedule: Optional[ScheduleConfig] = Field(
         None,
@@ -334,7 +346,9 @@ class SourceConnectionUpdate(BaseModel):
     @model_validator(mode="after")
     def validate_direct_auth(self):
         """Ensure only direct auth can be updated with authentication."""
-        if self.authentication and not isinstance(self.authentication, DirectAuthentication):
+        if self.authentication and not isinstance(
+            self.authentication, DirectAuthentication
+        ):
             raise ValueError("Direct auth can only be updated with authentication")
         return self
 
@@ -347,7 +361,9 @@ class SourceConnectionUpdate(BaseModel):
                 },
                 {
                     "summary": "Update config",
-                    "value": {"config": {"repo_name": "company/new-repo", "branch": "main"}},
+                    "value": {
+                        "config": {"repo_name": "company/new-repo", "branch": "main"}
+                    },
                 },
                 {
                     "summary": "Update schedule",
@@ -749,7 +765,10 @@ class SourceConnection(BaseModel):
                         "entities_updated": 12,
                     },
                 },
-                "entities": {"total_entities": 1250, "by_type": {"file": {"count": 1250}}},
+                "entities": {
+                    "total_entities": 1250,
+                    "by_type": {"file": {"count": 1250}},
+                },
                 "federated_search": False,
             }
         }
@@ -864,7 +883,10 @@ def determine_auth_method(source_conn: Any) -> AuthenticationMethod:
     Determine authentication method from database fields.
     """
     # Auth provider takes precedence
-    if hasattr(source_conn, "readable_auth_provider_id") and source_conn.readable_auth_provider_id:
+    if (
+        hasattr(source_conn, "readable_auth_provider_id")
+        and source_conn.readable_auth_provider_id
+    ):
         return AuthenticationMethod.AUTH_PROVIDER
 
     # Check for pending OAuth
