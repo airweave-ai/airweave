@@ -13,6 +13,7 @@ import argparse
 import json
 import sys
 import time
+from pathlib import Path
 
 import httpx
 
@@ -149,6 +150,50 @@ RENDERERS = {
 }
 
 
+class JsonlTraceWriter:
+    """Write agentic search stream events as replayable JSONL records."""
+
+    def __init__(self, path: str, request: dict) -> None:
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.file = self.path.open("w", encoding="utf-8")
+        self.started_at = time.time()
+        self.sequence = 0
+        self.write(
+            {
+                "type": "metadata",
+                "schema_version": 1,
+                "request": request,
+                "started_at": self.started_at,
+            }
+        )
+
+    def write(self, payload: dict) -> None:
+        self.file.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        self.file.flush()
+
+    def write_event(self, event: dict) -> None:
+        self.sequence += 1
+        self.write(
+            {
+                "type": "event",
+                "sequence": self.sequence,
+                "elapsed_ms": round((time.time() - self.started_at) * 1000),
+                "event": event,
+            }
+        )
+
+    def close(self, elapsed_s: float) -> None:
+        self.write(
+            {
+                "type": "summary",
+                "event_count": self.sequence,
+                "elapsed_s": round(elapsed_s, 3),
+            }
+        )
+        self.file.close()
+
+
 def main():
     parser = argparse.ArgumentParser(description="AgenticSearch streaming search viewer")
     parser.add_argument("collection_id", help="Collection readable ID")
@@ -156,12 +201,19 @@ def main():
     parser.add_argument("--host", default="http://localhost:8001", help="API host")
     parser.add_argument("--filter", default=None, help="Filter JSON string")
     parser.add_argument("--mode", default="agentic", choices=["agentic", "direct"])
+    parser.add_argument(
+        "--jsonl",
+        default=None,
+        help="Write raw stream events to a JSONL trace for replay/eval analysis",
+    )
     args = parser.parse_args()
 
     url = f"{args.host}/collections/{args.collection_id}/agentic-search/stream"
     body = {"query": args.query, "mode": args.mode}
     if args.filter:
         body["filter"] = json.loads(args.filter)
+
+    trace_writer = JsonlTraceWriter(args.jsonl, body) if args.jsonl else None
 
     print(f"{'─' * 60}")
     print(f"  {bold('Agentic Search')}")
@@ -170,55 +222,66 @@ def main():
     if args.filter:
         print(f"  {dim('Filter:')} {args.filter}")
     print(f"  {dim('Mode:')} {args.mode}")
+    if trace_writer:
+        print(f"  {dim('JSONL trace:')} {trace_writer.path}")
     print(f"{'─' * 60}")
 
     start = time.monotonic()
 
-    with httpx.stream(
-        "POST",
-        url,
-        json=body,
-        headers={"Content-Type": "application/json"},
-        timeout=120.0,
-    ) as response:
-        if response.status_code != 200:
-            print(red(f"\nHTTP {response.status_code}"))
-            print(response.read().decode())
-            sys.exit(1)
+    try:
+        with httpx.stream(
+            "POST",
+            url,
+            json=body,
+            headers={"Content-Type": "application/json"},
+            timeout=120.0,
+        ) as response:
+            if response.status_code != 200:
+                print(red(f"\nHTTP {response.status_code}"))
+                print(response.read().decode())
+                sys.exit(1)
 
-        buffer = ""
-        for chunk in response.iter_text():
-            buffer += chunk
-            while "\n\n" in buffer:
-                message, buffer = buffer.split("\n\n", 1)
-                message = message.strip()
-                if not message:
-                    continue
+            buffer = ""
+            for chunk in response.iter_text():
+                buffer += chunk
+                while "\n\n" in buffer:
+                    message, buffer = buffer.split("\n\n", 1)
+                    message = message.strip()
+                    if not message:
+                        continue
 
-                # Parse SSE data line
-                if message.startswith("data: "):
-                    data_str = message[6:]
-                elif message.startswith("data:"):
-                    data_str = message[5:]
-                else:
-                    continue
+                    # Parse SSE data line
+                    if message.startswith("data: "):
+                        data_str = message[6:]
+                    elif message.startswith("data:"):
+                        data_str = message[5:]
+                    else:
+                        continue
 
-                try:
-                    event = json.loads(data_str)
-                except json.JSONDecodeError:
-                    print(dim(f"  [raw] {data_str}"))
-                    continue
+                    try:
+                        event = json.loads(data_str)
+                    except json.JSONDecodeError:
+                        print(dim(f"  [raw] {data_str}"))
+                        continue
 
-                event_type = event.get("type", "unknown")
-                renderer = RENDERERS.get(event_type)
-                if renderer:
-                    renderer(event)
-                else:
-                    print(dim(f"  [unknown event] {json.dumps(event, indent=2)}"))
+                    if trace_writer:
+                        trace_writer.write_event(event)
 
-    elapsed = time.monotonic() - start
+                    event_type = event.get("type", "unknown")
+                    renderer = RENDERERS.get(event_type)
+                    if renderer:
+                        renderer(event)
+                    else:
+                        print(dim(f"  [unknown event] {json.dumps(event, indent=2)}"))
+    finally:
+        elapsed = time.monotonic() - start
+        if trace_writer:
+            trace_writer.close(elapsed)
+
     print(f"\n{'─' * 60}")
     print(f"  {dim(f'Total time: {elapsed:.1f}s')}")
+    if trace_writer:
+        print(f"  {dim(f'JSONL trace written to {trace_writer.path}')}")
     print(f"{'─' * 60}\n")
 
 
