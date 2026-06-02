@@ -37,6 +37,13 @@ _SENSITIVE_KEYWORDS = (
     "secret",
     "token",
 )
+_SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?i)\b("
+    r"access_token|authorization|api_key|apikey|bearer|client_secret|credential|"
+    r"password|private_key|refresh_token|secret|token"
+    r")\b\s*[:=]\s*(?:bearer\s+)?([^\s,;]+)"
+)
+_BEARER_TOKEN_RE = re.compile(r"(?i)\bbearer\s+[a-z0-9._~+/=-]+")
 
 
 @dataclass(frozen=True)
@@ -138,7 +145,7 @@ class SyncFailureCapture:
             },
             "error": {
                 "type": type(error).__name__,
-                "message": self._clean_string(str(error) or "(empty error message)"),
+                "message": self._redact_string(str(error) or "(empty error message)"),
             },
         }
 
@@ -211,7 +218,7 @@ class SyncFailureCapture:
             return self._redact(list(value))
 
         if isinstance(value, str):
-            return self._clean_string(value)
+            return self._redact_string(value)
 
         return value
 
@@ -225,6 +232,12 @@ class SyncFailureCapture:
                 f"...[truncated {truncated_chars} chars]"
             )
         return clean
+
+    def _redact_string(self, value: str) -> str:
+        """Redact inline credentials from a string, then clean and trim it."""
+        redacted = _SECRET_ASSIGNMENT_RE.sub(r"\1=[REDACTED]", value)
+        redacted = _BEARER_TOKEN_RE.sub("Bearer [REDACTED]", redacted)
+        return self._clean_string(redacted)
 
     @staticmethod
     def _is_sensitive_key(key: str) -> bool:

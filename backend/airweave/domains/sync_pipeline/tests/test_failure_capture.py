@@ -60,6 +60,26 @@ async def test_capture_entity_failure_redacts_and_cleans_snapshot():
 
 
 @pytest.mark.asyncio
+async def test_capture_entity_failure_redacts_inline_secret_error_messages():
+    """Error strings are redacted too, not only structured entity fields."""
+    storage = FakeStorageBackend()
+    capture = SyncFailureCapture(storage=storage)
+    ctx = _make_sync_context()
+
+    path = await capture.capture_entity_failure(
+        entity=_make_entity(),
+        stage="dense_embedding",
+        error=ValueError("request failed access_token=abc123 Authorization: Bearer sk-live"),
+        sync_context=ctx,
+    )
+
+    artifact = await storage.read_json(path)
+    assert artifact["error"]["message"] == (
+        "request failed access_token=[REDACTED] Authorization=[REDACTED]"
+    )
+
+
+@pytest.mark.asyncio
 async def test_capture_batch_failure_lists_entity_refs():
     """Batch artifacts include bounded entity refs and destination metadata."""
     storage = FakeStorageBackend()
