@@ -47,6 +47,7 @@ from airweave.domains.sync_pipeline.config import SyncConfig
 from airweave.domains.sync_pipeline.contexts.runtime import SyncRuntime
 from airweave.domains.sync_pipeline.contexts.sync import SyncContext
 from airweave.domains.sync_pipeline.entity.dispatcher_builder import EntityDispatcherBuilder
+from airweave.domains.sync_pipeline.failure_capture import SyncFailureCapture
 from airweave.domains.sync_pipeline.orchestrator import SyncOrchestrator
 from airweave.domains.sync_pipeline.pipeline.entity_tracker import EntityTracker
 from airweave.domains.sync_pipeline.protocols import (
@@ -132,6 +133,7 @@ class SyncFactory(SyncFactoryProtocol):
         self._usage_checker = usage_checker
         self._usage_ledger = usage_ledger
         self._storage_backend = storage_backend
+        self._failure_capture = SyncFailureCapture(storage=storage_backend)
         self._state_machine = state_machine
 
     async def create_orchestrator(
@@ -278,6 +280,7 @@ class SyncFactory(SyncFactoryProtocol):
             processor=self._processor,
             entity_repo=self._entity_repo,
             arf_service=self._arf_service,
+            failure_capture=self._failure_capture,
         )
         dispatcher = dispatcher_builder.build(
             destinations=destinations,

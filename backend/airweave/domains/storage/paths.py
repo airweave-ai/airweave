@@ -67,6 +67,31 @@ class StoragePaths:
         return f"{cls.arf_sync_path(sync_id)}/entities"
 
     @classmethod
+    def sync_failure_artifact_path(
+        cls,
+        sync_id: Union[str, UUID],
+        sync_job_id: Union[str, UUID],
+        stage: str,
+        artifact_id: str,
+    ) -> str:
+        """Failure artifact path: raw/{sync_id}/failures/{sync_job_id}/{stage}/{id}.json."""
+        safe_stage = cls.safe_filename(stage)
+        safe_id = cls.safe_filename(artifact_id)
+        return f"{cls.arf_sync_path(sync_id)}/failures/{sync_job_id}/{safe_stage}/{safe_id}.json"
+
+    @classmethod
+    def sync_failure_artifacts_dir(
+        cls,
+        sync_id: Union[str, UUID],
+        sync_job_id: Optional[Union[str, UUID]] = None,
+    ) -> str:
+        """Failure artifact directory for a sync or one sync job."""
+        base = f"{cls.arf_sync_path(sync_id)}/failures"
+        if sync_job_id is None:
+            return base
+        return f"{base}/{sync_job_id}"
+
+    @classmethod
     def arf_files_dir(cls, sync_id: Union[str, UUID]) -> str:
         """Files directory: raw/{sync_id}/files/."""
         return f"{cls.arf_sync_path(sync_id)}/files"

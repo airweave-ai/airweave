@@ -10,6 +10,7 @@ from airweave.domains.sync_pipeline.config.base import (
     BehaviorConfig,
     CursorConfig,
     DestinationConfig,
+    FailureCaptureConfig,
     HandlerConfig,
     SyncConfig,
     _deep_merge,
@@ -89,6 +90,22 @@ class TestBehaviorConfig:
         assert config.replay_from_arf is True
 
 
+class TestFailureCaptureConfig:
+    """Test FailureCaptureConfig defaults and behavior."""
+
+    def test_defaults(self):
+        """Test default failure capture config values."""
+        config = FailureCaptureConfig()
+        assert config.enabled is False
+        assert config.capture_entity_snapshots is True
+
+    def test_with_custom_values(self):
+        """Test failure capture config with custom values."""
+        config = FailureCaptureConfig(enabled=True, capture_entity_snapshots=False)
+        assert config.enabled is True
+        assert config.capture_entity_snapshots is False
+
+
 class TestSyncConfig:
     """Test SyncConfig composite configuration."""
 
@@ -103,6 +120,7 @@ class TestSyncConfig:
                 assert config.handlers.enable_vector_handlers is True
                 assert config.cursor.skip_load is False
                 assert config.behavior.replay_from_arf is False
+                assert config.failure_capture.enabled is False
 
     def test_with_nested_configs(self):
         """Test SyncConfig with nested sub-configs."""
@@ -134,6 +152,16 @@ class TestSyncConfig:
         ):
             config = SyncConfig()
             assert config.behavior.replay_from_arf is True
+
+    def test_env_var_failure_capture(self):
+        """Test that failure capture can be enabled through env vars."""
+        with patch.dict(
+            os.environ,
+            {"SYNC_CONFIG__FAILURE_CAPTURE__ENABLED": "true"},
+            clear=False,
+        ):
+            config = SyncConfig()
+            assert config.failure_capture.enabled is True
 
 
 class TestSyncConfigValidation:

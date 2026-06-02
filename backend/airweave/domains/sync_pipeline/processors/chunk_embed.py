@@ -18,6 +18,7 @@ from airweave.domains.converters.protocols import ConverterRegistryProtocol
 from airweave.domains.embedders.exceptions import EmbedderProviderError
 from airweave.domains.embedders.protocols import DenseEmbedderProtocol, SparseEmbedderProtocol
 from airweave.domains.sync_pipeline.exceptions import EntityProcessingError, SyncFailureError
+from airweave.domains.sync_pipeline.failure_capture import SyncFailureCapture
 from airweave.domains.sync_pipeline.pipeline.text_builder import TextualRepresentationBuilder
 from airweave.domains.sync_pipeline.processors.utils import filter_empty_representations
 from airweave.platform.entities._base import BaseEntity, CodeFileEntity
@@ -35,11 +36,13 @@ class ChunkEmbedProcessor:
         converter_registry: ConverterRegistryProtocol,
         dense_embedder: DenseEmbedderProtocol,
         sparse_embedder: SparseEmbedderProtocol,
+        failure_capture: SyncFailureCapture | None = None,
     ) -> None:
         """Initialize with converter registry and embedding providers."""
         self._text_builder = TextualRepresentationBuilder(converter_registry)
         self._dense_embedder = dense_embedder
         self._sparse_embedder = sparse_embedder
+        self._failure_capture = failure_capture
 
     async def process(
         self,
@@ -343,6 +346,12 @@ class ChunkEmbedProcessor:
                 successful_results.append(results[0])
                 successful_entities.append(entity)
             except Exception as exc:
+                await self._capture_entity_failure(
+                    entity=entity,
+                    stage="dense_embedding",
+                    error=exc,
+                    sync_context=sync_context,
+                )
                 sync_context.logger.warning(
                     "[ChunkEmbedProcessor] Skipping entity %s — dense embedding failed: %s",
                     entity.entity_id,
@@ -358,3 +367,39 @@ class ChunkEmbedProcessor:
             )
 
         return successful_results, successful_entities
+
+    async def _capture_entity_failure(
+        self,
+        *,
+        entity: BaseEntity,
+        stage: str,
+        error: Exception,
+        sync_context: "SyncContext",
+    ) -> None:
+        """Best-effort failure capture for entity-scoped recoverable failures."""
+        config = getattr(sync_context, "execution_config", None)
+        capture_config = getattr(config, "failure_capture", None)
+        if not self._failure_capture or not capture_config or not capture_config.enabled:
+            return
+
+        try:
+            artifact_path = await self._failure_capture.capture_entity_failure(
+                entity=entity,
+                stage=stage,
+                error=error,
+                sync_context=sync_context,
+                include_snapshot=capture_config.capture_entity_snapshots,
+            )
+            sync_context.logger.warning(
+                "[ChunkEmbedProcessor] Captured %s failure artifact for %s at %s",
+                stage,
+                entity.entity_id,
+                artifact_path,
+            )
+        except Exception as capture_error:
+            sync_context.logger.warning(
+                "[ChunkEmbedProcessor] Failed to capture %s failure artifact for %s: %s",
+                stage,
+                entity.entity_id,
+                capture_error,
+            )

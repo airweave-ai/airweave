@@ -12,8 +12,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from airweave.domains.sync_pipeline.exceptions import SyncFailureError
+from airweave.domains.storage.fakes.backend import FakeStorageBackend
+from airweave.domains.sync_pipeline.config.base import FailureCaptureConfig, SyncConfig
 from airweave.domains.sync_pipeline.entity.handlers.destination import DestinationHandler
+from airweave.domains.sync_pipeline.exceptions import SyncFailureError
+from airweave.domains.sync_pipeline.failure_capture import SyncFailureCapture
 
 _ASYNC_SLEEP = "airweave.domains.sync_pipeline.entity.handlers.destination.asyncio.sleep"
 
@@ -37,6 +40,13 @@ def _make_mock_sync_context():
     ctx.logger.debug = MagicMock()
     ctx.sync = MagicMock()
     ctx.sync.id = "test-sync-id"
+    ctx.sync_job = MagicMock()
+    ctx.sync_job.id = "test-job-id"
+    ctx.collection = MagicMock()
+    ctx.collection.id = "test-collection-id"
+    ctx.source_connection_id = "test-source-connection-id"
+    ctx.source_short_name = "stub"
+    ctx.organization_id = "test-org-id"
     return ctx
 
 
@@ -185,6 +195,41 @@ class TestExecuteWithRetryTimeout:
 
         # Should NOT retry - fails on first attempt
         assert call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_non_retryable_exception_captures_batch_failure_when_enabled(self):
+        """Destination failures write a redacted batch artifact when enabled."""
+        storage = FakeStorageBackend()
+        dest = _make_mock_destination()
+        handler = DestinationHandler(
+            [dest],
+            processor=MagicMock(),
+            failure_capture=SyncFailureCapture(storage=storage),
+        )
+        ctx = _make_mock_sync_context()
+        ctx.execution_config = SyncConfig(failure_capture=FailureCaptureConfig(enabled=True))
+        entity = MagicMock()
+        entity.entity_id = "entity-1"
+        entity.airweave_system_metadata = MagicMock()
+
+        async def failing_operation():
+            raise ValueError("bad payload")
+
+        with pytest.raises(SyncFailureError, match="Destination failed"):
+            await handler._execute_with_retry(
+                operation=failing_operation,
+                operation_name="insert_MockDestination",
+                destination=dest,
+                sync_context=ctx,
+                entities=[entity],
+                max_retries=4,
+            )
+
+        files = await storage.list_files("raw/test-sync-id/failures/test-job-id")
+        assert len(files) == 1
+        artifact = await storage.read_json(files[0])
+        assert artifact["stage"] == "insert_MockDestination"
+        assert artifact["batch"]["entities"][0]["entity_id"] == "entity-1"
 
 
 class TestTimingLogs:

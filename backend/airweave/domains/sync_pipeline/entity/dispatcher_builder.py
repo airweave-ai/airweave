@@ -11,6 +11,7 @@ from airweave.domains.sync_pipeline.entity.handlers.arf import ArfHandler
 from airweave.domains.sync_pipeline.entity.handlers.destination import DestinationHandler
 from airweave.domains.sync_pipeline.entity.handlers.postgres import EntityPostgresHandler
 from airweave.domains.sync_pipeline.entity.handlers.protocol import EntityActionHandler
+from airweave.domains.sync_pipeline.failure_capture import SyncFailureCapture
 from airweave.domains.sync_pipeline.protocols import ChunkEmbedProcessorProtocol
 from airweave.platform.destinations._base import BaseDestination
 
@@ -23,11 +24,13 @@ class EntityDispatcherBuilder:
         processor: ChunkEmbedProcessorProtocol,
         entity_repo: EntityRepositoryProtocol,
         arf_service: Optional[ArfServiceProtocol] = None,
+        failure_capture: Optional[SyncFailureCapture] = None,
     ) -> None:
         """Initialize with processor and entity repository."""
         self._processor = processor
         self._entity_repo = entity_repo
         self._arf_service = arf_service
+        self._failure_capture = failure_capture
 
     def build(
         self,
@@ -90,7 +93,11 @@ class EntityDispatcherBuilder:
 
         if enabled:
             handlers.append(
-                DestinationHandler(destinations=destinations, processor=self._processor)
+                DestinationHandler(
+                    destinations=destinations,
+                    processor=self._processor,
+                    failure_capture=self._failure_capture,
+                )
             )
             if logger:
                 dest_names = [d.__class__.__name__ for d in destinations]
