@@ -45,7 +45,7 @@ class LLMModel(str, Enum):
     QWEN_3_5 = "qwen-3.5"
     QWEN_3_5_DEDICATED = "qwen-3.5-dedicated"
     ZAI_GLM_5_DEDICATED = "zai-glm-5-dedicated"
-    MINIMAX_M2_5 = "minimax-m2.5"
+    MINIMAX_M2_7 = "minimax-m2.7"
     MISTRAL_LARGE = "mistral-large"
     MISTRAL_SMALL = "mistral-small"
     MAGISTRAL_SMALL = "magistral-small"
@@ -197,10 +197,10 @@ MODEL_REGISTRY: dict[LLMProvider, dict[LLMModel, LLMModelSpec]] = {
             input_price_factor=0.6,
             output_price_factor=3.6,
         ),
-        # ── MiniMax M2.5 ──────────────────────────────────────────
-        LLMModel.MINIMAX_M2_5: LLMModelSpec(
-            api_model_name="MiniMaxAI/MiniMax-M2.5",
-            context_window=192_000,
+        # ── MiniMax M2.7 ──────────────────────────────────────────
+        LLMModel.MINIMAX_M2_7: LLMModelSpec(
+            api_model_name="MiniMaxAI/MiniMax-M2.7",
+            context_window=200_000,
             max_output_tokens=64_000,
             required_tokenizer_type=TokenizerType.TIKTOKEN,
             required_tokenizer_encoding=TokenizerEncoding.O200K_HARMONY,
