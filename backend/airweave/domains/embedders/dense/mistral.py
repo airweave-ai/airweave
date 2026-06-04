@@ -9,6 +9,7 @@ import asyncio
 
 from mistralai import Mistral
 
+from airweave.core.config import MISTRAL_DEFAULT_BASE_URL
 from airweave.domains.embedders.exceptions import (
     EmbedderAuthError,
     EmbedderConnectionError,
@@ -45,6 +46,7 @@ class MistralDenseEmbedder(DenseEmbedderProtocol):
         api_key: str,
         model: str,
         dimensions: int,
+        server_url: str | None = None,
     ) -> None:
         """Initialize the Mistral dense embedder.
 
@@ -52,10 +54,15 @@ class MistralDenseEmbedder(DenseEmbedderProtocol):
             api_key: Mistral API key.
             model: Model name (e.g. "mistral-embed").
             dimensions: Expected output dimensions (validated on response only).
+            server_url: Override the Mistral API base URL. Unset →
+                ``MISTRAL_DEFAULT_BASE_URL``.
         """
         self._model = model
         self._dimensions = dimensions
-        self._client = Mistral(api_key=api_key)
+        self._client = Mistral(
+            api_key=api_key,
+            server_url=server_url or MISTRAL_DEFAULT_BASE_URL,
+        )
         self._tokenizer = get_tokenizer(model)
         self._semaphore = asyncio.Semaphore(self._MAX_CONCURRENT_REQUESTS)
 

@@ -18,7 +18,7 @@ import aiofiles
 from httpx import HTTPStatusError
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
-from airweave.core.config import settings
+from airweave.core.config import MISTRAL_DEFAULT_BASE_URL, settings
 from airweave.core.logging import logger
 from airweave.domains.ocr.mistral.models import (
     FileChunk,
@@ -86,6 +86,7 @@ class MistralOcrClient:
 
             self._client = Mistral(
                 api_key=settings.MISTRAL_API_KEY,
+                server_url=settings.MISTRAL_BASE_URL or MISTRAL_DEFAULT_BASE_URL,
                 timeout_ms=120_000,  # 2 minutes per OCR call
             )
             self._initialized = True

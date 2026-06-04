@@ -18,6 +18,7 @@ def _make_settings(**overrides):
     defaults = dict(
         OPENAI_API_KEY="sk-test-openai",
         MISTRAL_API_KEY="test-mistral-key",
+        MISTRAL_BASE_URL=None,
         TEXT2VEC_INFERENCE_URL="http://localhost:9878",
     )
     defaults.update(overrides)

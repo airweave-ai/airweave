@@ -809,6 +809,7 @@ def _create_dense_embedder(
             api_key=settings.MISTRAL_API_KEY,
             model=spec.api_model_name,
             dimensions=EMBEDDING_DIMENSIONS,
+            server_url=settings.MISTRAL_BASE_URL,
         )
 
     if spec.embedder_class_ref is LocalDenseEmbedder:

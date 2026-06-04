@@ -15,13 +15,14 @@ Usage:
 """
 
 from airweave.core.config.enums import Environment, StorageBackendType
-from airweave.core.config.settings import Settings
+from airweave.core.config.settings import MISTRAL_DEFAULT_BASE_URL, Settings
 
 __all__ = [
     "Settings",
     "StorageBackendType",
     "Environment",
     "settings",
+    "MISTRAL_DEFAULT_BASE_URL",
 ]
 
 # Singleton settings instance

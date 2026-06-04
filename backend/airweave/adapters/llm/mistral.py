@@ -25,7 +25,7 @@ from airweave.adapters.llm.base import BaseLLM
 from airweave.adapters.llm.exceptions import LLMTransientError
 from airweave.adapters.llm.registry import LLMModelSpec
 from airweave.adapters.llm.tool_response import LLMResponse, LLMToolCall
-from airweave.core.config import settings
+from airweave.core.config import MISTRAL_DEFAULT_BASE_URL, settings
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -48,7 +48,10 @@ class MistralLLM(BaseLLM):
             )
 
         try:
-            self._client = Mistral(api_key=api_key)
+            self._client = Mistral(
+                api_key=api_key,
+                server_url=settings.MISTRAL_BASE_URL or MISTRAL_DEFAULT_BASE_URL,
+            )
         except Exception as e:
             raise RuntimeError(f"Failed to initialize Mistral client: {e}") from e
 

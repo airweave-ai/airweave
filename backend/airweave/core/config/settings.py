@@ -36,6 +36,9 @@ _BANNED_SUPERUSER_EMAILS: frozenset[str] = frozenset(
     }
 )
 
+# Fallback base URL used by every Mistral SDK client when MISTRAL_BASE_URL is unset.
+MISTRAL_DEFAULT_BASE_URL: str = "https://api.mistral.ai"
+
 
 class Settings(BaseSettings):
     """Pydantic settings class.
@@ -74,6 +77,8 @@ class Settings(BaseSettings):
         TEXT2VEC_INFERENCE_URL (str): The URL for text2vec-transformers inference service.
         OPENAI_API_KEY (Optional[str]): The OpenAI API key.
         MISTRAL_API_KEY (Optional[str]): The Mistral AI API key.
+        MISTRAL_BASE_URL (Optional[str]): Override base URL for all Mistral SDK
+            clients (embedder, OCR, LLM). Unset → ``MISTRAL_DEFAULT_BASE_URL``.
         EMBEDDING_DIMENSIONS (int): Embedding dimensions for the stack (provider, Vespa).
         FIRECRAWL_API_KEY (Optional[str]): The FireCrawl API key.
         TEMPORAL_HOST (str): The host of the Temporal server.
@@ -200,6 +205,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
     MISTRAL_API_KEY: Optional[str] = None
+    MISTRAL_BASE_URL: Optional[str] = None
     FIRECRAWL_API_KEY: Optional[str] = None
     GROQ_API_KEY: Optional[str] = None
     COHERE_API_KEY: Optional[str] = None
