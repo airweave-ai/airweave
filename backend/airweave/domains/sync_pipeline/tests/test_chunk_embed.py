@@ -6,6 +6,9 @@ import pytest
 
 from airweave.domains.converters.fakes.registry import FakeConverterRegistry
 from airweave.domains.embedders.exceptions import EmbedderProviderError
+from airweave.domains.storage.fakes.backend import FakeStorageBackend
+from airweave.domains.sync_pipeline.config.base import FailureCaptureConfig, SyncConfig
+from airweave.domains.sync_pipeline.failure_capture import SyncFailureCapture
 from airweave.domains.sync_pipeline.processors.chunk_embed import ChunkEmbedProcessor
 
 _TEXT_BUILDER_CLS = (
@@ -392,6 +395,60 @@ class TestChunkEmbedProcessor:
 
         with pytest.raises(EntityProcessingError, match="no textual_representation"):
             await processor._embed_entities([entity], mock_sync_context)
+
+    @pytest.mark.asyncio
+    async def test_nonretryable_dense_fallback_captures_failed_entity(
+        self, mock_dense_embedder, mock_sparse_embedder, mock_sync_context
+    ):
+        """Failed single-entity fallback writes a replay artifact when enabled."""
+        storage = FakeStorageBackend()
+        processor = ChunkEmbedProcessor(
+            converter_registry=FakeConverterRegistry(),
+            dense_embedder=mock_dense_embedder,
+            sparse_embedder=mock_sparse_embedder,
+            failure_capture=SyncFailureCapture(storage=storage),
+        )
+        mock_sync_context.execution_config = SyncConfig(
+            failure_capture=FailureCaptureConfig(enabled=True)
+        )
+        mock_sync_context.sync = MagicMock(id="sync-1")
+        mock_sync_context.sync_job = MagicMock(id="job-1")
+        mock_sync_context.collection = MagicMock(id="collection-1")
+        mock_sync_context.source_connection_id = "source-connection-1"
+        mock_sync_context.source_short_name = "gmail"
+        mock_sync_context.organization_id = "org-1"
+
+        ok_entity = MagicMock()
+        ok_entity.entity_id = "ok"
+        ok_entity.textual_representation = "ok text"
+        ok_entity.airweave_system_metadata = MagicMock()
+        ok_entity.model_dump.return_value = {"entity_id": "ok"}
+
+        bad_entity = MagicMock()
+        bad_entity.entity_id = "bad"
+        bad_entity.textual_representation = "bad text"
+        bad_entity.airweave_system_metadata = MagicMock()
+        bad_entity.model_dump.return_value = {"entity_id": "bad", "api_key": "secret"}
+
+        dense_result = MagicMock()
+        dense_result.vector = [0.1] * 3072
+        mock_dense_embedder.embed_many = AsyncMock(
+            side_effect=[
+                EmbedderProviderError("input too long", retryable=False),
+                [dense_result],
+                RuntimeError("provider rejected entity"),
+            ]
+        )
+        mock_sparse_embedder.embed_many = AsyncMock(return_value=[MagicMock()])
+
+        result = await processor._embed_entities([ok_entity, bad_entity], mock_sync_context)
+
+        assert result == [ok_entity]
+        files = await storage.list_files("raw/sync-1/failures/job-1")
+        assert len(files) == 1
+        artifact = await storage.read_json(files[0])
+        assert artifact["stage"] == "dense_embedding"
+        assert artifact["entity"]["fields"]["api_key"] == "[REDACTED]"
 
     @pytest.mark.asyncio
     async def test_handles_empty_chunks_from_chunker(

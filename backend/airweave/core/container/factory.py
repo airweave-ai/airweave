@@ -125,6 +125,7 @@ from airweave.domains.sources.service import SourceService
 from airweave.domains.sources.validation import SourceValidationService
 from airweave.domains.storage.sync_file_manager import SyncFileManager
 from airweave.domains.sync_pipeline.factory import SyncFactory
+from airweave.domains.sync_pipeline.failure_capture import SyncFailureCapture
 from airweave.domains.sync_pipeline.processors.chunk_embed import ChunkEmbedProcessor
 from airweave.domains.sync_pipeline.subscribers.progress_relay import SyncProgressRelay
 from airweave.domains.syncs.cursors.repository import SyncCursorRepository
@@ -356,16 +357,18 @@ def create_container(settings: Settings) -> Container:
     acl_membership_repo = AccessControlMembershipRepository()
     access_broker = AccessBroker(acl_repo=acl_membership_repo)
     converter_registry = ConverterRegistry(ocr_provider=ocr_provider)
-    chunk_embed_processor = ChunkEmbedProcessor(
-        converter_registry=converter_registry,
-        dense_embedder=dense_embedder,
-        sparse_embedder=sparse_embedder,
-    )
 
     # Storage domain
     # -----------------------------------------------------------------
     storage_backend = _create_storage_backend(settings)
     sync_file_manager = SyncFileManager(backend=storage_backend)
+    failure_capture = SyncFailureCapture(storage=storage_backend)
+    chunk_embed_processor = ChunkEmbedProcessor(
+        converter_registry=converter_registry,
+        dense_embedder=dense_embedder,
+        sparse_embedder=sparse_embedder,
+        failure_capture=failure_capture,
+    )
 
     # ARF domain service (raw entity capture / replay)
     # -----------------------------------------------------------------

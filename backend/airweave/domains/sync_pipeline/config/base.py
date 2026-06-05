@@ -49,6 +49,15 @@ class BehaviorConfig(BaseModel):
     skip_guardrails: bool = Field(False, description="Skip usage guardrails (entity count checks)")
 
 
+class FailureCaptureConfig(BaseModel):
+    """Controls sync failure artifact capture for replay/debugging."""
+
+    enabled: bool = Field(False, description="Store redacted failure artifacts for sync debugging")
+    capture_entity_snapshots: bool = Field(
+        True, description="Include redacted entity snapshots in failure artifacts"
+    )
+
+
 class SyncConfig(BaseSettings):
     """Sync configuration with automatic env var loading.
 
@@ -66,6 +75,7 @@ class SyncConfig(BaseSettings):
     handlers: HandlerConfig = Field(default_factory=HandlerConfig)
     cursor: CursorConfig = Field(default_factory=CursorConfig)
     behavior: BehaviorConfig = Field(default_factory=BehaviorConfig)
+    failure_capture: FailureCaptureConfig = Field(default_factory=FailureCaptureConfig)
 
     @model_validator(mode="after")
     def validate_config_logic(self):

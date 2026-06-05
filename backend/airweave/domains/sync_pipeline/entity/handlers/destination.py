@@ -18,6 +18,7 @@ from airweave.domains.sync_pipeline.entity.actions import (
 )
 from airweave.domains.sync_pipeline.entity.handlers.protocol import EntityActionHandler
 from airweave.domains.sync_pipeline.exceptions import SyncFailureError
+from airweave.domains.sync_pipeline.failure_capture import SyncFailureCapture
 from airweave.domains.sync_pipeline.protocols import ChunkEmbedProcessorProtocol
 from airweave.platform.destinations._base import BaseDestination
 
@@ -44,10 +45,12 @@ class DestinationHandler(EntityActionHandler):
         self,
         destinations: List[BaseDestination],
         processor: ChunkEmbedProcessorProtocol,
+        failure_capture: SyncFailureCapture | None = None,
     ) -> None:
         """Initialize with destination list and chunk/embed processor."""
         self._destinations = destinations
         self._processor = processor
+        self._failure_capture = failure_capture
 
     @property
     def name(self) -> str:
@@ -172,6 +175,7 @@ class DestinationHandler(EntityActionHandler):
                 operation_name=f"insert_{dest.__class__.__name__}",
                 destination=dest,
                 sync_context=sync_context,
+                entities=processed,
             )
 
     async def _do_delete_by_ids(
@@ -201,6 +205,7 @@ class DestinationHandler(EntityActionHandler):
         operation_name: str,
         destination: BaseDestination,
         sync_context: "SyncContext",
+        entities: List["BaseEntity"] | None = None,
         max_retries: int = 4,
     ) -> None:
         """Execute operation with exponential backoff retry for network issues."""
@@ -233,6 +238,13 @@ class DestinationHandler(EntityActionHandler):
                             exc_info=True,
                         )
                         return
+                    await self._capture_batch_failure(
+                        entities=entities or [],
+                        stage=operation_name,
+                        error=e,
+                        sync_context=sync_context,
+                        destination=destination,
+                    )
                     raise SyncFailureError(
                         f"Destination unavailable: {type(e).__name__}: {error_msg}"
                     ) from e
@@ -250,6 +262,48 @@ class DestinationHandler(EntityActionHandler):
                     f"[{self.name}] {operation_name} failed: {type(e).__name__}: {error_msg}",
                     exc_info=True,
                 )
+                await self._capture_batch_failure(
+                    entities=entities or [],
+                    stage=operation_name,
+                    error=e,
+                    sync_context=sync_context,
+                    destination=destination,
+                )
                 raise SyncFailureError(
                     f"Destination failed: {type(e).__name__}: {error_msg}"
                 ) from e
+
+    async def _capture_batch_failure(
+        self,
+        *,
+        entities: List["BaseEntity"],
+        stage: str,
+        error: Exception,
+        sync_context: "SyncContext",
+        destination: BaseDestination,
+    ) -> None:
+        """Best-effort capture for destination batch failures."""
+        config = getattr(sync_context, "execution_config", None)
+        capture_config = getattr(config, "failure_capture", None)
+        if not self._failure_capture or not capture_config or not capture_config.enabled:
+            return
+
+        try:
+            artifact_path = await self._failure_capture.capture_batch_failure(
+                entities=entities,
+                stage=stage,
+                error=error,
+                sync_context=sync_context,
+                extra={"destination": destination.__class__.__name__},
+            )
+            sync_context.logger.warning(
+                "[%s] Captured destination failure artifact at %s",
+                self.name,
+                artifact_path,
+            )
+        except Exception as capture_error:
+            sync_context.logger.warning(
+                "[%s] Failed to capture destination failure artifact: %s",
+                self.name,
+                capture_error,
+            )
