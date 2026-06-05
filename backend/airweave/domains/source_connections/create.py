@@ -2,6 +2,7 @@
 
 import hashlib
 import secrets
+from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID
 
@@ -28,7 +29,9 @@ from airweave.domains.source_connections.protocols import (
     SourceConnectionRepositoryProtocol,
 )
 from airweave.domains.sources.exceptions import SourceError, SourceNotFoundError
-from airweave.domains.sources.http_translation import http_exception_for_credential_validation
+from airweave.domains.sources.http_translation import (
+    http_exception_for_credential_validation,
+)
 from airweave.domains.sources.protocols import (
     SourceLifecycleServiceProtocol,
     SourceRegistryProtocol,
@@ -58,6 +61,15 @@ from airweave.schemas.source_connection import (
 def _default_redirect_url(readable_collection_id: str) -> str:
     """Return the default post-OAuth redirect URL for a collection."""
     return f"{settings.app_url}/collections/{readable_collection_id}"
+
+
+def _is_expired(expires_at: Optional[datetime]) -> bool:
+    """Return True when an OAuth token expiry is in the past."""
+    if expires_at is None:
+        return False
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    return expires_at < datetime.now(timezone.utc)
 
 
 class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
@@ -109,7 +121,10 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         auth_method = self._determine_auth_method(obj_in)
         self._validate_auth_compatibility(source_class, entry.short_name, auth_method)
 
-        if source_class.requires_byoc and auth_method == AuthenticationMethod.OAUTH_BROWSER:
+        if (
+            source_class.requires_byoc
+            and auth_method == AuthenticationMethod.OAUTH_BROWSER
+        ):
             raise HTTPException(
                 status_code=400,
                 detail=(
@@ -124,7 +139,10 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 AuthenticationMethod.OAUTH_BYOC,
             )
 
-        if auth_method in (AuthenticationMethod.OAUTH_BROWSER, AuthenticationMethod.OAUTH_BYOC):
+        if auth_method in (
+            AuthenticationMethod.OAUTH_BROWSER,
+            AuthenticationMethod.OAUTH_BYOC,
+        ):
             if obj_in.sync_immediately:
                 raise HTTPException(
                     status_code=400,
@@ -178,7 +196,9 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         source_conn = await self._sc_repo.get(db, id=id, ctx=ctx)
         if not source_conn:
             raise NotFoundException("Source connection not found")
-        if source_conn.is_authenticated and not await self._has_credential_error(db, source_conn):
+        if source_conn.is_authenticated and not await self._has_credential_error(
+            db, source_conn
+        ):
             raise HTTPException(
                 status_code=400,
                 detail="Connection is already authenticated",
@@ -303,13 +323,22 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         """Check if the last sync job for this connection has a credential error."""
         if not source_conn.sync_id:
             return False
-        job = await self._sync_job_repo.get_latest_by_sync_id(db, sync_id=source_conn.sync_id)
+        job = await self._sync_job_repo.get_latest_by_sync_id(
+            db, sync_id=source_conn.sync_id
+        )
         return job is not None and job.error_category is not None
 
     async def _create_with_direct_auth(
-        self, db: AsyncSession, *, obj_in: SourceConnectionCreate, entry, ctx: ApiContext
+        self,
+        db: AsyncSession,
+        *,
+        obj_in: SourceConnectionCreate,
+        entry,
+        ctx: ApiContext,
     ) -> SourceConnectionSchema:
-        if not obj_in.authentication or not isinstance(obj_in.authentication, DirectAuthentication):
+        if not obj_in.authentication or not isinstance(
+            obj_in.authentication, DirectAuthentication
+        ):
             raise HTTPException(
                 status_code=400, detail="Direct authentication requires credentials"
             )
@@ -348,12 +377,27 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         )
 
     async def _create_with_oauth_token(
-        self, db: AsyncSession, *, obj_in: SourceConnectionCreate, entry, ctx: ApiContext
+        self,
+        db: AsyncSession,
+        *,
+        obj_in: SourceConnectionCreate,
+        entry,
+        ctx: ApiContext,
     ) -> SourceConnectionSchema:
         if not obj_in.authentication or not isinstance(
             obj_in.authentication, OAuthTokenAuthentication
         ):
-            raise HTTPException(status_code=400, detail="OAuth token authentication requires token")
+            raise HTTPException(
+                status_code=400, detail="OAuth token authentication requires token"
+            )
+        if _is_expired(obj_in.authentication.expires_at):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "OAuth access token has already expired; "
+                    "refresh it before creating the connection"
+                ),
+            )
 
         validated_config = self._source_validation.validate_config(
             obj_in.short_name, obj_in.config, ctx
@@ -388,7 +432,12 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         )
 
     async def _create_with_auth_provider(
-        self, db: AsyncSession, *, obj_in: SourceConnectionCreate, entry, ctx: ApiContext
+        self,
+        db: AsyncSession,
+        *,
+        obj_in: SourceConnectionCreate,
+        entry,
+        ctx: ApiContext,
     ) -> SourceConnectionSchema:
         if not obj_in.authentication or not isinstance(
             obj_in.authentication, AuthProviderAuthentication
@@ -419,9 +468,11 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
 
         validated_auth_provider_config = None
         if obj_in.authentication.provider_config is not None:
-            validated_auth_provider_config = self._auth_provider_service.validate_provider_config(
-                auth_provider_conn.short_name,
-                obj_in.authentication.provider_config,
+            validated_auth_provider_config = (
+                self._auth_provider_service.validate_provider_config(
+                    auth_provider_conn.short_name,
+                    obj_in.authentication.provider_config,
+                )
             )
 
         validated_config = self._source_validation.validate_config(
@@ -431,7 +482,9 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         collection_schema: Optional[schemas.CollectionRecord] = None
 
         async with UnitOfWork(db) as uow:
-            collection = await self._get_collection(uow.session, obj_in.readable_collection_id, ctx)
+            collection = await self._get_collection(
+                uow.session, obj_in.readable_collection_id, ctx
+            )
             collection_schema = schemas.CollectionRecord.model_validate(
                 collection, from_attributes=True
             )
@@ -444,14 +497,18 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 uow=uow,
             )
             await uow.session.flush()
-            connection_schema = schemas.Connection.model_validate(connection, from_attributes=True)
+            connection_schema = schemas.Connection.model_validate(
+                connection, from_attributes=True
+            )
 
             has_schedule = obj_in.schedule is None or (
                 obj_in.schedule and obj_in.schedule.cron is not None
             )
             sync_result = None
             if bool(obj_in.sync_immediately) or has_schedule:
-                destination_ids = await self._sync_service.resolve_destination_ids(uow.session, ctx)
+                destination_ids = await self._sync_service.resolve_destination_ids(
+                    uow.session, ctx
+                )
                 sync_result = await self._sync_service.create(
                     uow.session,
                     name=obj_in.name or entry.name,
@@ -502,11 +559,18 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         return response
 
     async def _create_with_oauth_browser(
-        self, db: AsyncSession, *, obj_in: SourceConnectionCreate, entry, ctx: ApiContext
+        self,
+        db: AsyncSession,
+        *,
+        obj_in: SourceConnectionCreate,
+        entry,
+        ctx: ApiContext,
     ) -> SourceConnectionSchema:
         auth = obj_in.authentication
         if auth is not None and not isinstance(auth, OAuthBrowserAuthentication):
-            raise HTTPException(status_code=400, detail="OAuth browser authentication expected")
+            raise HTTPException(
+                status_code=400, detail="OAuth browser authentication expected"
+            )
 
         oauth_auth = auth if auth is not None else OAuthBrowserAuthentication()
         validated_config = self._source_validation.validate_config(
@@ -537,7 +601,9 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         provider_auth_url = initiation_result.provider_auth_url
 
         async with UnitOfWork(db) as uow:
-            collection = await self._get_collection(uow.session, obj_in.readable_collection_id, ctx)
+            collection = await self._get_collection(
+                uow.session, obj_in.readable_collection_id, ctx
+            )
             source_conn = await self._sc_repo.create(
                 uow.session,
                 obj_in={
@@ -631,7 +697,9 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         connection_schema: Optional[schemas.Connection] = None
         collection_schema: Optional[schemas.CollectionRecord] = None
         async with UnitOfWork(db) as uow:
-            collection = await self._get_collection(uow.session, obj_in.readable_collection_id, ctx)
+            collection = await self._get_collection(
+                uow.session, obj_in.readable_collection_id, ctx
+            )
             collection_schema = schemas.CollectionRecord.model_validate(
                 collection, from_attributes=True
             )
@@ -642,7 +710,9 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 auth_payload=credential_payload,
                 auth_method=auth_method,
                 oauth_type=entry.oauth_type,
-                auth_config_name=entry.auth_config_ref.__name__ if entry.auth_config_ref else None,
+                auth_config_name=(
+                    entry.auth_config_ref.__name__ if entry.auth_config_ref else None
+                ),
                 ctx=ctx,
                 uow=uow,
             )
@@ -656,14 +726,18 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                 uow=uow,
             )
             await uow.session.flush()
-            connection_schema = schemas.Connection.model_validate(connection, from_attributes=True)
+            connection_schema = schemas.Connection.model_validate(
+                connection, from_attributes=True
+            )
 
             has_schedule = obj_in.schedule is None or (
                 obj_in.schedule and obj_in.schedule.cron is not None
             )
             sync_result = None
             if bool(obj_in.sync_immediately) or has_schedule:
-                destination_ids = await self._sync_service.resolve_destination_ids(uow.session, ctx)
+                destination_ids = await self._sync_service.resolve_destination_ids(
+                    uow.session, ctx
+                )
                 sync_result = await self._sync_service.create(
                     uow.session,
                     name=obj_in.name or entry.name,
@@ -760,9 +834,13 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
             integration_credential_id=credential_id,
             short_name=short_name,
         )
-        return await self._connection_repo.create(db, obj_in=connection_in, ctx=ctx, uow=uow)
+        return await self._connection_repo.create(
+            db, obj_in=connection_in, ctx=ctx, uow=uow
+        )
 
-    async def _get_collection(self, db: AsyncSession, readable_id: str, ctx: ApiContext):
+    async def _get_collection(
+        self, db: AsyncSession, readable_id: str, ctx: ApiContext
+    ):
         collection = await self._collection_repo.get_by_readable_id(
             db, readable_id=readable_id, ctx=ctx
         )
@@ -774,7 +852,9 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
         try:
             return self._source_registry.get(short_name)
         except KeyError as exc:
-            raise HTTPException(status_code=404, detail=f"Source '{short_name}' not found") from exc
+            raise HTTPException(
+                status_code=404, detail=f"Source '{short_name}' not found"
+            ) from exc
 
     @staticmethod
     def _determine_auth_method(obj_in: SourceConnectionCreate) -> AuthenticationMethod:
@@ -795,7 +875,9 @@ class SourceConnectionCreationService(SourceConnectionCreateServiceProtocol):
                     return AuthenticationMethod.OAUTH_BYOC
                 return AuthenticationMethod.OAUTH_BROWSER
             case _:
-                raise HTTPException(status_code=400, detail="Invalid authentication configuration")
+                raise HTTPException(
+                    status_code=400, detail="Invalid authentication configuration"
+                )
 
     @staticmethod
     def _validate_auth_compatibility(

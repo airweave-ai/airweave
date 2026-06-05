@@ -19,7 +19,9 @@ from airweave.domains.credentials.fakes.service import FakeIntegrationCredential
 from airweave.domains.oauth.fakes.flow_service import FakeOAuthFlowService
 from airweave.domains.oauth.types import OAuthBrowserInitiationResult
 from airweave.domains.source_connections.create import SourceConnectionCreationService
-from airweave.domains.source_connections.fakes.repository import FakeSourceConnectionRepository
+from airweave.domains.source_connections.fakes.repository import (
+    FakeSourceConnectionRepository,
+)
 from airweave.domains.source_connections.fakes.response import FakeResponseBuilder
 from airweave.domains.sources.exceptions import SourceValidationError
 from airweave.domains.sources.fakes.lifecycle import FakeSourceLifecycleService
@@ -42,7 +44,9 @@ NOW = datetime.now(timezone.utc)
 
 
 def _ctx() -> ApiContext:
-    org = Organization(id=str(uuid4()), name="Test Org", created_at=NOW, modified_at=NOW)
+    org = Organization(
+        id=str(uuid4()), name="Test Org", created_at=NOW, modified_at=NOW
+    )
     return ApiContext(
         request_id="test-req",
         organization=org,
@@ -252,7 +256,9 @@ async def test_create_rejects_missing_byoc_for_required_source():
 async def test_create_oauth2_init_session_contract(monkeypatch):
     entry = _entry(oauth_type="access_only")
     svc = _service(entry)
-    svc._source_validation.validate_config = MagicMock(return_value={"instance_url": "acme"})
+    svc._source_validation.validate_config = MagicMock(
+        return_value={"instance_url": "acme"}
+    )
     svc._extract_template_configs = MagicMock(return_value={"instance_url": "acme"})
     svc._collection_repo.seed_readable("col-1", MagicMock(readable_id="col-1"))
     svc._oauth_flow_service.seed_initiate_browser_flow_result(
@@ -265,9 +271,13 @@ async def test_create_oauth2_init_session_contract(monkeypatch):
         )
     )
 
-    shell_sc = MagicMock(id=uuid4(), connection_init_session_id=None, is_authenticated=False)
+    shell_sc = MagicMock(
+        id=uuid4(), connection_init_session_id=None, is_authenticated=False
+    )
     svc._sc_repo.create = AsyncMock(return_value=shell_sc)
-    svc._response_builder.build_response = AsyncMock(return_value=MagicMock(id=shell_sc.id))
+    svc._response_builder.build_response = AsyncMock(
+        return_value=MagicMock(id=shell_sc.id)
+    )
 
     from airweave.domains.source_connections import create as create_module
 
@@ -316,9 +326,13 @@ async def test_create_oauth1_init_session_contract(monkeypatch):
     svc = _service(entry)
     svc._source_validation.validate_config = MagicMock(return_value={})
     svc._collection_repo.seed_readable("col-1", MagicMock(readable_id="col-1"))
-    shell_sc = MagicMock(id=uuid4(), connection_init_session_id=None, is_authenticated=False)
+    shell_sc = MagicMock(
+        id=uuid4(), connection_init_session_id=None, is_authenticated=False
+    )
     svc._sc_repo.create = AsyncMock(return_value=shell_sc)
-    svc._response_builder.build_response = AsyncMock(return_value=MagicMock(id=shell_sc.id))
+    svc._response_builder.build_response = AsyncMock(
+        return_value=MagicMock(id=shell_sc.id)
+    )
     svc._oauth_flow_service.seed_initiate_browser_flow_result(
         OAuthBrowserInitiationResult(
             provider_auth_url="https://provider/oauth1-auth",
@@ -389,7 +403,9 @@ def test_determine_auth_method_rejects_unknown_auth_shape():
 
 def test_determine_auth_method_variants():
     assert (
-        SourceConnectionCreationService._determine_auth_method(SimpleNamespace(authentication=None))
+        SourceConnectionCreationService._determine_auth_method(
+            SimpleNamespace(authentication=None)
+        )
         == AuthenticationMethod.OAUTH_BROWSER
     )
     assert (
@@ -406,14 +422,18 @@ def test_determine_auth_method_variants():
     )
     assert (
         SourceConnectionCreationService._determine_auth_method(
-            SimpleNamespace(authentication=AuthProviderAuthentication(provider_readable_id="p1"))
+            SimpleNamespace(
+                authentication=AuthProviderAuthentication(provider_readable_id="p1")
+            )
         )
         == AuthenticationMethod.AUTH_PROVIDER
     )
     assert (
         SourceConnectionCreationService._determine_auth_method(
             SimpleNamespace(
-                authentication=OAuthBrowserAuthentication(client_id="c", client_secret="s")
+                authentication=OAuthBrowserAuthentication(
+                    client_id="c", client_secret="s"
+                )
             )
         )
         == AuthenticationMethod.OAUTH_BYOC
@@ -454,7 +474,9 @@ async def test_trigger_sync_workflow_returns_early_without_sync_job():
     svc = _service(_entry())
     svc._event_bus.publish = AsyncMock()
     svc._temporal_workflow_service.run_source_connection_workflow = AsyncMock()
-    sync_result = SimpleNamespace(sync_job=None, sync_id=uuid4(), sync=SimpleNamespace(id=uuid4()))
+    sync_result = SimpleNamespace(
+        sync_job=None, sync_id=uuid4(), sync=SimpleNamespace(id=uuid4())
+    )
 
     await svc._trigger_sync_workflow(
         connection=SimpleNamespace(short_name="github"),
@@ -493,7 +515,10 @@ def test_extract_template_configs_maps_validation_error_to_http_422():
 
 def test_extract_template_configs_returns_none_for_missing_config_ref():
     entry = SimpleNamespace(config_ref=None)
-    assert SourceConnectionCreationService._extract_template_configs(entry, {"a": 1}) is None
+    assert (
+        SourceConnectionCreationService._extract_template_configs(entry, {"a": 1})
+        is None
+    )
 
 
 def test_extract_template_configs_returns_none_when_template_fields_empty():
@@ -503,7 +528,10 @@ def test_extract_template_configs_returns_none_when_template_fields_empty():
             return []
 
     entry = SimpleNamespace(config_ref=_Config)
-    assert SourceConnectionCreationService._extract_template_configs(entry, {"a": 1}) is None
+    assert (
+        SourceConnectionCreationService._extract_template_configs(entry, {"a": 1})
+        is None
+    )
 
 
 def test_validate_auth_compatibility_raises_with_supported_methods():
@@ -541,7 +569,9 @@ async def test_create_with_oauth_token_requires_token_auth():
     svc = _service(_entry())
     obj_in = SourceConnectionCreate(short_name="github", readable_collection_id="col-1")
     with pytest.raises(HTTPException, match="requires token"):
-        await svc._create_with_oauth_token(AsyncMock(), obj_in=obj_in, entry=_entry(), ctx=_ctx())
+        await svc._create_with_oauth_token(
+            AsyncMock(), obj_in=obj_in, entry=_entry(), ctx=_ctx()
+        )
 
 
 async def test_create_with_oauth_token_builds_full_payload_and_delegates():
@@ -560,13 +590,40 @@ async def test_create_with_oauth_token_builds_full_payload_and_delegates():
             expires_at=expires,
         ),
     )
-    await svc._create_with_oauth_token(AsyncMock(), obj_in=obj_in, entry=_entry(), ctx=_ctx())
+    await svc._create_with_oauth_token(
+        AsyncMock(), obj_in=obj_in, entry=_entry(), ctx=_ctx()
+    )
 
     kwargs = svc._create_authenticated_connection.await_args.kwargs
     assert kwargs["credential_payload"]["access_token"] == "tok"
     assert "refresh_token" not in kwargs["credential_payload"]
     assert kwargs["credential_payload"]["expires_at"] == expires.isoformat()
     assert kwargs["auth_method"] == AuthenticationMethod.OAUTH_TOKEN
+
+
+async def test_create_with_oauth_token_rejects_expired_token_before_validation():
+    svc = _service(_entry())
+    svc._source_validation.validate_config = MagicMock(return_value={"cfg": "x"})
+    svc._source_lifecycle.validate = AsyncMock()
+
+    obj_in = SourceConnectionCreate(
+        short_name="github",
+        readable_collection_id="col-1",
+        authentication=OAuthTokenAuthentication(
+            access_token="tok",
+            refresh_token="rtok",
+            expires_at=datetime.now(timezone.utc) - timedelta(minutes=5),
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await svc._create_with_oauth_token(
+            AsyncMock(), obj_in=obj_in, entry=_entry(), ctx=_ctx()
+        )
+
+    assert exc_info.value.status_code == 400
+    assert "expired" in exc_info.value.detail
+    svc._source_lifecycle.validate.assert_not_awaited()
 
 
 async def test_create_with_oauth_token_maps_source_validation_error_to_400():
@@ -582,7 +639,9 @@ async def test_create_with_oauth_token_maps_source_validation_error_to_400():
         authentication=OAuthTokenAuthentication(access_token="invalid_token_12345"),
     )
     with pytest.raises(HTTPException) as exc_info:
-        await svc._create_with_oauth_token(AsyncMock(), obj_in=obj_in, entry=_entry(), ctx=_ctx())
+        await svc._create_with_oauth_token(
+            AsyncMock(), obj_in=obj_in, entry=_entry(), ctx=_ctx()
+        )
 
     assert exc_info.value.status_code == 400
     detail = str(exc_info.value.detail).lower()
@@ -594,7 +653,9 @@ async def test_create_with_auth_provider_requires_provider_auth():
     svc = _service(_entry())
     obj_in = SourceConnectionCreate(short_name="github", readable_collection_id="col-1")
     with pytest.raises(HTTPException, match="requires provider configuration"):
-        await svc._create_with_auth_provider(AsyncMock(), obj_in=obj_in, entry=_entry(), ctx=_ctx())
+        await svc._create_with_auth_provider(
+            AsyncMock(), obj_in=obj_in, entry=_entry(), ctx=_ctx()
+        )
 
 
 async def test_create_with_auth_provider_not_found():
@@ -606,7 +667,9 @@ async def test_create_with_auth_provider_not_found():
         authentication=AuthProviderAuthentication(provider_readable_id="missing"),
     )
     with pytest.raises(NotFoundException):
-        await svc._create_with_auth_provider(AsyncMock(), obj_in=obj_in, entry=_entry(), ctx=_ctx())
+        await svc._create_with_auth_provider(
+            AsyncMock(), obj_in=obj_in, entry=_entry(), ctx=_ctx()
+        )
 
 
 async def test_create_with_auth_provider_rejects_unsupported_provider():
@@ -620,7 +683,9 @@ async def test_create_with_auth_provider_rejects_unsupported_provider():
         authentication=AuthProviderAuthentication(provider_readable_id="provider-1"),
     )
     with pytest.raises(HTTPException, match="does not support"):
-        await svc._create_with_auth_provider(AsyncMock(), obj_in=obj_in, entry=_entry(), ctx=_ctx())
+        await svc._create_with_auth_provider(
+            AsyncMock(), obj_in=obj_in, entry=_entry(), ctx=_ctx()
+        )
 
 
 async def test_create_with_oauth_browser_rejects_non_oauth_browser_auth():
@@ -631,13 +696,20 @@ async def test_create_with_oauth_browser_rejects_non_oauth_browser_auth():
         authentication=DirectAuthentication(credentials={"k": "v"}),
     )
     with pytest.raises(HTTPException, match="OAuth browser authentication expected"):
-        await svc._create_with_oauth_browser(AsyncMock(), obj_in=obj_in, entry=_entry(), ctx=_ctx())
+        await svc._create_with_oauth_browser(
+            AsyncMock(), obj_in=obj_in, entry=_entry(), ctx=_ctx()
+        )
 
 
 @pytest.mark.parametrize(
     "oauth_type,error,status_code,detail_match",
     [
-        ("oauth1", HTTPException(status_code=400, detail="Source 'github' is not OAuth1"), 400, "is not OAuth1"),
+        (
+            "oauth1",
+            HTTPException(status_code=400, detail="Source 'github' is not OAuth1"),
+            400,
+            "is not OAuth1",
+        ),
         (
             "access_only",
             HTTPException(status_code=400, detail="Source 'github' is not OAuth2"),
@@ -665,7 +737,9 @@ async def test_create_with_oauth_browser_propagates_initiation_errors(
     svc._oauth_flow_service.seed_initiate_browser_flow_error(error)
     obj_in = SourceConnectionCreate(short_name="github", readable_collection_id="col-1")
     with pytest.raises(HTTPException, match=detail_match) as exc_info:
-        await svc._create_with_oauth_browser(AsyncMock(), obj_in=obj_in, entry=entry, ctx=_ctx())
+        await svc._create_with_oauth_browser(
+            AsyncMock(), obj_in=obj_in, entry=entry, ctx=_ctx()
+        )
     assert exc_info.value.status_code == status_code
 
 
@@ -683,21 +757,31 @@ async def test_create_with_oauth_browser_rejects_missing_collection():
             additional_overrides={"code_verifier": "verifier-123"},
         )
     )
-    obj_in = SourceConnectionCreate(short_name="github", readable_collection_id="missing-col")
+    obj_in = SourceConnectionCreate(
+        short_name="github", readable_collection_id="missing-col"
+    )
     with pytest.raises(NotFoundException, match="Collection not found"):
-        await svc._create_with_oauth_browser(AsyncMock(), obj_in=obj_in, entry=entry, ctx=_ctx())
+        await svc._create_with_oauth_browser(
+            AsyncMock(), obj_in=obj_in, entry=entry, ctx=_ctx()
+        )
 
 
 async def test_create_with_direct_auth_requires_direct_auth():
     svc = _service(_entry())
     obj_in = SourceConnectionCreate(short_name="github", readable_collection_id="col-1")
-    with pytest.raises(HTTPException, match="Direct authentication requires credentials"):
-        await svc._create_with_direct_auth(AsyncMock(), obj_in=obj_in, entry=_entry(), ctx=_ctx())
+    with pytest.raises(
+        HTTPException, match="Direct authentication requires credentials"
+    ):
+        await svc._create_with_direct_auth(
+            AsyncMock(), obj_in=obj_in, entry=_entry(), ctx=_ctx()
+        )
 
 
 async def test_create_with_direct_auth_delegates_to_authenticated_connection():
     svc = _service(_entry())
-    svc._source_validation.validate_auth_schema = MagicMock(return_value=SimpleNamespace(model_dump=lambda: {"k": "v"}))
+    svc._source_validation.validate_auth_schema = MagicMock(
+        return_value=SimpleNamespace(model_dump=lambda: {"k": "v"})
+    )
     svc._source_validation.validate_config = MagicMock(return_value={"cfg": "x"})
     svc._source_lifecycle.validate = AsyncMock()
     expected = MagicMock(id=uuid4())
@@ -708,7 +792,9 @@ async def test_create_with_direct_auth_delegates_to_authenticated_connection():
         readable_collection_id="col-1",
         authentication=DirectAuthentication(credentials={"k": "v"}),
     )
-    result = await svc._create_with_direct_auth(AsyncMock(), obj_in=obj_in, entry=_entry(), ctx=_ctx())
+    result = await svc._create_with_direct_auth(
+        AsyncMock(), obj_in=obj_in, entry=_entry(), ctx=_ctx()
+    )
     assert result is expected
 
 
@@ -716,7 +802,11 @@ async def test_create_redirect_session_returns_created_id():
     svc = _service(_entry())
     redirect_id = uuid4()
     svc._oauth_flow_service.create_proxy_url = AsyncMock(
-        return_value=("https://api.example.com/source-connections/authorize/abcd1234", NOW, redirect_id)
+        return_value=(
+            "https://api.example.com/source-connections/authorize/abcd1234",
+            NOW,
+            redirect_id,
+        )
     )
     result = await svc._create_redirect_session(
         AsyncMock(),
@@ -728,12 +818,16 @@ async def test_create_redirect_session_returns_created_id():
 
 
 async def test_create_with_oauth_browser_rejects_partial_custom_credentials():
-    with pytest.raises(ValidationError, match="requires both client_id and client_secret"):
+    with pytest.raises(
+        ValidationError, match="requires both client_id and client_secret"
+    ):
         OAuthBrowserAuthentication(client_id="only-id")
 
 
 async def test_create_with_oauth_browser_rejects_empty_client_secret():
-    with pytest.raises(ValidationError, match="requires both client_id and client_secret"):
+    with pytest.raises(
+        ValidationError, match="requires both client_id and client_secret"
+    ):
         OAuthBrowserAuthentication(client_id="id", client_secret="")
 
 
@@ -751,7 +845,9 @@ async def test_create_with_oauth_browser_sets_platform_default_overrides(monkeyp
         )
     )
     svc._sc_repo.create = AsyncMock(
-        return_value=MagicMock(id=uuid4(), connection_init_session_id=None, is_authenticated=False)
+        return_value=MagicMock(
+            id=uuid4(), connection_init_session_id=None, is_authenticated=False
+        )
     )
     svc._response_builder.build_response = AsyncMock(return_value=MagicMock(id=uuid4()))
 
@@ -803,7 +899,9 @@ async def test_create_with_oauth_browser_sets_byoc_nested_for_oauth1(monkeypatch
         )
     )
     svc._sc_repo.create = AsyncMock(
-        return_value=MagicMock(id=uuid4(), connection_init_session_id=None, is_authenticated=False)
+        return_value=MagicMock(
+            id=uuid4(), connection_init_session_id=None, is_authenticated=False
+        )
     )
     svc._response_builder.build_response = AsyncMock(return_value=MagicMock(id=uuid4()))
 
@@ -831,14 +929,19 @@ async def test_create_with_oauth_browser_sets_byoc_nested_for_oauth1(monkeypatch
     obj_in = SourceConnectionCreate(
         short_name="github",
         readable_collection_id="col-1",
-        authentication=OAuthBrowserAuthentication(consumer_key="ck", consumer_secret="cs"),
+        authentication=OAuthBrowserAuthentication(
+            consumer_key="ck", consumer_secret="cs"
+        ),
     )
-    await svc._create_with_oauth_browser(db, obj_in=obj_in, entry=_entry(oauth_type="oauth1"), ctx=_ctx())
+    await svc._create_with_oauth_browser(
+        db, obj_in=obj_in, entry=_entry(oauth_type="oauth1"), ctx=_ctx()
+    )
 
     kwargs = svc._oauth_flow_service._last_create_init_session_kwargs
     assert kwargs["oauth_client_mode"] == "byoc_nested"
     assert kwargs["client_id"] == "ck"
     assert kwargs["client_secret"] == "cs"
+
 
 async def test_trigger_sync_workflow_publishes_event_before_workflow():
     svc = _service(_entry())
@@ -1065,7 +1168,10 @@ async def test_reinitiate_oauth_preserves_byoc_credentials(monkeypatch):
     svc._sc_repo.seed(sc_id, sc)
 
     # Seed old init session with BYOC credentials
-    from airweave.models.connection_init_session import ConnectionInitSession, ConnectionInitStatus
+    from airweave.models.connection_init_session import (
+        ConnectionInitSession,
+        ConnectionInitStatus,
+    )
 
     old_init = MagicMock(spec=ConnectionInitSession)
     old_init.status = ConnectionInitStatus.PENDING
