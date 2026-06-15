@@ -175,6 +175,30 @@ class InvalidStateError(Exception):
         super().__init__(self.message)
 
 
+class ReauthenticationRequiredException(AirweaveException):
+    """Raised when a sensitive operation requires a more recent interactive login.
+
+    The max_age field tells the frontend the required recency window
+    so it can pass it to Auth0's max_age authorization parameter.
+    """
+
+    def __init__(self, max_age: int, message: Optional[str] = None):
+        """Create a new ReauthenticationRequiredException.
+
+        Args:
+            max_age: Required recency window in seconds.
+            message: Custom error message.
+        """
+        if message is None:
+            message = (
+                "This operation requires recent authentication. "
+                f"Please re-authenticate (max_age={max_age}s)."
+            )
+        self.max_age = max_age
+        self.message = message
+        super().__init__(self.message)
+
+
 class RateLimitExceededException(AirweaveException):
     """Exception raised when API rate limit is exceeded."""
 

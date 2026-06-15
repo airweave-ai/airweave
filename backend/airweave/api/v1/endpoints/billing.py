@@ -15,8 +15,8 @@ from airweave import schemas
 from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
-from airweave.domains.organizations import logic
 from airweave.api.router import TrailingSlashRouter
+from airweave.core.config import settings
 from airweave.core.exceptions import PermissionException
 from airweave.core.logging import logger
 from airweave.domains.billing.exceptions import (
@@ -25,6 +25,7 @@ from airweave.domains.billing.exceptions import (
     BillingStateError,
 )
 from airweave.domains.billing.protocols import BillingServiceProtocol, BillingWebhookProtocol
+from airweave.domains.organizations import logic
 
 router = TrailingSlashRouter()
 
@@ -145,7 +146,9 @@ async def get_subscription(
 async def update_subscription_plan(
     request: schemas.UpdatePlanRequest,
     db: AsyncSession = Depends(deps.get_db),
-    ctx: ApiContext = deps.require_org_role(logic.can_manage_billing),
+    ctx: ApiContext = deps.require_org_role(
+        logic.can_manage_billing, recent_auth_seconds=settings.REAUTH_MAX_AGE_SECONDS
+    ),
     billing: BillingServiceProtocol = Inject(BillingServiceProtocol),
 ) -> schemas.MessageResponse:
     """Update subscription to a different plan.
@@ -175,7 +178,9 @@ async def update_subscription_plan(
 @router.post("/cancel", response_model=schemas.MessageResponse)
 async def cancel_subscription(
     db: AsyncSession = Depends(deps.get_db),
-    ctx: ApiContext = deps.require_org_role(logic.can_manage_billing),
+    ctx: ApiContext = deps.require_org_role(
+        logic.can_manage_billing, recent_auth_seconds=settings.REAUTH_MAX_AGE_SECONDS
+    ),
     billing: BillingServiceProtocol = Inject(BillingServiceProtocol),
 ) -> schemas.MessageResponse:
     """Cancel the current subscription.
@@ -199,7 +204,9 @@ async def cancel_subscription(
 @router.post("/reactivate", response_model=schemas.MessageResponse)
 async def reactivate_subscription(
     db: AsyncSession = Depends(deps.get_db),
-    ctx: ApiContext = deps.require_org_role(logic.can_manage_billing),
+    ctx: ApiContext = deps.require_org_role(
+        logic.can_manage_billing, recent_auth_seconds=settings.REAUTH_MAX_AGE_SECONDS
+    ),
     billing: BillingServiceProtocol = Inject(BillingServiceProtocol),
 ) -> schemas.MessageResponse:
     """Reactivate a subscription that's set to cancel.
@@ -223,7 +230,9 @@ async def reactivate_subscription(
 @router.post("/cancel-plan-change", response_model=schemas.MessageResponse)
 async def cancel_pending_plan_change(
     db: AsyncSession = Depends(deps.get_db),
-    ctx: ApiContext = deps.require_org_role(logic.can_manage_billing),
+    ctx: ApiContext = deps.require_org_role(
+        logic.can_manage_billing, recent_auth_seconds=settings.REAUTH_MAX_AGE_SECONDS
+    ),
     billing: BillingServiceProtocol = Inject(BillingServiceProtocol),
 ) -> schemas.MessageResponse:
     """Cancel a scheduled plan change (downgrade).

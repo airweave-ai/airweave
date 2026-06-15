@@ -28,6 +28,7 @@ from airweave.api.middleware import (
     permission_exception_handler,
     rate_limit_exception_handler,
     rate_limit_headers_middleware,
+    reauth_required_exception_handler,
     request_body_size_middleware,
     request_timeout_middleware,
     validation_exception_handler,
@@ -42,6 +43,7 @@ from airweave.core.exceptions import (
     NotFoundException,
     PermissionException,
     RateLimitExceededException,
+    ReauthenticationRequiredException,
 )
 from airweave.core.logging import logger
 from airweave.db.init_db import init_db
@@ -138,6 +140,7 @@ app.exception_handler(NotFoundException)(not_found_exception_handler)
 app.exception_handler(RateLimitExceededException)(rate_limit_exception_handler)
 app.exception_handler(InvalidStateError)(invalid_state_exception_handler)
 app.exception_handler(InvalidInputError)(invalid_input_exception_handler)
+app.exception_handler(ReauthenticationRequiredException)(reauth_required_exception_handler)
 
 # Register custom Airweave exception handlers
 app.exception_handler(AirweaveException)(airweave_exception_handler)

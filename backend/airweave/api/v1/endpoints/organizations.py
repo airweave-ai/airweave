@@ -11,6 +11,7 @@ from airweave.api import deps
 from airweave.api.context import ApiContext
 from airweave.api.deps import Inject
 from airweave.api.router import TrailingSlashRouter
+from airweave.core.config import settings
 from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.logging import logger
 from airweave.core.protocols.identity import (
@@ -185,7 +186,7 @@ async def update_organization(
 async def delete_organization(
     organization_id: UUID,
     db: AsyncSession = Depends(deps.get_db),
-    ctx: ApiContext = Depends(deps.get_context),
+    ctx: ApiContext = deps.require_recent_auth(settings.REAUTH_MAX_AGE_SECONDS),
     org_service: OrganizationServiceProtocol = Inject(OrganizationServiceProtocol),
 ) -> schemas.OrganizationWithRole:
     """Delete an organization. Only owners can delete."""
@@ -283,7 +284,7 @@ async def invite_user_to_organization(
     organization_id: UUID,
     invitation_data: schemas.InvitationCreate,
     db: AsyncSession = Depends(deps.get_db),
-    ctx: ApiContext = Depends(deps.get_context),
+    ctx: ApiContext = deps.require_recent_auth(settings.REAUTH_MAX_AGE_SECONDS),
     org_service: OrganizationServiceProtocol = Inject(OrganizationServiceProtocol),
     usage_checker: UsageLimitCheckerProtocol = Inject(UsageLimitCheckerProtocol),
 ) -> schemas.InvitationResponse:
@@ -353,7 +354,7 @@ async def remove_pending_invitation(
     organization_id: UUID,
     invitation_id: str,
     db: AsyncSession = Depends(deps.get_db),
-    ctx: ApiContext = Depends(deps.get_context),
+    ctx: ApiContext = deps.require_recent_auth(settings.REAUTH_MAX_AGE_SECONDS),
     org_service: OrganizationServiceProtocol = Inject(OrganizationServiceProtocol),
 ) -> dict:
     """Remove a pending invitation."""
@@ -410,7 +411,7 @@ async def remove_member_from_organization(
     organization_id: UUID,
     user_id: UUID,
     db: AsyncSession = Depends(deps.get_db),
-    ctx: ApiContext = Depends(deps.get_context),
+    ctx: ApiContext = deps.require_recent_auth(settings.REAUTH_MAX_AGE_SECONDS),
     org_service: OrganizationServiceProtocol = Inject(OrganizationServiceProtocol),
 ) -> dict:
     """Remove a member from organization."""
@@ -443,7 +444,7 @@ async def change_member_role(
     user_id: UUID,
     role: str = Body(..., embed=True),
     db: AsyncSession = Depends(deps.get_db),
-    ctx: ApiContext = Depends(deps.get_context),
+    ctx: ApiContext = deps.require_recent_auth(settings.REAUTH_MAX_AGE_SECONDS),
     org_service: OrganizationServiceProtocol = Inject(OrganizationServiceProtocol),
 ) -> dict:
     """Change a member's role in an organization (Auth0 first, then DB)."""
