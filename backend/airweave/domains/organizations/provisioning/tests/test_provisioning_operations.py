@@ -14,6 +14,7 @@ from uuid import uuid4
 
 import pytest
 
+from airweave import schemas
 from airweave.adapters.identity.fake import FakeIdentityProvider
 from airweave.core.protocols.identity import IdentityProviderError
 from airweave.domains.organizations.fakes.repository import (
@@ -28,14 +29,17 @@ from airweave.domains.users.fakes.repository import FakeUserRepository
 # ---------------------------------------------------------------------------
 
 
-class _UserStub:
-    """Lightweight stand-in for models.User."""
-
-    def __init__(self, *, user_id=None, email="user@test.com", auth0_id="auth0|u1"):
-        self.id = user_id or uuid4()
-        self.email = email
-        self.auth0_id = auth0_id
-        self.full_name = "Test User"
+def _make_user_schema(
+    *, user_id=None, email="user@test.com", auth0_id="auth0|u1"
+) -> schemas.User:
+    """Build a Pydantic User schema for testing."""
+    return schemas.User(
+        id=user_id or uuid4(),
+        email=email,
+        auth0_id=auth0_id,
+        full_name="Test User",
+        user_organizations=[],
+    )
 
 
 class _OrgModelStub:
@@ -124,7 +128,7 @@ async def test_provision_new_user_dispatch(case: ProvisionCase):
         identity.seed_user_organizations("auth0|new123", case.auth0_orgs)
 
     ops = _make_ops(identity=identity)
-    sentinel = _UserStub()
+    sentinel = _make_user_schema()
 
     with patch.object(ops, case.expect_method, new_callable=AsyncMock, return_value=sentinel) as m:
         # Patch unused methods to ensure they're NOT called
@@ -166,7 +170,7 @@ class TestSyncUserOrganizations:
     async def test_no_identity_orgs_returns_user_unchanged(self):
         identity = FakeIdentityProvider()
         ops = _make_ops(identity=identity)
-        user = _UserStub()
+        user = _make_user_schema()
 
         db = AsyncMock()
         result = await ops.sync_user_organizations(db, user)
@@ -177,7 +181,7 @@ class TestSyncUserOrganizations:
         identity = FakeIdentityProvider()
         identity.fail_with = IdentityProviderError("down")
         ops = _make_ops(identity=identity)
-        user = _UserStub()
+        user = _make_user_schema()
 
         db = AsyncMock()
         result = await ops.sync_user_organizations(db, user)
@@ -199,16 +203,14 @@ class TestSyncUserOrganizations:
             user_org_repo=user_org_repo,
             user_repo=user_repo,
         )
-        user = _UserStub()
+        user = _make_user_schema()
 
         db = AsyncMock()
         await ops.sync_user_organizations(db, user)
 
-        # Verify org was created via repo
         identity_calls = [c for c in org_repo._calls if c[0] == "create_from_identity"]
         assert len(identity_calls) == 1
 
-        # Verify membership was created
         create_calls = [c for c in user_org_repo._calls if c[0] == "create"]
         assert len(create_calls) == 1
 
@@ -237,7 +239,7 @@ class TestSyncUserOrganizations:
             user_repo=user_repo,
         )
 
-        user = _UserStub(user_id=user_id)
+        user = _make_user_schema(user_id=user_id)
 
         db = AsyncMock()
         await ops.sync_user_organizations(db, user)
@@ -274,7 +276,7 @@ class TestSyncUserOrganizations:
             user_repo=user_repo,
         )
 
-        user = _UserStub(user_id=user_id)
+        user = _make_user_schema(user_id=user_id)
 
         db = AsyncMock()
         await ops.sync_user_organizations(db, user)
@@ -287,7 +289,6 @@ class TestSyncUserOrganizations:
         """When identity provider returns empty roles, new membership gets 'member'."""
         identity = FakeIdentityProvider()
         identity.seed_user_organizations("auth0|u1", [{"id": "org_remote", "name": "remote-org"}])
-        # No seed_member_roles → returns []
 
         org_repo = FakeOrganizationRepository()
         user_org_repo = FakeUserOrganizationRepository()
@@ -299,7 +300,7 @@ class TestSyncUserOrganizations:
             user_org_repo=user_org_repo,
             user_repo=user_repo,
         )
-        user = _UserStub()
+        user = _make_user_schema()
 
         db = AsyncMock()
         await ops.sync_user_organizations(db, user)
@@ -332,7 +333,7 @@ class TestSyncUserOrganizations:
             user_repo=user_repo,
         )
 
-        user = _UserStub(user_id=user_id)
+        user = _make_user_schema(user_id=user_id)
 
         db = AsyncMock()
         await ops.sync_user_organizations(db, user)

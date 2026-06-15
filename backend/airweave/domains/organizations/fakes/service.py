@@ -1,7 +1,6 @@
 """Fake organization service for testing."""
 
 from datetime import datetime
-from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -94,12 +93,18 @@ class FakeOrganizationService(OrganizationServiceProtocol):
 
     async def provision_new_user(
         self, db: AsyncSession, user_data: dict, *, create_org: bool = False
-    ) -> Any:
-        """Record and return None (tests needing real User should override)."""
+    ) -> schemas.User:
+        """Record and return a canned User schema."""
         self._calls.append(("provision_new_user",))
-        return None
+        return schemas.User(
+            id=uuid4(),
+            email=user_data.get("email", "fake@test.com"),
+            full_name=user_data.get("full_name", "Fake User"),
+            auth0_id=user_data.get("auth0_id"),
+            user_organizations=[],
+        )
 
-    async def sync_user_organizations(self, db: AsyncSession, user: User) -> User:
+    async def sync_user_organizations(self, db: AsyncSession, user: schemas.User) -> schemas.User:
         """Return user unchanged."""
         self._calls.append(("sync_user_organizations",))
         return user
