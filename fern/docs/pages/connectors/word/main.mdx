@@ -19,14 +19,8 @@ This connector enables AI agents and RAG systems to retrieve context from Word t
 Microsoft Word source connector integrates with the Microsoft Graph API.
 
 Synchronizes Word documents from Microsoft OneDrive and SharePoint.
-Documents are processed through Airweave's file handling pipeline which:
-- Downloads the .docx/.doc file
-- Converts to markdown for text extraction
-- Chunks content for vector search
-- Indexes for semantic search
-
-It provides comprehensive access to Word documents with proper token refresh
-and rate limiting.
+Documents are processed through Airweave's file handling pipeline which
+downloads, converts to markdown, chunks, and indexes for semantic search.
 
 <Card
   title="View Source Code"
