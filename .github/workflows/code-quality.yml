@@ -29,14 +29,14 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install Poetry
-        uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1.4.1
+        uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
         with:
           version: 2.3.2
           virtualenvs-create: true
           virtualenvs-in-project: true
       - name: Load cached venv
         id: cached-lint-deps
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ./backend/.venv
           key: lint-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
@@ -80,14 +80,14 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install Poetry
-        uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1.4.1
+        uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
         with:
           version: 2.3.2
           virtualenvs-create: true
           virtualenvs-in-project: true
       - name: Load cached venv
         id: cached-mypy-deps
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ./backend/.venv
           key: mypy-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
@@ -121,14 +121,14 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install Poetry
-        uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1.4.1
+        uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
         with:
           version: 2.3.2
           virtualenvs-create: true
           virtualenvs-in-project: true
       - name: Load cached venv
         id: cached-importlint-deps
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ./backend/.venv
           key: lint-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
