@@ -1,0 +1,52 @@
+name: "Creatio Connector Test"
+description: "E2E test of Creatio connector sync with all entity types"
+
+connector:
+  name: "creatio_test"
+  type: "creatio"
+  auth_mode: direct
+  auth_fields:
+    client_id: MONKE_CREATIO_CLIENT_ID
+    client_secret: MONKE_CREATIO_CLIENT_SECRET
+  config_fields:
+    instance_url: "${MONKE_CREATIO_INSTANCE_URL}"
+    openai_model: "gpt-4.1-mini"
+
+test_flow:
+  steps:
+    - cleanup
+    - create
+    - sync
+    - verify
+    - update
+    - sync
+    - verify
+    - partial_delete
+    - sync
+    - verify_partial_deletion
+    - verify_remaining_entities
+    - complete_delete
+    - sync
+    - verify_complete_deletion
+    - cleanup
+
+entity_count: 3
+
+deletion:
+  partial_delete_count: 1
+  verify_partial_deletion: true
+  verify_remaining_entities: true
+  verify_complete_deletion: true
+
+collection:
+  name_template: "monke-{connector_type}-test-{timestamp}"
+
+verification:
+  score_threshold: 0.1
+  max_retries: 5
+  retry_delay_seconds: 30
+
+# Environment variables required in monke/.env:
+#   MONKE_CREATIO_CLIENT_ID=your_client_id_here
+#   MONKE_CREATIO_CLIENT_SECRET=your_client_secret_here
+#   MONKE_CREATIO_INSTANCE_URL=your-instance.creatio.com
