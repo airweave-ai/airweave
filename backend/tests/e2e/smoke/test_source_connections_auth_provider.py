@@ -44,7 +44,9 @@ class TestAuthProviderAuthentication:
     ) -> Dict:
         """Poll the source connection until last_job.status is in allowed_statuses or timeout.
 
-        Fails fast if the job status becomes 'failed'. Returns the latest connection payload.
+        Fails fast if the job status becomes 'failed'. Skips if the failure is caused by
+        external auth-provider credentials being revoked (an external-state flake, not a
+        product regression). Returns the latest connection payload.
         """
         if allowed_statuses is None:
             allowed_statuses = {"running", "completed"}
@@ -62,8 +64,14 @@ class TestAuthProviderAuthentication:
             last_job = sync.get("last_job") or {}
             status = (last_job.get("status") or "").lower()
 
-            # If there is a status and it's failed, fail immediately
+            # If there is a status and it's failed, decide between skip and fail.
+            # External provider credentials going stale shouldn't block our PRs.
             if status == "failed":
+                error_category = (last_job.get("error_category") or "").lower()
+                if error_category == "auth_provider_credentials_invalid":
+                    pytest.skip(
+                        f"External auth provider credentials revoked/expired: {last_job}"
+                    )
                 assert False, f"Sync job failed: {last_job}"
 
             # If status is one of the allowed ones, we're done
@@ -150,8 +158,19 @@ class TestAuthProviderAuthentication:
         assert connection["auth"]["authenticated"] == True
         assert connection["auth"]["provider_id"] == composio_auth_provider["readable_id"]
         assert connection["status"] == "active"
-        # Initial state can be pending/created/running depending on timing
-        assert connection["sync"]["last_job"]["status"].lower() in {
+        # Initial state can be pending/created/running depending on timing.
+        # If the upstream Composio→Todoist token has been revoked, the job can race
+        # to a 'failed' state before we read it — skip rather than fail in that case.
+        initial_job = connection["sync"]["last_job"]
+        initial_status = initial_job["status"].lower()
+        if initial_status == "failed" and (
+            (initial_job.get("error_category") or "").lower()
+            == "auth_provider_credentials_invalid"
+        ):
+            pytest.skip(
+                f"External auth provider credentials revoked/expired: {initial_job}"
+            )
+        assert initial_status in {
             "pending",
             "created",
             "running",
