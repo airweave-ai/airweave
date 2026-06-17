@@ -37,11 +37,11 @@ def _mock_client(get_return=None, get_side_effect=None):
     """Create a mock httpx.Client context manager."""
     client = MagicMock()
     if get_side_effect:
-        client.get.side_effect = get_side_effect
+        client.post.side_effect = get_side_effect
     else:
         resp = MagicMock()
         resp.raise_for_status = MagicMock()
-        client.get.return_value = get_return or resp
+        client.post.return_value = get_return or resp
     client.__enter__ = MagicMock(return_value=client)
     client.__exit__ = MagicMock(return_value=False)
     return client
@@ -62,7 +62,7 @@ class TestValidateLocalReachability:
     @patch("airweave.domains.embedders.config.settings")
     @patch("airweave.domains.embedders.config.httpx")
     def test_passes_when_service_reachable(self, mock_httpx, mock_settings):
-        """Passes when the health endpoint returns 200."""
+        """Passes when the vectors probe endpoint returns 200."""
         mock_settings.TEXT2VEC_INFERENCE_URL = "http://localhost:9878"
         mock_httpx.Timeout = httpx.Timeout
         client = _mock_client()
@@ -71,7 +71,10 @@ class TestValidateLocalReachability:
         entry = _make_entry(LocalDenseEmbedder)
         _validate_local_reachability(entry)
 
-        client.get.assert_called_once_with("http://localhost:9878/health")
+        client.post.assert_called_once_with(
+            "http://localhost:9878/vectors",
+            json={"text": "airweave-local-embedder-probe"},
+        )
 
     @patch("airweave.domains.embedders.config.settings")
     @patch("airweave.domains.embedders.config.httpx")
