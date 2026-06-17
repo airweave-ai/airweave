@@ -14,6 +14,7 @@ Reference:
   https://learn.microsoft.com/en-us/graph/api/resources/chatmessage
 """
 
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -21,6 +22,19 @@ from pydantic import computed_field
 
 from airweave.platform.entities._airweave_field import AirweaveField
 from airweave.platform.entities._base import BaseEntity, Breadcrumb
+
+# Matches non-printable ASCII control characters, excluding the common whitespace
+# characters \t (\x09), \n (\x0a), and \r (\x0d) which are safe for text fields.
+# This prevents Vespa and other strict destinations from rejecting documents that
+# contain characters such as ESC (\x1b) pasted from terminal output or rich text.
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def _sanitize_text(value: Optional[str]) -> Optional[str]:
+    """Remove non-printable ASCII control characters from a string."""
+    if value is None:
+        return None
+    return _CONTROL_CHAR_RE.sub("", value)
 
 
 def _parse_dt(value: Optional[str]) -> Optional[datetime]:
@@ -374,7 +388,7 @@ class TeamsMessageEntity(BaseEntity):
         message_id = data["id"]
         from_info = data.get("from", {})
         body = data.get("body", {})
-        body_content = body.get("content", "")
+        body_content = _sanitize_text(body.get("content", ""))
 
         subject = data.get("subject")
         if subject:
