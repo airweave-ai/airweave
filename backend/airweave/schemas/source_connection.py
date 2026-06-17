@@ -6,7 +6,7 @@ This module provides a clean schema hierarchy for source connections:
 - Builder classes with type-safe construction and validation
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, Optional, Union
 from uuid import UUID
@@ -80,6 +80,30 @@ class OAuthTokenAuthentication(BaseModel):
     access_token: str = Field(..., description="OAuth access token")
     refresh_token: Optional[str] = Field(None, description="OAuth refresh token")
     expires_at: Optional[datetime] = Field(None, description="Token expiry time")
+    expires_in: Optional[int] = Field(
+        None,
+        description=(
+            "Token lifetime in seconds (standard OAuth response field). "
+            "Converted to expires_at automatically; ignored when expires_at is also provided."
+        ),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_expires_in_to_expires_at(cls, values: Any) -> Any:
+        """Convert expires_in (seconds) to expires_at when expires_at is absent.
+
+        OAuth providers return expires_in per RFC 6749 §5.1. This validator
+        accepts that standard field and derives the absolute expiry timestamp,
+        so callers never have to compute it themselves.
+        """
+        if not isinstance(values, dict):
+            return values
+        if values.get("expires_in") is not None and values.get("expires_at") is None:
+            values["expires_at"] = datetime.now(timezone.utc) + timedelta(
+                seconds=values["expires_in"]
+            )
+        return values
 
     @field_validator("access_token")
     @classmethod
