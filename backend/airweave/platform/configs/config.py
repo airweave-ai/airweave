@@ -332,6 +332,17 @@ class GoogleDocsConfig(SourceConfig):
 class GoogleDriveConfig(SourceConfig):
     """Google Drive configuration schema."""
 
+    drive_id: Optional[str] = Field(
+        default=None,
+        title="Shared Drive ID",
+        description=(
+            "Restrict sync to a single shared drive. "
+            "Leave empty to sync all shared drives and My Drive. "
+            "Find the ID in the drive URL after /folders/: "
+            "drive.google.com/drive/folders/{drive_id}"
+        ),
+    )
+
     include_patterns: list[str] = Field(
         default=[],
         title="Include Patterns",
