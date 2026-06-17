@@ -17,6 +17,7 @@ from airweave.core.shared_models import (
     SourceConnectionErrorCategory,
     SourceConnectionStatus,
     SyncJobStatus,
+    SyncStatus,
 )
 
 
@@ -436,6 +437,7 @@ class SourceConnectionListItem(BaseModel):
     is_active: bool = Field(True, exclude=True)
     last_job_status: Optional[str] = Field(None, exclude=True)
     last_job_error_category: Optional[str] = Field(None, exclude=True)
+    sync_status: Optional[SyncStatus] = Field(None, exclude=True)
 
     model_config = {
         "json_schema_extra": {
@@ -485,13 +487,13 @@ class SourceConnectionListItem(BaseModel):
         if not self.is_authenticated:
             return SourceConnectionStatus.PENDING_AUTH
 
-        # Check if manually disabled
+        if self.sync_status == SyncStatus.PAUSED:
+            return SourceConnectionStatus.PAUSED
+
         if not self.is_active:
             return SourceConnectionStatus.INACTIVE
 
-        # Check last job status if provided
         if self.last_job_status:
-            # Handle both string and enum values
             job_status = (
                 self.last_job_status
                 if isinstance(self.last_job_status, str)
@@ -893,19 +895,21 @@ def compute_status(
     source_conn: Any,
     last_job_status: Optional[SyncJobStatus] = None,
     error_category: Optional[SourceConnectionErrorCategory] = None,
+    sync_status: Optional[SyncStatus] = None,
 ) -> SourceConnectionStatus:
-    """DEPRECATED: Use SourceConnectionListItem computed field instead.
+    """Compute connection status from current state.
 
-    Compute connection status from current state.
+    Used by ResponseBuilder.build_response for the detail view.
     """
     if not source_conn.is_authenticated:
         return SourceConnectionStatus.PENDING_AUTH
 
-    # Check if manually disabled
+    if sync_status == SyncStatus.PAUSED:
+        return SourceConnectionStatus.PAUSED
+
     if hasattr(source_conn, "is_active") and not source_conn.is_active:
         return SourceConnectionStatus.INACTIVE
 
-    # Check last job status if provided
     if last_job_status:
         if last_job_status in (SyncJobStatus.RUNNING, SyncJobStatus.CANCELLING):
             return SourceConnectionStatus.SYNCING

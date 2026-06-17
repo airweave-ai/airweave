@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-from airweave.core.shared_models import SourceConnectionStatus, SyncJobStatus
+from airweave.core.shared_models import SourceConnectionStatus, SyncJobStatus, SyncStatus
 from airweave.schemas.source_connection import compute_status
 
 
@@ -50,6 +50,29 @@ def test_pending_auth_when_not_authenticated():
     """Not authenticated → PENDING_AUTH regardless of job status."""
     source_conn = SimpleNamespace(is_authenticated=False)
     status = compute_status(source_conn, SyncJobStatus.FAILED)
+    assert status == SourceConnectionStatus.PENDING_AUTH
+
+
+def test_paused_when_sync_paused():
+    """Authenticated + sync PAUSED → PAUSED."""
+    source_conn = SimpleNamespace(is_authenticated=True, is_active=True)
+    status = compute_status(source_conn, sync_status=SyncStatus.PAUSED)
+    assert status == SourceConnectionStatus.PAUSED
+
+
+def test_paused_overrides_job_status():
+    """Sync PAUSED takes precedence over last job status."""
+    source_conn = SimpleNamespace(is_authenticated=True, is_active=True)
+    status = compute_status(
+        source_conn, SyncJobStatus.RUNNING, sync_status=SyncStatus.PAUSED
+    )
+    assert status == SourceConnectionStatus.PAUSED
+
+
+def test_pending_auth_overrides_paused():
+    """PENDING_AUTH takes precedence over sync PAUSED."""
+    source_conn = SimpleNamespace(is_authenticated=False)
+    status = compute_status(source_conn, sync_status=SyncStatus.PAUSED)
     assert status == SourceConnectionStatus.PENDING_AUTH
 
 
@@ -104,3 +127,27 @@ def test_list_item_error_status_without_error_category():
         last_job_error_category=None,
     )
     assert item.status == SourceConnectionStatus.ERROR
+
+
+def test_list_item_paused_status():
+    """SourceConnectionListItem computed status returns PAUSED when sync is paused."""
+    from datetime import datetime, timezone
+
+    from airweave.schemas.source_connection import SourceConnectionListItem
+
+    now = datetime.now(timezone.utc)
+    item = SourceConnectionListItem(
+        id="550e8400-e29b-41d4-a716-446655440000",
+        name="Test",
+        short_name="github",
+        readable_collection_id="col-123",
+        created_at=now,
+        modified_at=now,
+        is_authenticated=True,
+        entity_count=0,
+        federated_search=False,
+        is_active=True,
+        last_job_status=None,
+        sync_status=SyncStatus.PAUSED,
+    )
+    assert item.status == SourceConnectionStatus.PAUSED

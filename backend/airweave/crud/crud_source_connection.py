@@ -1,6 +1,6 @@
 """Refactored CRUD operations for source connections with optimized queries."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 from uuid import UUID
 
 from sqlalchemy import and_, func, select
@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from airweave.core.context import BaseContext
-from airweave.core.shared_models import SourceConnectionStatus, SyncJobStatus
+from airweave.core.shared_models import SourceConnectionStatus, SyncJobStatus, SyncStatus
 from airweave.models.connection import Connection
 from airweave.models.source_connection import SourceConnection
 from airweave.models.sync import Sync
@@ -98,6 +98,7 @@ class CRUDSourceConnection(
         auth_methods = await self._fetch_auth_methods(db, source_connections)
         last_jobs = await self._fetch_last_jobs(db, source_connections)
         entity_counts = await self._fetch_entity_counts(db, source_connections)
+        sync_statuses = await self._fetch_sync_statuses(db, source_connections)
 
         # 3. Combine into response dictionaries
         results = []
@@ -119,6 +120,7 @@ class CRUDSourceConnection(
                     "authentication_method": auth_methods.get(sc.id),
                     "last_job": last_jobs.get(sc.id),
                     "entity_count": entity_counts.get(sc.id, 0),
+                    "sync_status": sync_statuses.get(cast(UUID, sc.id)),
                 }
             )
 
@@ -296,6 +298,24 @@ class CRUDSourceConnection(
         sync_to_sc = {sc.sync_id: sc.id for sc in source_conns if sc.sync_id}
         return {
             sync_to_sc[row.sync_id]: row.total or 0 for row in result if row.sync_id in sync_to_sc
+        }
+
+    async def _fetch_sync_statuses(
+        self, db: AsyncSession, source_conns: List[SourceConnection]
+    ) -> Dict[UUID, SyncStatus]:
+        """Fetch Sync.status for each source connection that has a sync_id."""
+        sync_ids = [sc.sync_id for sc in source_conns if sc.sync_id]
+        if not sync_ids:
+            return {}
+
+        query = select(Sync.id, Sync.status).where(Sync.id.in_(sync_ids))
+        result = await db.execute(query)
+
+        sync_to_sc: Dict[UUID, UUID] = {
+            cast(UUID, sc.sync_id): cast(UUID, sc.id) for sc in source_conns if sc.sync_id
+        }
+        return {
+            sync_to_sc[row.id]: SyncStatus(row.status) for row in result if row.id in sync_to_sc
         }
 
     async def get_by_query_and_org(
