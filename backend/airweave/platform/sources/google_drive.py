@@ -17,7 +17,7 @@ References:
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 
 import httpx
 from tenacity import retry, stop_after_attempt
@@ -25,19 +25,28 @@ from tenacity import retry, stop_after_attempt
 from airweave.core.logging import ContextualLogger
 from airweave.core.shared_models import RateLimitLevel
 from airweave.domains.browse_tree.types import NodeSelectionData
-from airweave.domains.sources.exceptions import SourceAuthError, SourceError
+from airweave.domains.sources.exceptions import (
+    SourceAuthError,
+    SourceCursorInvalidError,
+    SourceEntityForbiddenError,
+    SourceEntityNotFoundError,
+    SourceError,
+)
 from airweave.domains.sources.token_providers.protocol import TokenProviderProtocol
 from airweave.domains.storage import FileSkippedException
 from airweave.domains.storage.file_service import FileService
+from airweave.domains.sync_pipeline.pipeline.text_builder import TextualRepresentationBuilder
 from airweave.domains.syncs.cursors.cursor import SyncCursor
 from airweave.platform.configs.config import GoogleDriveConfig
 from airweave.platform.cursors import GoogleDriveCursor
 from airweave.platform.decorators import source
-from airweave.platform.entities._base import BaseEntity, Breadcrumb
+from airweave.platform.entities._base import AirweaveSystemMetadata, BaseEntity, Breadcrumb
 from airweave.platform.entities.google_drive import (
+    GoogleDriveCommentEntity,
     GoogleDriveDriveEntity,
     GoogleDriveFileDeletionEntity,
     GoogleDriveFileEntity,
+    GoogleDriveReplyEntity,
     _parse_drive_dt,
 )
 from airweave.platform.http_client.airweave_client import AirweaveHttpClient
@@ -106,7 +115,77 @@ class GoogleDriveSource(BaseSource):
         await self._get(
             "https://www.googleapis.com/drive/v3/drives",
             params={"pageSize": "1"},
+            context="validating credentials (drives.list)",
         )
+
+    async def native_search(self, query: str, limit: int) -> List[GoogleDriveFileEntity]:
+        """Native Google Drive file search using Drive files.list + q/fullText.
+
+        Returns metadata-only file entities (no downloads, no sync).
+        """
+        query_text = (query or "").strip()
+        if not query_text or limit <= 0:
+            return []
+
+        limit = min(int(limit), 100)
+
+        safe_query = query_text.replace("\\", "\\\\").replace("'", "\\'")
+        drive_q = f"trashed = false and fullText contains '{safe_query}'"
+
+        url = "https://www.googleapis.com/drive/v3/files"
+        params: Dict[str, Any] = {
+            "q": drive_q,
+            "spaces": "drive",
+            "corpora": "allDrives",
+            "includeItemsFromAllDrives": "true",
+            "supportsAllDrives": "true",
+            "orderBy": "modifiedTime desc",
+            "pageSize": min(100, limit),
+            "fields": (
+                "nextPageToken,files("
+                "id,name,mimeType,description,starred,trashed,explicitlyTrashed,"
+                "parents,owners,shared,webViewLink,iconLink,createdTime,modifiedTime,"
+                "size,md5Checksum,sharedWithMeTime,modifiedByMeTime,viewedByMeTime)"
+            ),
+        }
+
+        entities: List[GoogleDriveFileEntity] = []
+        text_builder = TextualRepresentationBuilder()
+
+        while len(entities) < limit:
+            data = await self._get(
+                url,
+                params=params,
+                context="native search (files.list)",
+            )
+            files_in_page = data.get("files", []) or []
+
+            for file_obj in files_in_page:
+                if len(entities) >= limit:
+                    break
+                entity = self._build_file_entity(file_obj, parent_breadcrumb=None)
+                if not entity:
+                    continue
+
+                entity.airweave_system_metadata = AirweaveSystemMetadata(
+                    source_name=self.short_name,
+                    entity_type=entity.__class__.__name__,
+                    sync_id=None,
+                    sync_job_id=None,
+                )
+                entity.textual_representation = text_builder.build_metadata_section(
+                    entity=entity,
+                    source_name=self.short_name,
+                )
+
+                entities.append(entity)
+
+            next_page_token = data.get("nextPageToken")
+            if not next_page_token:
+                break
+            params["pageToken"] = next_page_token
+
+        return entities
 
     @retry(
         stop=stop_after_attempt(5),
@@ -114,7 +193,14 @@ class GoogleDriveSource(BaseSource):
         wait=wait_rate_limit_with_backoff,
         reraise=True,
     )
-    async def _get(self, url: str, params: Optional[Dict] = None) -> Dict:
+    async def _get(
+        self,
+        url: str,
+        params: Optional[Dict] = None,
+        *,
+        context: str = "",
+        entity_id: str = "",
+    ) -> Dict:
         """Make an authenticated GET request to the Google Drive API with retry logic.
 
         Retries on:
@@ -136,6 +222,8 @@ class GoogleDriveSource(BaseSource):
             response,
             source_short_name=self.short_name,
             token_provider_kind=self.auth.provider_kind,
+            context=context,
+            entity_id=entity_id,
         )
         return response.json()
 
@@ -147,7 +235,7 @@ class GoogleDriveSource(BaseSource):
         url = "https://www.googleapis.com/drive/v3/drives"
         params = {"pageSize": 100}
         while url:
-            data = await self._get(url, params=params)
+            data = await self._get(url, params=params, context="listing shared drives")
             drives = data.get("drives", [])
             self.logger.debug(f"List drives page: returned {len(drives)} drives")
             for drive_obj in drives:
@@ -194,7 +282,7 @@ class GoogleDriveSource(BaseSource):
         params = {
             "supportsAllDrives": "true",
         }
-        data = await self._get(url, params=params)
+        data = await self._get(url, params=params, context="fetching startPageToken")
         token = data.get("startPageToken")
         if not token:
             raise ValueError("Failed to retrieve startPageToken from Drive API")
@@ -225,7 +313,11 @@ class GoogleDriveSource(BaseSource):
         latest_new_start: Optional[str] = None
 
         while True:
-            data = await self._get(url, params=params)
+            data = await self._get(
+                url,
+                params=params,
+                context="listing changes (changes.list)",
+            )
             for change in data.get("changes", []) or []:
                 yield change
 
@@ -317,32 +409,38 @@ class GoogleDriveSource(BaseSource):
         files: FileService | None = None,
     ) -> AsyncGenerator[BaseEntity, None]:
         """Emit change entities (modifications, additions, and deletions) since the given token."""
-        self.logger.info(
-            f"Processing Drive changes since token {start_token[:20]}... (incremental sync)"
-        )
+        self.logger.info("Processing Drive changes (incremental sync)")
         self._latest_new_start_page_token = None
-        try:
-            async for change in self._iterate_changes(start_token):
-                entity = await self._build_entity_from_change(change, files=files)
-                if entity:
-                    yield entity
-        except SourceAuthError:
-            raise
-        except SourceError as exc:
-            if "HTTP 410" in str(exc):
+
+        token = start_token
+        max_attempts = 2  # original token + one recovery attempt
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                async for change in self._iterate_changes(token):
+                    entity = await self._build_entity_from_change(change, files=files)
+                    if not entity:
+                        continue
+                    if isinstance(entity, GoogleDriveFileEntity):
+                        yield entity
+                        async for extra in self._emit_comments_and_replies_for_file(entity):
+                            yield extra
+                    else:
+                        yield entity
+                return
+            except SourceAuthError:
+                raise
+            except SourceCursorInvalidError:
+                if attempt >= max_attempts or not self._cursor:
+                    raise
                 self.logger.warning(
-                    "Stored startPageToken is no longer valid (410). Fetching a fresh token."
+                    "Drive cursor invalid (410). Refreshing startPageToken and retrying changes."
                 )
-                if self._cursor:
-                    try:
-                        fresh_token = await self._get_start_page_token()
-                        if fresh_token:
-                            self._cursor.update(start_page_token=fresh_token)
-                    except Exception as token_error:
-                        self.logger.warning(
-                            f"Failed to refresh startPageToken after 410: {token_error}"
-                        )
-            else:
+                fresh_token = await self._get_start_page_token()
+                self._cursor.update(start_page_token=fresh_token)
+                token = fresh_token
+                continue
+            except SourceError:
                 raise
 
     def _build_deletion_entity_from_change(
@@ -448,7 +546,8 @@ class GoogleDriveSource(BaseSource):
             "q": "mimeType != 'application/vnd.google-apps.folder'",
             "fields": "nextPageToken, files(id, name, mimeType, description, starred, trashed, "
             "explicitlyTrashed, parents, shared, webViewLink, iconLink, createdTime, "
-            "modifiedTime, size, md5Checksum, webContentLink)",
+            "modifiedTime, size, md5Checksum, webContentLink, owners, sharedWithMeTime, "
+            "modifiedByMeTime, viewedByMeTime)",
         }
 
         if drive_id:
@@ -464,8 +563,14 @@ class GoogleDriveSource(BaseSource):
 
         while url:
             try:
-                data = await self._get(url, params=params)
+                data = await self._get(
+                    url,
+                    params=params,
+                    context=f"listing files (corpora={corpora}, drive_id={drive_id})",
+                )
             except SourceAuthError:
+                raise
+            except SourceCursorInvalidError:
                 raise
             except Exception as e:
                 self.logger.warning(f"Error fetching files: {str(e)}")
@@ -534,7 +639,14 @@ class GoogleDriveSource(BaseSource):
         )
 
         while url:
-            data = await self._get(url, params=params)
+            data = await self._get(
+                url,
+                params=params,
+                context=(
+                    "listing folders "
+                    f"(corpora={corpora}, drive_id={drive_id}, parent_id={parent_id})"
+                ),
+            )
             folders = data.get("files", [])
             self.logger.debug(
                 f"List folders page: parent_id={parent_id}, returned {len(folders)} folders"
@@ -581,7 +693,8 @@ class GoogleDriveSource(BaseSource):
                 "nextPageToken, files("
                 "id, name, mimeType, description, starred, trashed, "
                 "explicitlyTrashed, parents, shared, webViewLink, iconLink, "
-                "createdTime, modifiedTime, size, md5Checksum, webContentLink)"
+                "createdTime, modifiedTime, size, md5Checksum, webContentLink, owners, "
+                "sharedWithMeTime, modifiedByMeTime, viewedByMeTime)"
             ),
         }
         if drive_id:
@@ -592,7 +705,11 @@ class GoogleDriveSource(BaseSource):
         )
 
         while url:
-            data = await self._get(url, params=params)
+            data = await self._get(
+                url,
+                params=params,
+                context=f"listing files in folder (parent_id={parent_id})",
+            )
             files_in_page = data.get("files", [])
             self.logger.debug(
                 (
@@ -822,6 +939,127 @@ class GoogleDriveSource(BaseSource):
 
         return GoogleDriveFileEntity.from_api(file_obj, breadcrumbs=breadcrumbs)
 
+    def _file_breadcrumb_from_entity(self, file_entity: GoogleDriveFileEntity) -> Breadcrumb:
+        return Breadcrumb(
+            entity_id=file_entity.file_id,
+            name=file_entity.title,
+            entity_type=GoogleDriveFileEntity.__name__,
+        )
+
+    async def _list_label_ids_for_file(self, file_id: str) -> List[str]:
+        """List applied Drive label IDs for a file."""
+        cache = getattr(self, "_labels_cache", None)
+        if cache is None:
+            cache = {}
+            self._labels_cache = cache
+        cache_typed = cast(dict[str, list[str]], cache)
+        if file_id in cache_typed:
+            return cache_typed[file_id]
+
+        url = f"https://www.googleapis.com/drive/v3/files/{file_id}/listLabels"
+        params: Dict[str, Any] = {"maxResults": 100}
+        labels: List[str] = []
+
+        while True:
+            data = await self._get(
+                url,
+                params=params,
+                context="listing file labels (files.listLabels)",
+                entity_id=file_id,
+            )
+            for label in data.get("labels") or []:
+                label_id = label.get("id")
+                if isinstance(label_id, str):
+                    labels.append(label_id)
+            next_page_token = data.get("nextPageToken")
+            if not next_page_token:
+                break
+            params["pageToken"] = next_page_token
+
+        cache_typed[file_id] = labels
+        return labels
+
+    async def _enrich_file_with_labels(self, file_entity: GoogleDriveFileEntity) -> None:
+        """Populate file_entity.labels best-effort (never fails sync)."""
+        try:
+            file_entity.labels = await self._list_label_ids_for_file(file_entity.file_id)
+        except SourceAuthError:
+            raise
+        except (SourceEntityForbiddenError, SourceEntityNotFoundError) as exc:
+            self.logger.debug("Skipping labels for file %s: %s", file_entity.file_id, str(exc))
+        except Exception as exc:
+            self.logger.debug(
+                "Failed to list labels for file %s: %s", file_entity.file_id, str(exc)
+            )
+
+    async def _list_comments_with_replies(
+        self, *, file_id: str
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """Yield raw comment objects (with embedded replies) for a file."""
+        url = f"https://www.googleapis.com/drive/v3/files/{file_id}/comments"
+        params: Dict[str, Any] = {
+            "pageSize": 100,
+            "includeDeleted": "true",
+            "fields": (
+                "nextPageToken,comments("
+                "id,content,deleted,createdTime,modifiedTime,author(displayName),"
+                "replies(id,content,deleted,createdTime,modifiedTime,author(displayName))"
+                ")"
+            ),
+        }
+
+        while True:
+            data = await self._get(
+                url,
+                params=params,
+                context="listing comments (comments.list)",
+                entity_id=file_id,
+            )
+            for comment in data.get("comments") or []:
+                yield comment
+            next_page_token = data.get("nextPageToken")
+            if not next_page_token:
+                break
+            params["pageToken"] = next_page_token
+
+    async def _emit_comments_and_replies_for_file(
+        self, file_entity: GoogleDriveFileEntity
+    ) -> AsyncGenerator[BaseEntity, None]:
+        """Emit comment/reply entities for a file (best-effort)."""
+        file_breadcrumb = self._file_breadcrumb_from_entity(file_entity)
+        try:
+            async for comment in self._list_comments_with_replies(file_id=file_entity.file_id):
+                comment_entity = GoogleDriveCommentEntity.from_api(
+                    comment,
+                    breadcrumbs=[file_breadcrumb],
+                    file_id=file_entity.file_id,
+                )
+                if not comment_entity.deleted:
+                    yield comment_entity
+
+                comment_breadcrumb = Breadcrumb(
+                    entity_id=comment_entity.comment_id,
+                    name=f"Comment {comment_entity.comment_id}",
+                    entity_type=GoogleDriveCommentEntity.__name__,
+                )
+                for reply in comment.get("replies") or []:
+                    reply_entity = GoogleDriveReplyEntity.from_api(
+                        reply,
+                        breadcrumbs=[file_breadcrumb, comment_breadcrumb],
+                        file_id=file_entity.file_id,
+                        comment_id=comment_entity.comment_id,
+                    )
+                    if not reply_entity.deleted:
+                        yield reply_entity
+        except SourceAuthError:
+            raise
+        except (SourceEntityForbiddenError, SourceEntityNotFoundError) as exc:
+            self.logger.debug("Skipping comments for file %s: %s", file_entity.file_id, str(exc))
+        except Exception as exc:
+            self.logger.debug(
+                "Failed to list comments for file %s: %s", file_entity.file_id, str(exc)
+            )
+
     # ------------------------------
     # File download helper
     # ------------------------------
@@ -871,6 +1109,7 @@ class GoogleDriveSource(BaseSource):
 
             if await self._download_file(file_entity, files):
                 self._store_file_metadata(file_obj)
+                await self._enrich_file_with_labels(file_entity)
                 self.logger.debug(f"Successfully downloaded file: {file_entity.name}")
                 return file_entity
 
@@ -911,6 +1150,7 @@ class GoogleDriveSource(BaseSource):
 
         if await self._download_file(file_entity, files):
             self._store_file_metadata(file_obj)
+            await self._enrich_file_with_labels(file_entity)
             self.logger.debug(f"Successfully processed changed file: {file_entity.name}")
             return file_entity
 
@@ -945,7 +1185,7 @@ class GoogleDriveSource(BaseSource):
         context: str = "",
         parent_breadcrumb: Optional[Breadcrumb] = None,
         files: FileService | None = None,
-    ) -> AsyncGenerator[GoogleDriveFileEntity, None]:
+    ) -> AsyncGenerator[BaseEntity, None]:
         """Generate file entities from a file listing."""
         try:
             if getattr(self, "batch_generation", False):
@@ -963,7 +1203,10 @@ class GoogleDriveSource(BaseSource):
                     stop_on_error=getattr(self, "stop_on_error", False),
                     max_queue_size=getattr(self, "max_queue_size", 200),
                 ):
-                    yield processed
+                    processed_file = cast(GoogleDriveFileEntity, processed)
+                    yield processed_file
+                    async for extra in self._emit_comments_and_replies_for_file(processed_file):
+                        yield extra
             else:
                 async for file_obj in self._list_files(
                     corpora, include_all_drives, drive_id, context
@@ -975,7 +1218,12 @@ class GoogleDriveSource(BaseSource):
 
                         if await self._download_file(file_entity, files):
                             self._store_file_metadata(file_obj)
+                            await self._enrich_file_with_labels(file_entity)
                             yield file_entity
+                            async for extra in self._emit_comments_and_replies_for_file(
+                                file_entity
+                            ):
+                                yield extra
 
                     except SourceAuthError:
                         raise
@@ -1125,7 +1373,12 @@ class GoogleDriveSource(BaseSource):
                                         stop_on_error=getattr(self, "stop_on_error", False),
                                         max_queue_size=getattr(self, "max_queue_size", 200),
                                     ):
-                                        yield processed
+                                        processed_file = cast(GoogleDriveFileEntity, processed)
+                                        yield processed_file
+                                        async for extra in self._emit_comments_and_replies_for_file(
+                                            processed_file
+                                        ):
+                                            yield extra
                                 else:
                                     async for file_obj in self._traverse_and_yield_files(
                                         corpora="drive",
@@ -1143,7 +1396,20 @@ class GoogleDriveSource(BaseSource):
 
                                         try:
                                             if await self._download_file(file_entity, files):
-                                                yield file_entity
+                                                self._store_file_metadata(file_obj)
+                                                file_entity_typed = cast(
+                                                    GoogleDriveFileEntity, file_entity
+                                                )
+                                                await self._enrich_file_with_labels(
+                                                    file_entity_typed
+                                                )
+                                                yield file_entity_typed
+                                                async for (
+                                                    extra
+                                                ) in self._emit_comments_and_replies_for_file(
+                                                    file_entity_typed
+                                                ):
+                                                    yield extra
                                         except SourceAuthError:
                                             raise
                                         except Exception as e:
@@ -1184,7 +1450,12 @@ class GoogleDriveSource(BaseSource):
                                     stop_on_error=getattr(self, "stop_on_error", False),
                                     max_queue_size=getattr(self, "max_queue_size", 200),
                                 ):
-                                    yield processed
+                                    processed_file = cast(GoogleDriveFileEntity, processed)
+                                    yield processed_file
+                                    async for extra in self._emit_comments_and_replies_for_file(
+                                        processed_file
+                                    ):
+                                        yield extra
                             else:
                                 async for file_obj in self._list_files(
                                     corpora="drive",
@@ -1202,7 +1473,20 @@ class GoogleDriveSource(BaseSource):
 
                                         try:
                                             if await self._download_file(file_entity, files):
-                                                yield file_entity
+                                                self._store_file_metadata(file_obj)
+                                                file_entity_typed = cast(
+                                                    GoogleDriveFileEntity, file_entity
+                                                )
+                                                await self._enrich_file_with_labels(
+                                                    file_entity_typed
+                                                )
+                                                yield file_entity_typed
+                                                async for (
+                                                    extra
+                                                ) in self._emit_comments_and_replies_for_file(
+                                                    file_entity_typed
+                                                ):
+                                                    yield extra
                                         except SourceAuthError:
                                             raise
                                         except Exception as e:
@@ -1254,7 +1538,12 @@ class GoogleDriveSource(BaseSource):
                                     stop_on_error=getattr(self, "stop_on_error", False),
                                     max_queue_size=getattr(self, "max_queue_size", 200),
                                 ):
-                                    yield processed
+                                    processed_file = cast(GoogleDriveFileEntity, processed)
+                                    yield processed_file
+                                    async for extra in self._emit_comments_and_replies_for_file(
+                                        processed_file
+                                    ):
+                                        yield extra
                             else:
                                 async for file_obj in self._traverse_and_yield_files(
                                     corpora="user",
@@ -1272,7 +1561,18 @@ class GoogleDriveSource(BaseSource):
 
                                     try:
                                         if await self._download_file(file_entity, files):
-                                            yield file_entity
+                                            self._store_file_metadata(file_obj)
+                                            file_entity_typed = cast(
+                                                GoogleDriveFileEntity, file_entity
+                                            )
+                                            await self._enrich_file_with_labels(file_entity_typed)
+                                            yield file_entity_typed
+                                            async for (
+                                                extra
+                                            ) in self._emit_comments_and_replies_for_file(
+                                                file_entity_typed
+                                            ):
+                                                yield extra
                                     except SourceAuthError:
                                         raise
                                     except Exception as e:
@@ -1313,7 +1613,12 @@ class GoogleDriveSource(BaseSource):
                                 stop_on_error=getattr(self, "stop_on_error", False),
                                 max_queue_size=getattr(self, "max_queue_size", 200),
                             ):
-                                yield processed
+                                processed_file = cast(GoogleDriveFileEntity, processed)
+                                yield processed_file
+                                async for extra in self._emit_comments_and_replies_for_file(
+                                    processed_file
+                                ):
+                                    yield extra
                         else:
                             async for file_obj in self._list_files(
                                 corpora="user",
@@ -1331,7 +1636,18 @@ class GoogleDriveSource(BaseSource):
 
                                     try:
                                         if await self._download_file(file_entity, files):
-                                            yield file_entity
+                                            self._store_file_metadata(file_obj)
+                                            file_entity_typed = cast(
+                                                GoogleDriveFileEntity, file_entity
+                                            )
+                                            await self._enrich_file_with_labels(file_entity_typed)
+                                            yield file_entity_typed
+                                            async for (
+                                                extra
+                                            ) in self._emit_comments_and_replies_for_file(
+                                                file_entity_typed
+                                            ):
+                                                yield extra
                                     except SourceAuthError:
                                         raise
                                     except Exception as e:

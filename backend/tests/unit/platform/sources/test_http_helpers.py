@@ -5,6 +5,7 @@ import pytest
 
 from airweave.domains.sources.exceptions import (
     SourceAuthError,
+    SourceCursorInvalidError,
     SourceEntityForbiddenError,
     SourceEntityNotFoundError,
     SourceError,
@@ -60,6 +61,10 @@ class TestRaiseForStatus:
     def test_404_raises_entity_not_found(self):
         with pytest.raises(SourceEntityNotFoundError, match="404"):
             _raise(404)
+
+    def test_410_raises_cursor_invalid(self):
+        with pytest.raises(SourceCursorInvalidError, match="410"):
+            _raise(410)
 
     def test_429_raises_rate_limit_error(self):
         with pytest.raises(SourceRateLimitError) as exc_info:

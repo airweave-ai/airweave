@@ -7,6 +7,7 @@ continues to work after the module-to-package conversion.
 from airweave.domains.sources.exceptions._exceptions import (  # noqa: F401
     SourceAuthError,
     SourceCreationError,
+    SourceCursorInvalidError,
     SourceEntityError,
     SourceEntityForbiddenError,
     SourceEntityNotFoundError,

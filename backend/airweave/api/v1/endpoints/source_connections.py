@@ -16,7 +16,7 @@ from typing import List, Optional
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from uuid import UUID
 
-from fastapi import Depends, Path, Query, Response
+from fastapi import Depends, HTTPException, Path, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
@@ -30,6 +30,7 @@ from airweave.core.protocols import EventBus
 from airweave.db.session import get_db
 from airweave.domains.oauth.protocols import OAuthCallbackServiceProtocol
 from airweave.domains.source_connections.protocols import SourceConnectionServiceProtocol
+from airweave.domains.sources.protocols import SourceLifecycleServiceProtocol
 from airweave.domains.usage.protocols import UsageLimitCheckerProtocol
 from airweave.domains.usage.types import ActionType
 from airweave.schemas.errors import (
@@ -37,6 +38,10 @@ from airweave.schemas.errors import (
     NotFoundErrorResponse,
     RateLimitErrorResponse,
     ValidationErrorResponse,
+)
+from airweave.schemas.google_drive_native_search import (
+    GoogleDriveNativeSearchRequest,
+    GoogleDriveNativeSearchResponse,
 )
 from airweave.schemas.source_connection import VerifyOAuthRequest
 
@@ -337,6 +342,61 @@ async def update(
         obj_in=source_connection_in,
         ctx=ctx,
     )
+
+
+@router.post(
+    "/{source_connection_id}/native-search",
+    response_model=GoogleDriveNativeSearchResponse,
+    summary="Google Drive native search",
+    description=(
+        "Perform a native Google Drive search for this source connection using Drive files.list "
+        "(q/fullText). Returns metadata-only file entities. No sync/indexing occurs."
+    ),
+)
+async def google_drive_native_search(
+    *,
+    db: AsyncSession = Depends(get_db),
+    source_connection_id: UUID = Path(..., description="Source connection UUID"),
+    body: GoogleDriveNativeSearchRequest,
+    ctx: ApiContext = Depends(deps.get_context),
+    source_connection_service: SourceConnectionServiceProtocol = Inject(
+        SourceConnectionServiceProtocol
+    ),
+    source_lifecycle_service: SourceLifecycleServiceProtocol = Inject(
+        SourceLifecycleServiceProtocol
+    ),
+) -> GoogleDriveNativeSearchResponse:
+    """Run native Google Drive search for a specific source connection."""
+    source_connection = await source_connection_service.get(
+        db,
+        id=source_connection_id,
+        ctx=ctx,
+    )
+
+    if source_connection.short_name != "google_drive":
+        raise HTTPException(
+            status_code=400,
+            detail="native-search is only supported for google_drive source connections",
+        )
+
+    source = await source_lifecycle_service.create(
+        db=db,
+        source_connection_id=source_connection_id,
+        ctx=ctx,
+        access_token=None,
+    )
+
+    try:
+        if not hasattr(source, "native_search"):
+            raise HTTPException(
+                status_code=500,
+                detail="google_drive source does not implement native_search()",
+            )
+
+        results = await source.native_search(body.query, limit=body.limit)  # type: ignore[attr-defined]
+        return GoogleDriveNativeSearchResponse(results=results)
+    finally:
+        await source.http_client.aclose()
 
 
 @router.delete(
