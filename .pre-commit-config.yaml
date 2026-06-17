@@ -21,12 +21,17 @@ repos:
 
   - repo: local
     hooks:
+      # Mypy on changed lines only — matches the CI gate, which runs
+      # mypy across the whole package and then uses diff-quality to fail
+      # only on violations introduced by the diff vs. origin/main.
+      # See .github/workflows/code-quality.yml for the CI counterpart.
       - id: mypy
-        name: mypy
-        entry: bash -c 'cd backend && poetry run mypy --config-file pyproject.toml "${@#backend/}"' --
+        name: mypy (changed lines)
+        entry: bash backend/scripts/mypy_diff.sh
         language: system
         files: ^backend/airweave/.*\.py$
         types: [python]
+        pass_filenames: false
 
   - repo: local
     hooks:
