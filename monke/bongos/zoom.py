@@ -87,8 +87,6 @@ class ZoomBongo(BaseBongo):
                         self.openai_model, meeting_token
                     )
 
-                    await self._rate_limit()
-
                     # Schedule meeting for 1 week from now
                     from datetime import datetime, timedelta
 
@@ -96,7 +94,9 @@ class ZoomBongo(BaseBongo):
                         datetime.utcnow() + timedelta(days=7, hours=idx)
                     ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-                    resp = await client.post(
+                    resp = await self._request_with_retries(
+                        client,
+                        "POST",
                         f"{self.ZOOM_BASE_URL}/users/{self._user_id}/meetings",
                         headers=self._headers(),
                         json={
@@ -131,9 +131,13 @@ class ZoomBongo(BaseBongo):
             meeting_tasks = [create_meeting(i) for i in range(self.entity_count)]
             meeting_results = await asyncio.gather(*meeting_tasks, return_exceptions=True)
 
+            first_error: Optional[BaseException] = None
             for result in meeting_results:
                 if isinstance(result, Exception):
-                    self.logger.error(f"Failed to create meeting: {result}")
+                    # Track the error but still collect any successful creates so they
+                    # remain tracked for cleanup later in the run.
+                    if first_error is None:
+                        first_error = result
                 elif result:
                     self._meetings.append(result)
                     all_entities.append(result)
@@ -141,8 +145,11 @@ class ZoomBongo(BaseBongo):
                         f"✅ Created meeting with token {result['token']}"
                     )
 
-        self.logger.info(f"✅ Created {len(self._meetings)} meetings")
         self.created_entities = all_entities
+        if first_error is not None:
+            raise first_error
+
+        self.logger.info(f"✅ Created {len(self._meetings)} meetings")
         return all_entities
 
     async def update_entities(self) -> List[Dict[str, Any]]:
@@ -161,37 +168,26 @@ class ZoomBongo(BaseBongo):
         updated_entities: List[Dict[str, Any]] = []
 
         async with httpx.AsyncClient() as client:
-            # Update first 2 meetings
             for i, meeting in enumerate(self._meetings[:2]):
-                try:
-                    # Generate new content with same token
-                    meeting_data = await generate_zoom_meeting(
-                        self.openai_model, meeting["token"]
-                    )
-
-                    await self._rate_limit()
-
-                    resp = await client.patch(
-                        f"{self.ZOOM_BASE_URL}/meetings/{meeting['id']}",
-                        headers=self._headers(),
-                        json={
-                            "topic": meeting_data["topic"],
-                            "agenda": f"[UPDATED] {meeting_data['agenda']}",
-                        },
-                    )
-                    resp.raise_for_status()
-
-                    # Update local reference
-                    meeting["topic"] = meeting_data["topic"]
-                    updated_entities.append(meeting)
-
-                    self.logger.info(
-                        f"✅ Updated meeting {i + 1} with token {meeting['token']}"
-                    )
-
-                except Exception as e:
-                    self.logger.error(f"Failed to update meeting {meeting['id']}: {e}")
-
+                meeting_data = await generate_zoom_meeting(
+                    self.openai_model, meeting["token"]
+                )
+                resp = await self._request_with_retries(
+                    client,
+                    "PATCH",
+                    f"{self.ZOOM_BASE_URL}/meetings/{meeting['id']}",
+                    headers=self._headers(),
+                    json={
+                        "topic": meeting_data["topic"],
+                        "agenda": f"[UPDATED] {meeting_data['agenda']}",
+                    },
+                )
+                resp.raise_for_status()
+                meeting["topic"] = meeting_data["topic"]
+                updated_entities.append(meeting)
+                self.logger.info(
+                    f"✅ Updated meeting {i + 1} with token {meeting['token']}"
+                )
         return updated_entities
 
     async def delete_entities(self) -> List[str]:
@@ -205,21 +201,15 @@ class ZoomBongo(BaseBongo):
 
         async with httpx.AsyncClient() as client:
             for meeting in self._meetings:
-                try:
-                    await self._rate_limit()
-                    resp = await client.delete(
-                        f"{self.ZOOM_BASE_URL}/meetings/{meeting['id']}",
-                        headers=self._headers(),
-                    )
-                    if resp.status_code in (200, 204):
-                        deleted_ids.append(meeting["id"])
-                        self.logger.info(f"Deleted meeting: {meeting['id']}")
-                    else:
-                        self.logger.warning(
-                            f"Could not delete meeting {meeting['id']}: {resp.status_code}"
-                        )
-                except Exception as e:
-                    self.logger.warning(f"Error deleting meeting {meeting['id']}: {e}")
+                resp = await self._request_with_retries(
+                    client,
+                    "DELETE",
+                    f"{self.ZOOM_BASE_URL}/meetings/{meeting['id']}",
+                    headers=self._headers(),
+                )
+                resp.raise_for_status()
+                deleted_ids.append(meeting["id"])
+                self.logger.info(f"Deleted meeting: {meeting['id']}")
 
         self._meetings = []
         return deleted_ids
@@ -253,44 +243,21 @@ class ZoomBongo(BaseBongo):
             for entity in entities:
                 entity_id = self._meeting_id_from_entity(entity)
                 if not entity_id:
-                    self.logger.warning(
-                        "Skipping entity with no id or path zoom/meeting/<id>: %s",
-                        {k: v for k, v in entity.items() if k in ("id", "path", "type")},
+                    raise ValueError(
+                        "Entity missing id or path zoom/meeting/<id>: %s"
+                        % {k: entity.get(k) for k in ("id", "path", "type")}
                     )
-                    continue
-                try:
-                    await self._rate_limit()
-
-                    resp = await client.delete(
-                        f"{self.ZOOM_BASE_URL}/meetings/{entity_id}",
-                        headers=self._headers(),
-                    )
-
-                    if resp.status_code in (200, 204):
-                        deleted_ids.append(entity_id)
-                        # Remove from internal tracking
-                        self._meetings = [
-                            m for m in self._meetings if m["id"] != entity_id
-                        ]
-                    else:
-                        try:
-                            body = resp.text
-                            if len(body) > 200:
-                                body = body[:200] + "..."
-                        except Exception:
-                            body = ""
-                        self.logger.warning(
-                            "Zoom DELETE meeting %s failed: %s %s",
-                            entity_id,
-                            resp.status_code,
-                            body or resp.reason_phrase,
-                        )
-
-                except Exception as e:
-                    self.logger.warning(
-                        f"Error deleting meeting {entity_id}: {e}"
-                    )
-
+                resp = await self._request_with_retries(
+                    client,
+                    "DELETE",
+                    f"{self.ZOOM_BASE_URL}/meetings/{entity_id}",
+                    headers=self._headers(),
+                )
+                resp.raise_for_status()
+                deleted_ids.append(entity_id)
+                self._meetings = [
+                    m for m in self._meetings if m["id"] != entity_id
+                ]
         return deleted_ids
 
     async def cleanup(self):
@@ -356,8 +323,9 @@ class ZoomBongo(BaseBongo):
         if self._user_id:
             return
 
-        await self._rate_limit()
-        resp = await client.get(
+        resp = await self._request_with_retries(
+            client,
+            "GET",
             f"{self.ZOOM_BASE_URL}/users/me",
             headers=self._headers(),
         )
@@ -404,6 +372,44 @@ class ZoomBongo(BaseBongo):
             "Accept": "application/json",
             "Content-Type": "application/json",
         }
+
+    async def _request_with_retries(
+        self,
+        client: httpx.AsyncClient,
+        method: str,
+        url: str,
+        *,
+        max_attempts: int = 5,
+        **kwargs: Any,
+    ) -> httpx.Response:
+        """Perform HTTP request with retries on 429 (rate limit).
+
+        Uses Retry-After header when present, otherwise exponential backoff.
+        Raises after max_attempts. Other 4xx/5xx are not retried (caller handles).
+        """
+        last_response: Optional[httpx.Response] = None
+        for attempt in range(1, max_attempts + 1):
+            await self._rate_limit()
+            resp = await client.request(method, url, **kwargs)
+            if resp.status_code != 429:
+                return resp
+            last_response = resp
+            # Retry-After can be seconds (int) or HTTP-date
+            retry_after = resp.headers.get("Retry-After")
+            if retry_after and retry_after.strip().isdigit():
+                delay = float(retry_after.strip())
+            else:
+                delay = min(60.0, 2.0 ** attempt)
+            self.logger.info(
+                "Zoom API 429 rate limit, retry %s/%s in %.1fs",
+                attempt,
+                max_attempts,
+                delay,
+            )
+            await asyncio.sleep(delay)
+        if last_response is not None:
+            last_response.raise_for_status()
+        raise RuntimeError("_request_with_retries: no response")
 
     async def _rate_limit(self):
         """Simple rate limiting."""
