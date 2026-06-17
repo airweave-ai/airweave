@@ -12,7 +12,7 @@ Follow this guide to get up and running with Airweave in just a few steps.
 
    The simplest way to use Airweave is through our hosted cloud platform at [app.airweave.ai](https://app.airweave.ai).
 
-   If you prefer to run Airweave yourself, you can deploy it locally on macOS, Linux or WSL. After cloning the repository and starting the server, you will be able to open the dashboard at http://localhost:8080
+   If you prefer to run Airweave yourself, you can deploy it locally on macOS, Linux or WSL. After cloning the repository and starting the server, open the dashboard at [http://localhost:8080](http://localhost:8080).
 
     ```bash
     git clone https://github.com/airweave-ai/airweave.git
@@ -21,7 +21,7 @@ Follow this guide to get up and running with Airweave in just a few steps.
     ```
   </Step>
 
-  <Step title="Set-up Airweave client" toc={true}>
+  <Step title="Set up the Airweave client" toc={true}>
    Airweave provides SDKs for Python and Node.js. Install the package.
 
     <CodeBlocks>
@@ -47,10 +47,10 @@ Follow this guide to get up and running with Airweave in just a few steps.
     >
       Your browser does not support the video tag.
     </video>
-   Initialize the Airweave client with your new API key. For local deployments, set base_url to `"http://localhost:8001"`.
+   Initialize the Airweave client with your new API key. For local deployments, set `base_url` to `"http://localhost:8001"`.
 
     <CodeBlocks>
-    ```Python title="Python"
+    ```python title="Python"
     from airweave import AirweaveSDK
 
     airweave = AirweaveSDK(api_key="YOUR_API_KEY", base_url="https://api.airweave.ai")
@@ -69,7 +69,7 @@ Follow this guide to get up and running with Airweave in just a few steps.
     A collection is a group of different data sources that you can search using a single endpoint.
 
     <CodeBlocks>
-    ```Python title="Python"
+    ```python title="Python"
     collection = airweave.collections.create(name="My First Collection")
 
     print(f"Created collection: {collection.readable_id}")
@@ -92,11 +92,11 @@ Follow this guide to get up and running with Airweave in just a few steps.
     </CodeBlocks>
   </Step>
 
-  <Step title="Add source connection(s) to your collection" toc={true}>
-    A source connection links a specific app or database to your collection. It handles authentication and automatically syncs data.
+  <Step title="Add a source connection to your collection" toc={true}>
+    Source connections link specific apps or databases to your collection. They handle authentication and automatically sync data. You need at least one source connection per collection.
 
 <CodeBlocks>
-```Python title="Python"
+```python title="Python"
 source_connection = airweave.source_connections.create(
     name="My Stripe Connection",
     short_name="stripe",
@@ -149,10 +149,10 @@ curl -X POST 'https://api.airweave.ai/source-connections' \
 You can now search your collection and get the most relevant results from all connected sources.
 
     <CodeBlocks>
-```Python title="Python"
+```python title="Python"
 response = airweave.collections.search.instant(
     readable_id=collection.readable_id,
-    query="Find returned payments from user John Doe?",
+    query="Find returned payments from user John Doe",
 )
 
 for result in response.results:
@@ -162,7 +162,7 @@ for result in response.results:
 ```javascript title="Node.js"
 const response = await airweave.collections.search.instant(
   collection.readableId,
-  { query: "Find returned payments from user John Doe?" }
+  { query: "Find returned payments from user John Doe" }
 );
 
 response.results.forEach(result => console.log(result.name, result.relevanceScore));
@@ -172,7 +172,7 @@ response.results.forEach(result => console.log(result.name, result.relevanceScor
 curl -X POST 'https://api.airweave.ai/collections/my-first-collection-abc123/search/instant' \
   -H 'x-api-key: YOUR_API_KEY' \
   -H 'Content-Type: application/json' \
-  -d '{"query": "Find returned payments from user John Doe?"}'
+  -d '{"query": "Find returned payments from user John Doe"}'
 ```
 </CodeBlocks>
   </Step>
