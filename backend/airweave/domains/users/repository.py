@@ -30,6 +30,12 @@ class UserRepository(UserRepositoryProtocol):
         """Return user by email via delegated CRUD."""
         return await crud.user.get_by_email(db, email=email)
 
+    async def get_by_auth0_id(self, db: AsyncSession, *, auth0_id: str) -> Any:
+        """Return user by Auth0 ID, or None if not found."""
+        stmt = self._user_query_with_orgs().where(User.auth0_id == auth0_id)
+        result = await db.execute(stmt)
+        return result.unique().scalar_one_or_none()
+
     async def create(self, db: AsyncSession, *, obj_in: schemas.UserCreate) -> User:
         """Create a new user and flush."""
         user = User(**obj_in.model_dump())

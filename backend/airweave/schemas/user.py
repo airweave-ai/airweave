@@ -51,6 +51,7 @@ class UserUpdate(BaseModel):
     auth0_id: Optional[str] = None
     permissions: Optional[list[str]] = None
     last_active_at: Optional[datetime] = None
+    tokens_revoked_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -65,6 +66,7 @@ class UserInDBBase(UserBase):
     is_admin: bool = False
     is_superuser: bool = False
     last_active_at: Optional[datetime] = None
+    tokens_revoked_at: Optional[datetime] = None
 
     @field_validator("user_organizations", mode="before")
     @classmethod

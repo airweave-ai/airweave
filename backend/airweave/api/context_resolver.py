@@ -9,16 +9,20 @@ Testable by passing fakes for every dependency.
 
 import uuid
 from dataclasses import dataclass, field
+from datetime import timezone
 from typing import Optional
 
 from fastapi import HTTPException, Request
 from fastapi_auth0 import Auth0User
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from airweave import schemas
 from airweave.analytics.service import analytics
 from airweave.api.context import ApiContext, RequestHeaders
+from airweave.api.jwt_utils import extract_claims
 from airweave.core.config import settings
+from airweave.core.datetime_utils import utc_now_naive
 from airweave.core.exceptions import NotFoundException, RateLimitExceededException
 from airweave.core.logging import logger
 from airweave.core.protocols.cache import ContextCache
@@ -28,6 +32,7 @@ from airweave.domains.organizations.protocols import (
     ApiKeyRepositoryProtocol,
     OrganizationRepositoryProtocol,
 )
+from airweave.domains.sessions.protocols import SessionRepositoryProtocol
 from airweave.domains.users.protocols import UserRepositoryProtocol
 from airweave.schemas.rate_limit import RateLimitResult
 
@@ -66,6 +71,7 @@ class ContextResolver:
         user_repo: UserRepositoryProtocol,
         api_key_repo: ApiKeyRepositoryProtocol,
         org_repo: OrganizationRepositoryProtocol,
+        session_repo: SessionRepositoryProtocol,
     ) -> None:
         """Initialize ContextResolver."""
         self._cache = cache
@@ -73,6 +79,7 @@ class ContextResolver:
         self._users = user_repo
         self._api_keys = api_key_repo
         self._orgs = org_repo
+        self._sessions = session_repo
 
     async def resolve(
         self,
@@ -87,6 +94,10 @@ class ContextResolver:
 
         auth = await self._authenticate(db, auth0_user, x_api_key, request)
 
+        if auth.method == AuthMethod.AUTH0 and auth.user:
+            self._check_token_revocation(request, auth.user)
+            await self._validate_or_create_session(request, db, auth.user)
+
         organization_id = self._resolve_organization_id(x_organization_id, auth)
         organization = await self._get_or_fetch_organization(db, organization_id)
 
@@ -99,7 +110,7 @@ class ContextResolver:
         return ctx
 
     async def authenticate_user_only(
-        self, db: AsyncSession, auth0_user: Optional[Auth0User]
+        self, db: AsyncSession, auth0_user: Optional[Auth0User], request: Optional[Request] = None
     ) -> schemas.User:
         """Lightweight auth for endpoints that only need a User (no org context).
 
@@ -117,6 +128,11 @@ class ContextResolver:
         user = await self._fetch_auth0_user(db, auth0_user)
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
+
+        if request:
+            self._check_token_revocation(request, user)
+            await self._validate_or_create_session(request, db, user)
+
         return user
 
     # ------------------------------------------------------------------
@@ -201,6 +217,85 @@ class ContextResolver:
             raise HTTPException(status_code=403, detail="Invalid or expired API key") from e
 
     # ------------------------------------------------------------------
+    # Token revocation + session validation
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _check_token_revocation(request: Request, user: schemas.User) -> None:
+        """Reject JWTs issued before the user's tokens_revoked_at timestamp."""
+        if user.tokens_revoked_at is None:
+            return
+        claims = extract_claims(request)
+        if claims is None:
+            return
+        iat = claims.get("iat")
+        revoked_ts = user.tokens_revoked_at.replace(tzinfo=timezone.utc).timestamp()
+        if iat is None or iat < revoked_ts:
+            raise HTTPException(status_code=401, detail="Token has been revoked")
+
+    async def _validate_or_create_session(
+        self, request: Request, db: AsyncSession, user: schemas.User
+    ) -> None:
+        """Validate (or create) a session record for the Auth0 sid claim."""
+        claims = extract_claims(request)
+        if claims is None:
+            return
+
+        sid = claims.get(settings.AUTH0_SID_CLAIM_KEY)
+        if not sid:
+            if settings.AUTH0_SID_REQUIRED:
+                raise HTTPException(status_code=401, detail="Session ID claim required")
+            logger.warning(
+                "JWT missing sid claim (%s); session tracking bypassed", request.url.path
+            )
+            return
+
+        cached = await self._cache.is_session_valid(sid)
+        if cached is True:
+            await self._throttled_last_active_update(db, sid)
+            return
+        if cached is False:
+            raise HTTPException(status_code=401, detail="Session revoked")
+
+        session = await self._sessions.get_by_session_id(db, sid)
+        if session is not None:
+            if session.is_revoked:
+                await self._cache.mark_session_valid(sid, False)
+                raise HTTPException(status_code=401, detail="Session revoked")
+            await self._cache.mark_session_valid(sid, True)
+            await self._throttled_last_active_update(db, sid)
+            return
+
+        ip = _extract_client_ip(request)
+        ua = request.headers.get("user-agent")
+        try:
+            await self._sessions.create(db, user.id, sid, ip, ua)
+        except IntegrityError:
+            await db.rollback()
+            existing = await self._sessions.get_by_session_id(db, sid)
+            if existing is not None and existing.is_revoked:
+                await self._cache.mark_session_valid(sid, False)
+                raise HTTPException(status_code=401, detail="Session revoked")
+        await self._cache.mark_session_valid(sid, True)
+
+    async def _throttled_last_active_update(self, db: AsyncSession, sid: str) -> None:
+        """Update session last_active_at at most once per 5 minutes.
+
+        Uses the session cache as a guard: if the session was recently
+        validated (cache hit), skip the DB write. The 5-min SESSION_TTL
+        naturally gates the update frequency.
+        """
+        guard_key = f"activity:guard:{sid}"
+        guard_hit = await self._cache.is_session_valid(guard_key)
+        if guard_hit is not None:
+            return
+        await self._cache.mark_session_valid(guard_key, True, ttl=300)
+        try:
+            await self._sessions.update_last_active(db, sid)
+        except Exception as e:
+            logger.debug("Failed to update session last_active_at: %s", e)
+
+    # ------------------------------------------------------------------
     # User fetching (DB)
     # ------------------------------------------------------------------
 
@@ -213,8 +308,6 @@ class ContextResolver:
     async def _fetch_auth0_user(
         self, db: AsyncSession, auth0_user: Auth0User
     ) -> Optional[schemas.User]:
-        from datetime import datetime
-
         if not auth0_user.email:
             return None
         try:
@@ -223,7 +316,7 @@ class ContextResolver:
             logger.error(f"User {auth0_user.email} not found in database")
             return None
 
-        user_update = schemas.UserUpdate(last_active_at=datetime.utcnow())
+        user_update = schemas.UserUpdate(last_active_at=utc_now_naive())
         user = await self._users.update_user_no_auth(db, id=user.id, obj_in=user_update)
         return schemas.User.model_validate(user)
 

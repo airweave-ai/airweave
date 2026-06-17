@@ -11,6 +11,7 @@ interface TokenProvider {
   getToken: () => Promise<string | null>;
   clearToken?: () => void;
   isReady?: () => boolean;
+  forceLogout?: () => void;
 }
 
 // Default implementation that uses env variable
@@ -24,6 +25,10 @@ const defaultTokenProvider: TokenProvider = {
 
 // Current token provider instance
 let tokenProvider: TokenProvider = defaultTokenProvider;
+
+// Guard to prevent infinite force-logout redirect loops (C6/I11).
+// Once triggered, forceLogout must not fire again in this page lifetime.
+let logoutTriggered = false;
 
 // Request queue system
 interface QueuedRequest {
@@ -276,6 +281,14 @@ const makeRequest = async <T>(
         fetchOptions.headers = headers;
         const retryResponse = await fetch(url.toString(), fetchOptions);
 
+        // If still 401 after retry, tokens are revoked — force logout
+        if (retryResponse.status === 401 && tokenProvider.forceLogout && !logoutTriggered) {
+          logoutTriggered = true;
+          if (import.meta.env.DEV) console.log('Persistent 401 after token refresh — forcing logout');
+          tokenProvider.forceLogout();
+          return retryResponse;
+        }
+
         // If still 403 after retry, refresh org context so the UI
         // reflects revoked permissions (buttons disable, sections hide).
         if (retryResponse.status === 403) {
@@ -360,8 +373,15 @@ export const apiClient = {
     return tokenProvider.getToken();
   },
 
-  async get<T>(endpoint: string, params?: Record<string, any>): ApiResponse<T> {
-    return makeRequest<T>('GET', endpoint, { params });
+  async get<T>(
+    endpoint: string,
+    options?: Record<string, any> & { signal?: AbortSignal },
+  ): ApiResponse<T> {
+    const { signal, ...params } = options ?? {};
+    return makeRequest<T>('GET', endpoint, {
+      params: Object.keys(params).length > 0 ? params : undefined,
+      signal,
+    });
   },
 
   async post<T>(endpoint: string, data?: any, params?: Record<string, any>): ApiResponse<T> {

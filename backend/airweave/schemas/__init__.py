@@ -153,6 +153,7 @@ from .user import (
     UserUpdate,
     UserWithOrganizations,
 )
+from .user_session import SessionTerminationResult, UserSessionRead
 from .webhooks import (
     # Request schemas
     CreateSubscriptionRequest,

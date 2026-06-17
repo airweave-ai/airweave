@@ -28,6 +28,7 @@ from .sync_job import SyncJob
 from .usage import Usage
 from .user import User
 from .user_organization import UserOrganization
+from .user_session import UserSession
 from .vector_db_deployment_metadata import VectorDbDeploymentMetadata
 
 __all__ = [
@@ -59,5 +60,6 @@ __all__ = [
     "Usage",
     "User",
     "UserOrganization",
+    "UserSession",
     "VectorDbDeploymentMetadata",
 ]
