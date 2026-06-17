@@ -306,7 +306,7 @@ async def subscribe_to_connection_sync(
         _sse_event_stream(ps, job_id),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache, no-transform",
+            "Cache-Control": "no-store, no-transform",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
             "Content-Type": "text/event-stream",
