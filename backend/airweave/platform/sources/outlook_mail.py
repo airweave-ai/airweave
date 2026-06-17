@@ -9,6 +9,7 @@ Follows the same structure as the Gmail connector implementation.
 """
 
 import base64
+import os
 from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
@@ -621,12 +622,20 @@ class OutlookMailSource(BaseSource):
                     return None
 
             composite_id = f"{message_id}_attachment_{attachment_id}"
+            mime_type = attachment.get("contentType") or "application/octet-stream"
+            if "/" in mime_type:
+                file_type = mime_type.split("/")[0]
+            else:
+                ext = os.path.splitext(attachment_name)[1].lower().lstrip(".")
+                file_type = ext if ext else "file"
+
             file_entity = OutlookAttachmentEntity(
                 composite_id=composite_id,
                 breadcrumbs=breadcrumbs,
                 name=attachment_name,
                 url=f"outlook://attachment/{message_id}/{attachment_id}",
-                mime_type=attachment.get("contentType"),
+                file_type=file_type,
+                mime_type=mime_type,
                 size=attachment.get("size", 0),
                 message_id=message_id,
                 attachment_id=attachment_id,
