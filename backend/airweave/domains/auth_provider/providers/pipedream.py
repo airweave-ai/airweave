@@ -572,11 +572,22 @@ class PipedreamAuthProvider(BaseAuthProvider):
         source_auth_config_fields: List[str],
         optional_fields: Optional[Set[str]] = None,
         source_config_field_mappings: Optional[Dict[str, str]] = None,
+        source_connection_id: Optional[UUID] = None,
     ) -> AuthResult:
         """Get auth result for Pipedream.
 
         Only sources with custom OAuth clients are supported. Blocked sources
         and default OAuth clients raise errors.
+
+        Args:
+            source_short_name: The short name of the source to get credentials for
+            source_auth_config_fields: The fields required for the source auth config
+            optional_fields: Fields that can be skipped if not available in Pipedream
+            source_config_field_mappings: Mapping of config fields extractable from the
+                provider response
+            source_connection_id: UUID of the source connection. Accepted for parity
+                with the base contract; Pipedream identifies accounts by source slug
+                and project, so the value is forwarded but otherwise unused.
         """
         if source_short_name in self.BLOCKED_SOURCES:
             raise AuthProviderConfigError(
@@ -586,7 +597,10 @@ class PipedreamAuthProvider(BaseAuthProvider):
 
         try:
             credentials = await self.get_creds_for_source(
-                source_short_name, source_auth_config_fields, optional_fields
+                source_short_name,
+                source_auth_config_fields,
+                optional_fields,
+                source_connection_id=source_connection_id,
             )
             self.logger.info(
                 f"Custom OAuth client detected for {source_short_name} - using direct mode"

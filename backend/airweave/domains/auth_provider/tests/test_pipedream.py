@@ -2,6 +2,7 @@
 
 import json
 from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -645,6 +646,31 @@ async def test_get_auth_result_default_oauth_raises_config_error():
     with patch.object(provider, "_get_account_with_credentials", fake_get_account):
         with pytest.raises(AuthProviderConfigError, match="default OAuth client"):
             await provider.get_auth_result("slack", ["access_token"])
+
+
+@pytest.mark.asyncio
+async def test_get_auth_result_accepts_source_connection_id_kwarg():
+    """source_connection_id is part of the base contract; the override must accept it."""
+    provider = await PipedreamAuthProvider.create(
+        credentials={"client_id": "cid", "client_secret": "csec"},
+        config={"project_id": "proj", "account_id": "acc"},
+    )
+    account_data = {
+        "app": {"name_slug": "slack_v2"},
+        "name": "My Slack",
+        "credentials": {"oauth_access_token": "xoxb-tok"},
+    }
+
+    async def fake_get_account(client, slug, source):
+        return account_data
+
+    with patch.object(provider, "_get_account_with_credentials", fake_get_account):
+        result = await provider.get_auth_result(
+            "slack",
+            ["access_token"],
+            source_connection_id=uuid4(),
+        )
+    assert result.credentials == {"access_token": "xoxb-tok"}
 
 
 @pytest.mark.asyncio
