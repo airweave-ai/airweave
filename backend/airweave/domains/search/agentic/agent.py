@@ -86,6 +86,7 @@ from airweave.domains.search.agentic.tools.types import (
     ToolName,
 )
 from airweave.domains.search.config import SearchConfig
+from airweave.domains.search.persistence import persist_v2_search_query
 from airweave.domains.search.protocols import (
     CollectionMetadataBuilderProtocol,
     SearchPlanExecutorProtocol,
@@ -470,6 +471,23 @@ class Agent:
                 ),
                 collection_id=collection.id,  # type: ignore[arg-type]
             )
+        )
+
+        await persist_v2_search_query(
+            db,
+            ctx,
+            collection_id=collection.id,  # type: ignore[arg-type]
+            query_text=request.query,
+            retrieval_strategy="agentic",
+            is_streaming=False,
+            limit=request.limit or 0,
+            offset=0,
+            duration_ms=duration_ms,
+            results_count=len(collected_results),
+            filter_groups=[f.model_dump() for f in request.filter] if request.filter else None,
+            expand_query=True,
+            interpret_filters=True,
+            rerank=self._reranker is not None,
         )
 
         return SearchResults(results=collected_results)
