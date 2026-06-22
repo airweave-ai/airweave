@@ -504,6 +504,11 @@ if [[ -z $SKIP_ENV_SETUP ]]; then
         log_debug "Added POSTGRES_USER=airweave"
     fi
 
+    # Ensure auth-disabled mode is explicitly marked as local development
+    if ensure_env_value "LOCAL_DEVELOPMENT" "true"; then
+        log_success "LOCAL_DEVELOPMENT=true"
+    fi
+
     # Add SKIP_AZURE_STORAGE for faster local startup
     if ensure_env_value "SKIP_AZURE_STORAGE" "true"; then
         log_debug "Added SKIP_AZURE_STORAGE=true"

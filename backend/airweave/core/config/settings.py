@@ -36,6 +36,16 @@ _BANNED_SUPERUSER_EMAILS: frozenset[str] = frozenset(
     }
 )
 
+
+def _coerce_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
 # Fallback base URL used by every Mistral SDK client when MISTRAL_BASE_URL is unset.
 MISTRAL_DEFAULT_BASE_URL: str = "https://api.mistral.ai"
 
@@ -486,6 +496,21 @@ class Settings(BaseSettings):
             raise ValueError(
                 "FIRST_SUPERUSER cannot be a well-known placeholder email "
                 "in non-local environments."
+            )
+        return v
+
+    @field_validator("AUTH_ENABLED", mode="before")
+    def validate_auth_enabled(cls, v: object, info: ValidationInfo) -> object:
+        """Only allow auth-disabled mode for explicit local/test development."""
+        environment = info.data.get("ENVIRONMENT", "local")
+        env_str = environment.value if isinstance(environment, Environment) else environment
+        local_development = _coerce_bool(info.data.get("LOCAL_DEVELOPMENT", False))
+        auth_enabled = _coerce_bool(v)
+
+        if not auth_enabled and (env_str not in ("local", "test") or not local_development):
+            raise ValueError(
+                "AUTH_ENABLED=false is only supported for explicit local/test development. "
+                "Set LOCAL_DEVELOPMENT=true or enable authentication."
             )
         return v
 
