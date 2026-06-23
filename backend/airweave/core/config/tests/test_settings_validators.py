@@ -8,6 +8,7 @@ from pydantic import ValidationError
 # can override *only* the field under test and trigger the expected error.
 _BASE_ENV: dict[str, str] = {
     "ENVIRONMENT": "local",
+    "LOCAL_DEVELOPMENT": "true",
     "FIRST_SUPERUSER": "test@example.com",
     "FIRST_SUPERUSER_PASSWORD": "testpassword123",
     "ENCRYPTION_KEY": "SpgLrrEEgJ/7QdhSMSvagL1juEY5eoyCG0tZN7OSQV0=",
@@ -154,6 +155,45 @@ class TestValidateFirstSuperuserEmail:
         email = "ops@mycompany.com"
         s = _build_settings(
             monkeypatch,
-            {"ENVIRONMENT": "prd", "FIRST_SUPERUSER": email},
+            {
+                "ENVIRONMENT": "prd",
+                "FIRST_SUPERUSER": email,
+                "AUTH_ENABLED": "true",
+            },
         )
         assert s.FIRST_SUPERUSER == email
+
+
+class TestValidateAuthEnabled:
+    def test_rejects_disabled_auth_outside_explicit_local_dev(self, monkeypatch):
+        with pytest.raises(ValidationError, match="AUTH_ENABLED=false"):
+            _build_settings(
+                monkeypatch,
+                {
+                    "ENVIRONMENT": "prd",
+                    "AUTH_ENABLED": "false",
+                    "LOCAL_DEVELOPMENT": "false",
+                },
+            )
+
+    def test_rejects_disabled_auth_in_local_when_local_dev_flag_is_false(self, monkeypatch):
+        with pytest.raises(ValidationError, match="AUTH_ENABLED=false"):
+            _build_settings(
+                monkeypatch,
+                {
+                    "ENVIRONMENT": "local",
+                    "AUTH_ENABLED": "false",
+                    "LOCAL_DEVELOPMENT": "false",
+                },
+            )
+
+    def test_accepts_disabled_auth_for_explicit_local_dev(self, monkeypatch):
+        s = _build_settings(
+            monkeypatch,
+            {
+                "ENVIRONMENT": "local",
+                "AUTH_ENABLED": "false",
+                "LOCAL_DEVELOPMENT": "true",
+            },
+        )
+        assert s.AUTH_ENABLED is False

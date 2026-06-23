@@ -58,6 +58,10 @@ cd airweave
 → http://localhost:8080
 
 > Requires Docker and docker-compose
+>
+> `./start.sh` is a local-development bootstrap. It leaves `AUTH_ENABLED=false`
+> and is not a safe production/default internet-facing deployment. For hosted or
+> shared environments, enable authentication before exposing the API.
 
 ## Supported Integrations
 

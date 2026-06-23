@@ -37,6 +37,7 @@ os.environ.setdefault("POSTGRES_USER", "test_user")
 os.environ.setdefault("POSTGRES_PASSWORD", "test_password")
 os.environ.setdefault("POSTGRES_DB", "test_db")
 os.environ.setdefault("TESTING", "true")
+os.environ.setdefault("LOCAL_DEVELOPMENT", "true")
 os.environ.setdefault("AUTH_ENABLED", "false")
 os.environ.setdefault(
     "SVIX_JWT_SECRET",
