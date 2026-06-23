@@ -11,10 +11,50 @@ Fixtures used:
 """
 
 from datetime import datetime, timezone
+from uuid import uuid4
 
 import pytest
 
+from airweave import schemas
+from airweave.api.context import ApiContext
+from airweave.api.deps import get_context
+from airweave.core.logging import logger
+from airweave.core.shared_models import AuthMethod
 from airweave.domains.webhooks.types import EventMessage
+from airweave.main import app
+from airweave.schemas.organization import Organization
+
+
+def _override_context(role: str) -> None:
+    now = datetime.now(timezone.utc)
+    org_id = uuid4()
+    org = Organization(id=org_id, name="Test Organization", created_at=now, modified_at=now)
+    user = schemas.User(
+        id=uuid4(),
+        email=f"{role}@example.com",
+        full_name=f"{role.title()} User",
+        primary_organization_id=org_id,
+        user_organizations=[
+            schemas.UserOrganization(
+                role=role,
+                is_primary=True,
+                user_id=uuid4(),
+                organization_id=org_id,
+                organization=org,
+            )
+        ],
+        is_admin=(role == "admin"),
+        is_superuser=False,
+    )
+    ctx = ApiContext(
+        request_id=f"webhooks-{role}",
+        organization=org,
+        user=user,
+        auth_method=AuthMethod.AUTH0,
+        auth_metadata={"test": True},
+        logger=logger.with_context(request_id=f"webhooks-{role}"),
+    )
+    app.dependency_overrides[get_context] = lambda: ctx
 
 
 class TestWebhookSubscriptionsAPI:
@@ -26,12 +66,14 @@ class TestWebhookSubscriptionsAPI:
 
     @pytest.mark.asyncio
     async def test_list_subscriptions_empty(self, client):
+        _override_context("admin")
         response = await client.get("/webhooks/subscriptions")
         assert response.status_code == 200
         assert response.json() == []
 
     @pytest.mark.asyncio
     async def test_list_subscriptions_after_create(self, client, fake_webhook_service):
+        _override_context("admin")
         payload = {
             "url": "https://example.com/hook",
             "event_types": ["sync.completed"],
@@ -55,6 +97,7 @@ class TestWebhookSubscriptionsAPI:
 
     @pytest.mark.asyncio
     async def test_create_subscription(self, client, fake_webhook_service):
+        _override_context("admin")
         payload = {
             "url": "https://example.com/webhook",
             "event_types": ["sync.completed", "sync.failed"],
@@ -75,6 +118,7 @@ class TestWebhookSubscriptionsAPI:
 
     @pytest.mark.asyncio
     async def test_create_subscription_with_custom_secret(self, client):
+        _override_context("admin")
         payload = {
             "url": "https://example.com/webhook",
             "event_types": ["sync.completed"],
@@ -85,6 +129,7 @@ class TestWebhookSubscriptionsAPI:
 
     @pytest.mark.asyncio
     async def test_create_subscription_invalid_event_type(self, client):
+        _override_context("admin")
         payload = {
             "url": "https://example.com/webhook",
             "event_types": ["invalid.event.type"],
@@ -94,6 +139,7 @@ class TestWebhookSubscriptionsAPI:
 
     @pytest.mark.asyncio
     async def test_create_subscription_empty_event_types(self, client):
+        _override_context("admin")
         payload = {
             "url": "https://example.com/webhook",
             "event_types": [],
@@ -103,6 +149,7 @@ class TestWebhookSubscriptionsAPI:
 
     @pytest.mark.asyncio
     async def test_create_subscription_short_secret(self, client):
+        _override_context("admin")
         payload = {
             "url": "https://example.com/webhook",
             "event_types": ["sync.completed"],
@@ -113,6 +160,7 @@ class TestWebhookSubscriptionsAPI:
 
     @pytest.mark.asyncio
     async def test_create_subscription_invalid_url(self, client):
+        _override_context("admin")
         payload = {
             "url": "not-a-url",
             "event_types": ["sync.completed"],
@@ -126,6 +174,7 @@ class TestWebhookSubscriptionsAPI:
 
     @pytest.mark.asyncio
     async def test_get_subscription_by_id(self, client, fake_webhook_service):
+        _override_context("admin")
         # Create first
         create_resp = await client.post(
             "/webhooks/subscriptions",
@@ -152,6 +201,7 @@ class TestWebhookSubscriptionsAPI:
 
     @pytest.mark.asyncio
     async def test_get_subscription_with_secret(self, client, fake_webhook_service):
+        _override_context("admin")
         create_resp = await client.post(
             "/webhooks/subscriptions",
             json={
@@ -168,6 +218,7 @@ class TestWebhookSubscriptionsAPI:
 
     @pytest.mark.asyncio
     async def test_get_nonexistent_subscription(self, client):
+        _override_context("admin")
         response = await client.get("/webhooks/subscriptions/nonexistent-id")
         assert response.status_code == 500  # KeyError from fake
 
@@ -177,6 +228,7 @@ class TestWebhookSubscriptionsAPI:
 
     @pytest.mark.asyncio
     async def test_delete_subscription(self, client, fake_webhook_service):
+        _override_context("admin")
         # Create
         create_resp = await client.post(
             "/webhooks/subscriptions",
@@ -203,6 +255,7 @@ class TestWebhookSubscriptionsAPI:
 
     @pytest.mark.asyncio
     async def test_update_subscription_url(self, client, fake_webhook_service):
+        _override_context("admin")
         create_resp = await client.post(
             "/webhooks/subscriptions",
             json={
@@ -221,6 +274,7 @@ class TestWebhookSubscriptionsAPI:
 
     @pytest.mark.asyncio
     async def test_disable_subscription(self, client, fake_webhook_service):
+        _override_context("admin")
         create_resp = await client.post(
             "/webhooks/subscriptions",
             json={
@@ -239,6 +293,7 @@ class TestWebhookSubscriptionsAPI:
 
     @pytest.mark.asyncio
     async def test_reenable_subscription(self, client, fake_webhook_service):
+        _override_context("admin")
         create_resp = await client.post(
             "/webhooks/subscriptions",
             json={
@@ -264,6 +319,7 @@ class TestWebhookSubscriptionsAPI:
 
     @pytest.mark.asyncio
     async def test_update_event_types(self, client, fake_webhook_service):
+        _override_context("admin")
         create_resp = await client.post(
             "/webhooks/subscriptions",
             json={
@@ -290,6 +346,7 @@ class TestWebhookSubscriptionsAPI:
 
     @pytest.mark.asyncio
     async def test_recover_messages(self, client, fake_webhook_service):
+        _override_context("admin")
         create_resp = await client.post(
             "/webhooks/subscriptions",
             json={
@@ -310,6 +367,7 @@ class TestWebhookSubscriptionsAPI:
 
     @pytest.mark.asyncio
     async def test_recover_messages_with_until(self, client, fake_webhook_service):
+        _override_context("admin")
         create_resp = await client.post(
             "/webhooks/subscriptions",
             json={
@@ -329,17 +387,44 @@ class TestWebhookSubscriptionsAPI:
         assert response.status_code == 200
 
 
+    @pytest.mark.asyncio
+    async def test_member_cannot_create_subscription(self, client):
+        _override_context("member")
+        response = await client.post(
+            "/webhooks/subscriptions",
+            json={"url": "https://example.com/webhook", "event_types": ["sync.completed"]},
+        )
+        assert response.status_code == 403
+        assert response.json()["detail"] == "Insufficient permissions for this operation"
+
+    @pytest.mark.asyncio
+    async def test_member_cannot_get_subscription_secret(self, client):
+        _override_context("admin")
+        create_resp = await client.post(
+            "/webhooks/subscriptions",
+            json={"url": "https://example.com/hook", "event_types": ["sync.completed"]},
+        )
+        sub_id = create_resp.json()["id"]
+
+        _override_context("member")
+        response = await client.get(f"/webhooks/subscriptions/{sub_id}?include_secret=true")
+        assert response.status_code == 403
+        assert response.json()["detail"] == "Insufficient permissions for this operation"
+
+
 class TestWebhookMessagesAPI:
     """Tests for /webhooks/messages endpoints."""
 
     @pytest.mark.asyncio
     async def test_list_messages_empty(self, client):
+        _override_context("admin")
         response = await client.get("/webhooks/messages")
         assert response.status_code == 200
         assert response.json() == []
 
     @pytest.mark.asyncio
     async def test_list_messages_with_data(self, client, fake_webhook_service):
+        _override_context("admin")
         now = datetime.now(timezone.utc)
         fake_webhook_service._admin.messages.append(
             EventMessage(
@@ -367,6 +452,7 @@ class TestWebhookMessagesAPI:
 
     @pytest.mark.asyncio
     async def test_list_messages_filtered_by_event_type(self, client, fake_webhook_service):
+        _override_context("admin")
         now = datetime.now(timezone.utc)
         fake_webhook_service._admin.messages.extend(
             [
@@ -393,6 +479,7 @@ class TestWebhookMessagesAPI:
 
     @pytest.mark.asyncio
     async def test_get_message_by_id(self, client, fake_webhook_service):
+        _override_context("admin")
         now = datetime.now(timezone.utc)
         fake_webhook_service._admin.messages.append(
             EventMessage(
@@ -412,6 +499,7 @@ class TestWebhookMessagesAPI:
 
     @pytest.mark.asyncio
     async def test_get_message_with_attempts(self, client, fake_webhook_service):
+        _override_context("admin")
         now = datetime.now(timezone.utc)
         fake_webhook_service._admin.messages.append(
             EventMessage(
@@ -430,5 +518,6 @@ class TestWebhookMessagesAPI:
 
     @pytest.mark.asyncio
     async def test_get_nonexistent_message(self, client):
+        _override_context("admin")
         response = await client.get("/webhooks/messages/nonexistent-id")
         assert response.status_code == 500  # KeyError from fake
