@@ -25,8 +25,8 @@ def _stub_entry(short_name: str, settings_url: str = "") -> AuthProviderRegistry
 
 def test_get_settings_url_returns_url():
     reg = AuthProviderRegistry()
-    reg._entries["composio"] = _stub_entry("composio", "https://platform.composio.dev/")
-    assert reg.get_settings_url("composio") == "https://platform.composio.dev/"
+    reg._entries["composio"] = _stub_entry("composio", "https://dashboard.composio.dev/")
+    assert reg.get_settings_url("composio") == "https://dashboard.composio.dev/"
 
 
 def test_get_settings_url_empty_returns_none():

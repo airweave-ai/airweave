@@ -1502,7 +1502,7 @@ async def test_resolve_provider_info_returns_url_and_short_name():
     from unittest.mock import AsyncMock, MagicMock
 
     registry = MagicMock()
-    registry.get_settings_url.return_value = "https://platform.composio.dev/"
+    registry.get_settings_url.return_value = "https://dashboard.composio.dev/"
 
     conn = SimpleNamespace(short_name="composio")
     conn_repo = FakeConnectionRepository()
@@ -1519,7 +1519,7 @@ async def test_resolve_provider_info_returns_url_and_short_name():
     )
     sc = _make_source_conn(readable_auth_provider_id="my-composio")
     result = await builder._resolve_provider_info(AsyncMock(), sc, _make_ctx())
-    assert result.settings_url == "https://platform.composio.dev/"
+    assert result.settings_url == "https://dashboard.composio.dev/"
     assert result.short_name == "composio"
     registry.get_settings_url.assert_called_once_with("composio")
 

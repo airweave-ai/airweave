@@ -193,7 +193,7 @@ export const AuthProviderSelector: React.FC<AuthProviderSelectorProps> = ({
                     <button
                       onClick={() => {
                         const url = selectedProviderConnection.short_name === 'composio'
-                          ? 'https://platform.composio.dev/'
+                          ? 'https://dashboard.composio.dev/'
                           : 'https://pipedream.com/';
                         window.open(url, '_blank');
                       }}

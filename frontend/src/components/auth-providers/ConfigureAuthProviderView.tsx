@@ -576,7 +576,7 @@ export const ConfigureAuthProviderView: React.FC<ConfigureAuthProviderViewProps>
                                                         <button
                                                             onClick={() => {
                                                                 const url = authProviderShortName === 'composio'
-                                                                    ? 'https://platform.composio.dev/'
+                                                                    ? 'https://dashboard.composio.dev/'
                                                                     : 'https://pipedream.com/settings/api';
                                                                 window.open(url, '_blank');
                                                             }}
