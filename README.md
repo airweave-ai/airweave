@@ -1,3 +1,5 @@
+[![Listed on TakoAPI](https://img.shields.io/badge/Listed%20on-TakoAPI-7c3aed)](https://takoapi.com/agents/airweave-ai-airweave)
+
 <p align="center">
   <a href="https://app.airweave.ai" target="_blank" rel="noopener noreferrer">
     <picture>
