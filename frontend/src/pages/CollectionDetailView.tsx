@@ -265,6 +265,10 @@ const Collections = () => {
     const [isRefreshingAll, setIsRefreshingAll] = useState(false);
     const [refreshingSourceIds, setRefreshingSourceIds] = useState<string[]>([]);
 
+    // Cleanup of failed / never-completed source connections
+    const [showCleanupDialog, setShowCleanupDialog] = useState(false);
+    const [isCleaningUp, setIsCleaningUp] = useState(false);
+
     // Browse tree capability for selected connection
     const [selectedScSupportsBrowseTree, setSelectedScSupportsBrowseTree] = useState(false);
 
@@ -622,6 +626,63 @@ const Collections = () => {
             setIsDeleting(false);
             setShowDeleteDialog(false);
             setConfirmText(''); // Reset confirm text
+        }
+    };
+
+    // Source connections that never finished authenticating or lost their
+    // credentials — safe to bulk-delete so the list isn't cluttered with
+    // half-completed OAuth attempts.
+    const FAILED_CONNECTION_STATUSES = ['pending_auth', 'needs_reauth', 'error'];
+    const failedConnections = sourceConnections.filter(
+        (c) => c.status && FAILED_CONNECTION_STATUSES.includes(c.status)
+    );
+
+    const handleCleanupFailedConnections = async () => {
+        if (!collection || failedConnections.length === 0) return;
+
+        setIsCleaningUp(true);
+        try {
+            const results = await Promise.all(
+                failedConnections.map((c) => apiClient.delete(`/source-connections/${c.id}`))
+            );
+            const failedDeletes = results.filter((r) => !r.ok).length;
+            const deleted = results.length - failedDeletes;
+
+            // Notify listeners for each successfully deleted connection
+            failedConnections.forEach((c, i) => {
+                if (results[i].ok) {
+                    emitCollectionEvent(SOURCE_CONNECTION_UPDATED, {
+                        id: c.id,
+                        collectionId: collection.readable_id,
+                        deleted: true,
+                    });
+                }
+            });
+
+            if (failedDeletes === 0) {
+                toast({
+                    title: "Cleaned up",
+                    description: `Removed ${deleted} failed connection${deleted === 1 ? '' : 's'}.`,
+                });
+            } else {
+                toast({
+                    title: "Partially cleaned up",
+                    description: `Removed ${deleted}, but ${failedDeletes} could not be deleted.`,
+                    variant: "destructive",
+                });
+            }
+        } catch (err) {
+            console.error("Error cleaning up failed connections:", err);
+            toast({
+                title: "Error",
+                description: err instanceof Error ? err.message : "Failed to clean up connections",
+                variant: "destructive",
+            });
+        } finally {
+            setIsCleaningUp(false);
+            setShowCleanupDialog(false);
+            // Refresh the list from the server
+            await fetchSourceConnections(collection.readable_id);
         }
     };
 
@@ -1061,6 +1122,40 @@ const Collections = () => {
                                         )}
                                     </Tooltip>
                                 </TooltipProvider>
+
+                                {/* Clean up failed / never-completed connections */}
+                                {failedConnections.length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowCleanupDialog(true)}
+                                        className={cn(
+                                            DESIGN_SYSTEM.buttons.heights.primary,
+                                            "flex items-center overflow-hidden flex-shrink-0 flex-grow-0 cursor-pointer",
+                                            DESIGN_SYSTEM.spacing.gaps.standard,
+                                            DESIGN_SYSTEM.buttons.padding.secondary,
+                                            "py-2",
+                                            DESIGN_SYSTEM.radius.button,
+                                            DESIGN_SYSTEM.transitions.standard,
+                                            "border border-dashed",
+                                            isDark
+                                                ? "border-red-500/30 bg-red-500/5 hover:bg-red-500/15 hover:border-red-400/40"
+                                                : "border-red-400/40 bg-red-50/30 hover:bg-red-50/70 hover:border-red-400/50"
+                                        )}
+                                        title="Delete connections stuck in a failed or unauthenticated state"
+                                    >
+                                        <Trash className={cn(
+                                            DESIGN_SYSTEM.icons.large,
+                                            isDark ? "text-red-400" : "text-red-500"
+                                        )} strokeWidth={1.5} />
+                                        <span className={cn(
+                                            DESIGN_SYSTEM.typography.sizes.header,
+                                            DESIGN_SYSTEM.typography.weights.medium,
+                                            "text-foreground"
+                                        )}>
+                                            Clean up {failedConnections.length} failed
+                                        </span>
+                                    </button>
+                                )}
                             </div>
                         )}
 
@@ -1208,6 +1303,50 @@ const Collections = () => {
                         confirmText={confirmText}
                         setConfirmText={setConfirmText}
                     />
+
+                    {/* Clean up failed connections dialog */}
+                    <AlertDialog open={showCleanupDialog} onOpenChange={setShowCleanupDialog}>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Clean up failed connections</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    This will permanently delete {failedConnections.length} source
+                                    connection{failedConnections.length === 1 ? '' : 's'} stuck in a
+                                    failed or unauthenticated state. Active connections are not affected.
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            {failedConnections.length > 0 && (
+                                <div className="max-h-40 overflow-y-auto rounded-md border border-border p-2 text-sm">
+                                    {failedConnections.map((c) => (
+                                        <div key={c.id} className="flex items-center justify-between py-1">
+                                            <span className="truncate text-foreground">{c.name}</span>
+                                            <span className="ml-2 flex-shrink-0 text-muted-foreground">{c.status}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            <AlertDialogFooter>
+                                <AlertDialogCancel disabled={isCleaningUp}>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        handleCleanupFailedConnections();
+                                    }}
+                                    disabled={isCleaningUp}
+                                    className="bg-red-600 text-white hover:bg-red-700"
+                                >
+                                    {isCleaningUp ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Deleting...
+                                        </>
+                                    ) : (
+                                        `Delete ${failedConnections.length}`
+                                    )}
+                                </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
 
                 </>
             )}
