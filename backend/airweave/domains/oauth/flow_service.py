@@ -272,7 +272,15 @@ class OAuthFlowService:
         """Exchange OAuth1 verifier for access token."""
         ctx.logger.info(f"Exchanging OAuth1 verifier for access token: {short_name}")
 
-        if not oauth_settings.consumer_secret:
+        # Prefer the consumer credentials captured at init time (BYOC / custom
+        # OAuth), which are persisted in the init-session overrides. The request-
+        # token step was signed with these, so the access-token step must use the
+        # same pair or the OAuth1 signature won't match ("Invalid Signature").
+        # Fall back to the platform-default settings for non-BYOC flows.
+        consumer_key = overrides.get("consumer_key") or oauth_settings.consumer_key
+        consumer_secret = overrides.get("consumer_secret") or oauth_settings.consumer_secret
+
+        if not consumer_secret:
             raise HTTPException(
                 status_code=400,
                 detail=f"Missing consumer_secret for OAuth1 source: {short_name}",
@@ -280,8 +288,8 @@ class OAuthFlowService:
 
         return await self._oauth1_service.exchange_token(
             access_token_url=oauth_settings.access_token_url,
-            consumer_key=oauth_settings.consumer_key,
-            consumer_secret=oauth_settings.consumer_secret,
+            consumer_key=consumer_key,
+            consumer_secret=consumer_secret,
             oauth_token=overrides.get("oauth_token", ""),
             oauth_token_secret=overrides.get("oauth_token_secret", ""),
             oauth_verifier=verifier,
