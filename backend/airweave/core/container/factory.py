@@ -1215,7 +1215,10 @@ def _build_llm_chain(
     available = []
     for provider, model in config.LLM_FALLBACK_CHAIN:
         api_key_attr = PROVIDER_API_KEY_SETTINGS.get(provider)
-        if api_key_attr and not getattr(settings, api_key_attr, None):
+        # Anthropic via Bedrock authenticates with AWS credentials, not
+        # ANTHROPIC_API_KEY — treat it as configured when Bedrock is enabled.
+        bedrock_ok = provider == LLMProvider.ANTHROPIC and settings.ANTHROPIC_USE_BEDROCK
+        if api_key_attr and not getattr(settings, api_key_attr, None) and not bedrock_ok:
             logger.debug(f"[SearchFactory] Skipping {provider.value}: no API key")
             continue
 

@@ -13,7 +13,7 @@ import json
 import time
 from typing import Any, TypeVar
 
-from anthropic import AsyncAnthropic
+from anthropic import AsyncAnthropic, AsyncAnthropicBedrock
 from pydantic import BaseModel
 
 from airweave.adapters.llm.base import BaseLLM
@@ -36,26 +36,54 @@ class AnthropicLLM(BaseLLM):
         model_spec: LLMModelSpec,
         max_retries: int | None = None,
     ) -> None:
-        """Initialize the Anthropic LLM client with API key validation."""
+        """Initialize the Anthropic LLM client (direct API or AWS Bedrock)."""
         super().__init__(model_spec, max_retries=max_retries)
 
-        api_key = settings.ANTHROPIC_API_KEY
-        if not api_key:
-            raise ValueError(
-                "ANTHROPIC_API_KEY not configured. Set it in your environment or .env file."
-            )
-
-        try:
-            self._client = AsyncAnthropic(api_key=api_key, timeout=self.DEFAULT_TIMEOUT)
-        except Exception as e:
-            raise RuntimeError(f"Failed to initialize Anthropic client: {e}") from e
+        # Bedrock mode: talk to Claude through AWS Bedrock instead of the direct
+        # Anthropic API. AWS credentials come from the botocore default chain;
+        # the model id is overridden with the Bedrock inference-profile id.
+        if settings.ANTHROPIC_USE_BEDROCK:
+            model = settings.AWS_BEDROCK_MODEL
+            if not model:
+                raise ValueError(
+                    "ANTHROPIC_USE_BEDROCK is true but AWS_BEDROCK_MODEL is not set. "
+                    "Set it to the Bedrock model / inference-profile id "
+                    "(e.g. 'us.anthropic.claude-sonnet-4-6')."
+                )
+            self._model_name = model
+            region = settings.BEDROCK_AWS_REGION or settings.STORAGE_AWS_REGION
+            # Prefer explicit static IAM keys when configured; otherwise let the
+            # SDK resolve credentials via the botocore chain (AWS_PROFILE / SSO).
+            bedrock_kwargs: dict[str, Any] = {
+                "aws_region": region,
+                "timeout": self.DEFAULT_TIMEOUT,
+            }
+            if settings.AWS_BEDROCK_ACCESS_ID and settings.AWS_BEDROCK_SECRET:
+                bedrock_kwargs["aws_access_key"] = settings.AWS_BEDROCK_ACCESS_ID
+                bedrock_kwargs["aws_secret_key"] = settings.AWS_BEDROCK_SECRET
+            try:
+                self._client = AsyncAnthropicBedrock(**bedrock_kwargs)
+            except Exception as e:
+                raise RuntimeError(f"Failed to initialize Anthropic Bedrock client: {e}") from e
+        else:
+            api_key = settings.ANTHROPIC_API_KEY
+            if not api_key:
+                raise ValueError(
+                    "ANTHROPIC_API_KEY not configured. Set it in your environment or .env file."
+                )
+            self._model_name = model_spec.api_model_name
+            try:
+                self._client = AsyncAnthropic(api_key=api_key, timeout=self.DEFAULT_TIMEOUT)
+            except Exception as e:
+                raise RuntimeError(f"Failed to initialize Anthropic client: {e}") from e
 
         self._effort = model_spec.thinking_config.effort  # e.g., "high"
 
         thinking_mode = f"adaptive (effort={self._effort})" if self._effort else "on-demand"
 
         self._logger.debug(
-            f"[AnthropicLLM] Initialized model={model_spec.api_model_name}, "
+            f"[AnthropicLLM] Initialized model={self._model_name}, "
+            f"bedrock={settings.ANTHROPIC_USE_BEDROCK}, "
             f"context={model_spec.context_window}, "
             f"max_output={model_spec.max_output_tokens}, "
             f"thinking={thinking_mode}"
@@ -81,7 +109,7 @@ class AnthropicLLM(BaseLLM):
 
         api_start = time.monotonic()
         response = await self._client.messages.create(  # type: ignore[call-overload]
-            model=self._model_spec.api_model_name,
+            model=self._model_name,
             max_tokens=self._model_spec.max_output_tokens,
             system=system_prompt,
             messages=[{"role": "user", "content": prompt}],
@@ -153,7 +181,7 @@ class AnthropicLLM(BaseLLM):
 
         # Build API kwargs
         kwargs: dict[str, Any] = {
-            "model": self._model_spec.api_model_name,
+            "model": self._model_name,
             "max_tokens": max_tokens or self._model_spec.max_output_tokens,
             "system": cached_system,
             "messages": anthropic_messages,

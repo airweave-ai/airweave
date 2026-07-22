@@ -204,6 +204,23 @@ class Settings(BaseSettings):
 
     OPENAI_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
+    # When true, the Anthropic search adapter talks to AWS Bedrock via
+    # AsyncAnthropicBedrock instead of the direct Anthropic API. AWS credentials
+    # are resolved by the standard botocore chain (AWS_ACCESS_KEY_ID /
+    # AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN, SSO, or instance profile).
+    ANTHROPIC_USE_BEDROCK: bool = False
+    # Bedrock model / inference-profile id used when ANTHROPIC_USE_BEDROCK is
+    # true (e.g. "us.anthropic.claude-sonnet-4-6"). Overrides the registry's
+    # api_model_name for the Anthropic provider.
+    AWS_BEDROCK_MODEL: Optional[str] = None
+    # AWS region for Bedrock (e.g. "us-east-1"). Falls back to STORAGE_AWS_REGION
+    # and then the botocore default when unset.
+    BEDROCK_AWS_REGION: Optional[str] = None
+    # Optional static IAM credentials for Bedrock. When both are set they are
+    # passed explicitly to the Bedrock client; otherwise the standard botocore
+    # chain is used (AWS_PROFILE / SSO / instance profile).
+    AWS_BEDROCK_ACCESS_ID: Optional[str] = None
+    AWS_BEDROCK_SECRET: Optional[str] = None
     MISTRAL_API_KEY: Optional[str] = None
     MISTRAL_BASE_URL: Optional[str] = None
     FIRECRAWL_API_KEY: Optional[str] = None
