@@ -978,6 +978,10 @@ class TrelloAuthConfig(AuthConfig):
     """Trello authentication credentials schema.
 
     Trello uses OAuth1, which requires both a token and token secret.
+    The consumer key/secret (the OAuth1 client identity used to sign every API
+    request) are persisted here too — the OAuth browser flow fills them in.
+    Without them, request signing falls back to a placeholder and Trello
+    rejects every call with 401 "invalid key".
     """
 
     oauth_token: str = Field(
@@ -987,6 +991,16 @@ class TrelloAuthConfig(AuthConfig):
     oauth_token_secret: str = Field(
         title="OAuth Token Secret",
         description="The OAuth1 access token secret for Trello",
+    )
+    consumer_key: Optional[str] = Field(
+        default=None,
+        title="Consumer Key",
+        description="The OAuth1 consumer key (Trello API key) used to sign requests",
+    )
+    consumer_secret: Optional[str] = Field(
+        default=None,
+        title="Consumer Secret",
+        description="The OAuth1 consumer secret used to sign requests",
     )
 
 
