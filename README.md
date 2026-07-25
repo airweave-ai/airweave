@@ -1,3 +1,5 @@
+[![MCP Toplist](https://mcptoplist.com/badge/io.github.airweave-ai%2Fsearch.svg)](https://mcptoplist.com/server/io.github.airweave-ai%2Fsearch)
+
 <p align="center">
   <a href="https://app.airweave.ai" target="_blank" rel="noopener noreferrer">
     <picture>
